@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090f">
+  <title>灵匣纪元 · Spirit Box Odyssey</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="seal">匣</div>
+      <div class="brand-text">
+        <h1>灵匣纪元</h1>
+        <p>SPIRIT BOX ODYSSEY</p>
+      </div>
+    </div>
+    <div class="realm-badge">当前境界 <strong id="realmName">炼气</strong></div>
+  </header>
+
+  <main>
+    <section class="panel stage" aria-label="开箱">
+      <div class="box-wrap">
+        <div class="ring r1"></div>
+        <div class="ring r2"></div>
+        <div class="ring r3"></div>
+        <button class="box" id="boxBtn" aria-label="开一次灵匣">
+          <span class="box-char">匣</span>
+        </button>
+      </div>
+
+      <div class="timer" aria-hidden="true"><div class="timer-fill" id="timerFill"></div></div>
+      <p class="muted">自动开箱 <strong id="intervalText">2.00</strong> 秒 / 次</p>
+
+      <div class="buff hidden" id="buffBadge">丹药加成 ×2 · <span id="buffTime">30</span>s</div>
+
+      <div class="actions">
+        <button class="btn primary" id="open1">开一次</button>
+        <button class="btn" id="open10">连开十次</button>
+      </div>
+
+      <dl class="stats">
+        <div><dt>灵石</dt><dd id="stones" class="gold">0</dd></div>
+        <div><dt>每秒收益</dt><dd id="perSec">0</dd></div>
+        <div><dt>总战力</dt><dd id="powerTotal">0</dd></div>
+        <div><dt>暴击</dt><dd>5% ×10</dd></div>
+      </dl>
+
+      <p class="tip">点击灵匣或按空格手动开箱 · 累计开箱 <strong id="opens">0</strong> 次</p>
+    </section>
+
+    <section class="panel upgrades" aria-label="淬炼">
+      <h2>淬炼</h2>
+
+      <article class="upgrade">
+        <div class="u-top"><h3>开箱速度</h3><span class="lv" id="speedLv">Lv.0</span></div>
+        <p class="u-desc" id="speedDesc">每 2.00 秒自动开一次</p>
+        <button class="btn buy" id="buySpeed">50 灵石</button>
+      </article>
+
+      <article class="upgrade">
+        <div class="u-top"><h3>灵石收益</h3><span class="lv" id="gainLv">Lv.0</span></div>
+        <p class="u-desc" id="gainDesc">灵石收益 +0%</p>
+        <button class="btn buy" id="buyGain">40 灵石</button>
+      </article>
+
+      <article class="upgrade">
+        <div class="u-top"><h3>气运</h3><span class="lv" id="luckLv">Lv.0</span></div>
+        <p class="u-desc" id="luckDesc">高品质权重 +0% / 阶</p>
+        <button class="btn buy" id="buyLuck">150 灵石</button>
+      </article>
+    </section>
+
+    <section class="panel realm" aria-label="境界">
+      <h2>境界</h2>
+      <div class="realm-line">
+        <span id="realmNow">炼气</span>
+        <span class="muted" id="realmNext">筑基</span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="expFill"></div></div>
+      <p class="exp-text" id="expText">0 / 60 修为</p>
+      <button class="btn primary wide" id="breakBtn">突破境界</button>
+      <button class="btn ghost wide hidden" id="ascendBtn">飞升（重置本世）</button>
+      <p class="hint" id="ascendHint"></p>
+    </section>
+
+    <section class="panel combat" aria-label="秘境征战">
+      <h2>秘境征战</h2>
+      <p class="combat-lead">三处秘境产出开匣得不到的专属套装与战利品。难度逐层递增，建议先闯关，再野外，最后爬塔。</p>
+
+      <div class="combat-tabs" role="tablist" aria-label="秘境玩法">
+        <button class="combat-tab active" data-mode="stage" role="tab" aria-selected="true">闯关</button>
+        <button class="combat-tab" data-mode="tower" role="tab" aria-selected="false">爬塔</button>
+        <button class="combat-tab" data-mode="wild" role="tab" aria-selected="false">野外</button>
+      </div>
+
+      <div class="combat-grid">
+        <div class="combat-main">
+          <div class="enemy-card" id="enemyCard">
+            <div class="enemy-head">
+              <span class="enemy-icon" id="enemyIcon">关</span>
+              <div class="enemy-title">
+                <p class="enemy-kicker" id="enemyKicker">第 1 关</p>
+                <h3 id="enemyName">山贼</h3>
+              </div>
+              <span class="enemy-tag hidden" id="enemyTag">首领</span>
+            </div>
+            <dl class="enemy-stats">
+              <div><dt>生命</dt><dd id="enemyHp">0</dd></div>
+              <div><dt>攻击</dt><dd id="enemyAtk">0</dd></div>
+              <div><dt>防御</dt><dd id="enemyDef">0</dd></div>
+              <div><dt>建议战力</dt><dd id="enemyReq">0</dd></div>
+            </dl>
+          </div>
+
+          <div class="player-strip">
+            <span>战力 <b id="combatPower">0</b></span>
+            <span>攻击 <b id="combatAtk">0</b></span>
+            <span>生命 <b id="combatHp">0</b></span>
+            <span>防御 <b id="combatDef">0</b></span>
+            <span class="diff" id="difficultyBadge">势均力敌</span>
+          </div>
+
+          <div class="zone-strip hidden" id="zoneStrip"></div>
+
+          <div class="combat-actions">
+            <button class="btn primary" id="combatBtn">挑战第 1 关</button>
+            <button class="btn ghost hidden" id="huntBtn">自动巡猎：关</button>
+          </div>
+
+          <p class="combat-progress" id="combatProgress">首通奖励：专属套装部件</p>
+
+          <div class="report-head">
+            <span>战斗日志</span>
+            <button class="btn tiny replay-btn" id="replayBattleBtn" disabled>回看战报</button>
+          </div>
+          <div class="battle-report" id="battleReport">
+            <p class="empty">选择秘境，挑战守卫，赢取专属套装。</p>
+          </div>
+        </div>
+
+        <aside class="combat-side">
+          <div class="trophy-box">
+            <p class="side-title">战利品</p>
+            <ul class="trophy-list" id="trophyList"></ul>
+          </div>
+
+          <div class="training-box">
+            <p class="side-title">战技</p>
+            <div class="training-list" id="trainingList"></div>
+          </div>
+
+          <p class="hint" id="combatHint">通关第 5 关解锁爬塔，通关第 3 关解锁野外。</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel equipment" aria-label="装备">
+      <h2>装备</h2>
+      <div class="power-line">
+        <div class="power-main">
+          <span class="power-label">总战力</span>
+          <strong class="power-num" id="powerPanel">0</strong>
+        </div>
+        <span class="power-bonus" id="powerBonus">收益 ×1.00</span>
+      </div>
+      <div class="equip-grid" id="equipGrid"></div>
+      <div class="set-list" id="setList"></div>
+      <button class="btn wide" id="autoEquip">一键穿戴最强</button>
+      <p class="hint">强化只作用于已穿戴装备，最高 +20。战力越高，灵石收益越快。</p>
+    </section>
+
+    <section class="panel bag" aria-label="背包">
+      <h2>背包 <span class="count" id="bagCount">0 / 60</span></h2>
+      <div class="bag-tools">
+        <button class="btn tiny" id="salvageLow">分解凡 / 灵</button>
+        <button class="btn tiny" id="salvageAll">清空分解</button>
+      </div>
+      <ul class="bag-list" id="bagList"></ul>
+      <p class="hint">装备默认不分解；背包装满时，自动保留更强的一件。</p>
+    </section>
+
+    <section class="panel log" aria-label="最近掉落">
+      <h2>最近掉落</h2>
+      <ul class="log-list" id="logList"></ul>
+    </section>
+
+    <section class="panel collection" aria-label="图鉴">
+      <h2>图鉴</h2>
+      <ul class="collection-list" id="collectionList"></ul>
+      <p class="hint" id="bestText">最高收集：—</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <button class="btn tiny" id="muteBtn">音效：开</button>
+    <button class="btn tiny" id="resetBtn">重置存档</button>
+    <span>纯前端 · 无后端 · 存档在浏览器本地</span>
+  </footer>
+
+  <div class="modal" id="offlineModal" role="dialog" aria-modal="true" aria-labelledby="offlineTitle">
+    <div class="modal-card">
+      <h3 id="offlineTitle">离线挂机收益</h3>
+      <p id="offlineText"></p>
+      <button class="btn primary wide" id="offlineClose">收下</button>
+    </div>
+  </div>
+
+  <div class="modal battle-modal" id="battleModal" role="dialog" aria-modal="true" aria-labelledby="battleTitle">
+    <div class="modal-card battle-card">
+      <div class="battle-head">
+        <div>
+          <h3 id="battleTitle">战斗</h3>
+          <p class="battle-kicker" id="battleKicker">秘境 · 第 1 关</p>
+        </div>
+        <span class="battle-round" id="battleRound">准备</span>
+      </div>
+
+      <div class="battle-arena" id="battleArena">
+        <div class="fighter fighter-player" id="battlePlayer">
+          <span class="fighter-avatar">修</span>
+          <span class="fighter-name">灵匣修士</span>
+          <div class="hp-bar"><div class="hp-fill player" id="battlePlayerHp"></div></div>
+          <span class="hp-text" id="battlePlayerHpText">0 / 0</span>
+        </div>
+
+        <div class="battle-vs">VS</div>
+
+        <div class="fighter fighter-enemy" id="battleEnemy">
+          <span class="fighter-avatar" id="battleEnemyIcon">妖</span>
+          <span class="fighter-name" id="battleEnemyName">敌人</span>
+          <div class="hp-bar"><div class="hp-fill enemy" id="battleEnemyHp"></div></div>
+          <span class="hp-text" id="battleEnemyHpText">0 / 0</span>
+        </div>
+      </div>
+
+      <p class="battle-log-title">战斗日志</p>
+      <div class="battle-log" id="battleLog">
+        <p class="empty">战斗即将开始……</p>
+      </div>
+
+      <div class="battle-result hidden" id="battleResult"></div>
+
+      <div class="battle-actions">
+        <button class="btn tiny" id="battleSkip">跳过动画</button>
+        <button class="btn primary wide" id="battleClose" disabled>战斗进行中</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
