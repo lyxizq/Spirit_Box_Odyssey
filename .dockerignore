@@ -1,0 +1,10 @@
+# 必须留在仓库根：Docker 只认构建上下文根目录的 .dockerignore（构建上下文 = 仓库根）
+.git
+.gitignore
+data
+cocos
+docs
+docker
+node_modules
+*.md
+.DS_Store

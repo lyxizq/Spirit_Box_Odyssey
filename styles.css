@@ -1,3 +1,10 @@
+/* 移动端（2026-10-30）：禁用双击放大——快速连点是游戏核心操作，浏览器把它当
+   「可能的双击缩放」消歧会导致点按响应迟滞且真的触发页面放大；manipulation
+   保留捏合缩放与滚动，游戏内另有字号设置 */
+html {
+  touch-action: manipulation;
+}
+
 :root {
   --bg: #07090f;
   --panel: rgba(18, 22, 32, 0.78);
@@ -55,8 +62,9 @@ body::before {
   height: 720px;
   transform: translateX(-50%);
   border-radius: 50%;
+  /* 原 filter: blur(20px) 已去（2026-10-30）：全屏 fixed 模糊层是平板 Chromium
+     间歇闪屏的头号病灶，且径向渐变本身已淡出至透明，视觉几乎无损 */
   background: radial-gradient(circle, rgba(216, 179, 106, 0.13), transparent 62%);
-  filter: blur(20px);
   pointer-events: none;
   z-index: 0;
 }
@@ -65,6 +73,63 @@ body::before {
 main,
 .foot { position: relative; z-index: 1; }
 
+/* ---------- 断服横幅（/api/version 探针连续失败后显示，常规文档流不遮内容） ---------- */
+
+.server-down-banner {
+  position: relative;
+  z-index: 40;
+  margin: -26px -20px 16px;
+  padding: 9px 16px;
+  text-align: center;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: #fca5a5;
+  background: rgba(58, 13, 13, 0.94);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.4);
+  animation: bannerIn 0.25s ease;
+}
+
+@keyframes bannerIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 奇遇横幅（2026-10-30）：随机事件可玩时挂在页顶，点击直达闲趣页奇遇面板 */
+.event-banner {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: -26px -20px 12px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--gold-2, #f0d9a8);
+  background: rgba(43, 33, 12, 0.94);
+  border-bottom: 1px solid rgba(216, 179, 106, 0.45);
+  animation: bannerIn 0.25s ease;
+}
+
+.event-banner .mini { margin: 0; }
+
+body.theme-light .event-banner {
+  color: #6b4a0f;
+  background: rgba(248, 236, 205, 0.96);
+  border-bottom-color: rgba(107, 74, 15, 0.35);
+}
+
+@media (max-width: 540px) {
+  .server-down-banner { margin: -18px -12px 12px; }
+}
+
+body.theme-light .server-down-banner {
+  color: #8a1f1f;
+  background: rgba(248, 220, 214, 0.96);
+  border-bottom-color: rgba(138, 31, 31, 0.35);
+}
+
 /* ---------- header ---------- */
 
 .top {
@@ -72,63 +137,90 @@ main,
   margin: 0 auto 22px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.brand { display: flex; align-items: center; gap: 13px; }
+.brand { display: flex; align-items: center; gap: 10px; }
 
 .seal {
-  width: 46px;
-  height: 46px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(216, 179, 106, 0.5);
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(216, 179, 106, 0.06);
   box-shadow: inset 0 0 18px rgba(216, 179, 106, 0.10);
-  color: var(--gold);
-  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: 23px;
+}
+
+.seal-icon {
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 107, 0.3));
 }
 
 .brand-text h1 {
   margin: 0;
   font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.10em;
 }
 
 .brand-text p {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9px;
   letter-spacing: 0.24em;
 }
 
 .realm-badge {
-  margin-left: auto;
-  padding: 8px 15px;
+  padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(216, 179, 106, 0.04);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.realm-badge strong { color: var(--gold-2); font-weight: 600; margin-left: 4px; }
+.realm-badge strong { color: var(--gold-2); font-weight: 600; margin-left: 3px; }
+
+/* 徽章组整体靠右：仅首枚推开，其余紧随，与用户名相邻 */
+.realm-badge:first-of-type { margin-left: auto; }
+
+/* ---------- 角色状态总览（修炼页） ---------- */
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px 22px;
+  align-items: start;
+}
+
+/* 每组独立成格：标题紧贴本组数据 */
+.status-group { min-width: 0; }
+.status-group .side-title { margin: 0 0 6px; }
+
+.status-grid dl.stats {
+  margin: 4px 0 8px;
+  padding: 8px 0 0;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.status-grid .stats div { text-align: left; }
+.status-grid .stats dt { font-size: 10px; }
+.status-grid .stats dd { margin: 3px 0 0; font-size: 13px; line-height: 1.35; }
+.status-grid .stats dd .muted { font-size: 11px; font-weight: 400; }
 
 /* ---------- layout ---------- */
 
 main {
   max-width: 1120px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 16px;
-  align-items: start;
+  display: block;
 }
 
 .panel {
@@ -157,9 +249,9 @@ main {
 .panel:nth-of-type(5) { animation-delay: 0.20s; }
 
 .stage {
-  grid-row: span 2;
+  grid-row: auto;
   align-self: stretch;
-  justify-content: center;
+  justify-content: flex-start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -194,8 +286,9 @@ h2::before {
 
 .box-wrap {
   position: relative;
-  width: 240px;
-  height: 240px;
+  width: min(100%, 320px);
+  height: min(100%, 320px);
+  aspect-ratio: 1;
   margin: 2px 0 8px;
   display: grid;
   place-items: center;
@@ -255,10 +348,10 @@ h2::before {
 
 .box.pop { animation: pop 0.32s ease; }
 
-.box-char {
-  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: 56px;
-  line-height: 1;
+.box-icon {
+  width: 102px;
+  height: 102px;
+  filter: drop-shadow(0 0 10px rgba(255, 215, 107, 0.35));
   animation: breathe 3.2s ease-in-out infinite;
   user-select: none;
 }
@@ -275,6 +368,21 @@ h2::before {
   pointer-events: none;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.65);
   animation: floatUp 0.95s ease-out forwards;
+}
+
+/* 非修炼页的全局悬浮提示（改名成败等），固定层保证任意标签页可见 */
+.float-text.global-toast {
+  position: fixed;
+  left: 50%;
+  top: 34%;
+  z-index: 200;
+  font-size: 17px;
+  padding: 10px 18px;
+  border: 1px solid rgba(216, 179, 106, 0.3);
+  border-radius: 999px;
+  background: rgba(10, 13, 20, 0.92);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  animation-duration: 1.3s;
 }
 
 .particle {
@@ -294,7 +402,6 @@ h2::before {
 
 .timer {
   width: 100%;
-  max-width: 320px;
   height: 6px;
   margin-top: 6px;
   overflow: hidden;
@@ -337,8 +444,9 @@ h2::before {
   gap: 10px;
   margin: 16px 0 4px;
   width: 100%;
-  justify-content: center;
 }
+
+.actions .btn { flex: 1; }
 
 .stats {
   width: 100%;
@@ -349,6 +457,91 @@ h2::before {
   gap: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* 修炼页数据卡（2026-10-30）：2×2 标签+大数字简洁卡；只作用于开箱面板，
+   角色状态面板的 .stats 行式布局不受影响 */
+.panel.stage .stats {
+  margin: 16px 0 0;
+  padding: 0;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  border-top: 0;
+}
+
+.panel.stage .stats div {
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.panel.stage .stats dt { font-size: 10.5px; letter-spacing: 0.06em; }
+
+.panel.stage .stats dd {
+  margin: 1px 0 0;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+body.theme-light .panel.stage .stats div { background: rgba(255, 255, 255, 0.55); }
+
+
+.panel.stage .stats {
+  margin: 16px 0 0;
+  padding: 0;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  border-top: 0;
+}
+
+.panel.stage .stats div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid rgba(43, 52, 64, 0.1);
+  border-radius: 16px;
+  background: #fff;
+  color: #2b3440;
+  box-shadow: 0 6px 18px rgba(43, 52, 64, 0.07);
+}
+
+.panel.stage .stats .stat-ic {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--green, #3d5a4c);
+  color: #eaf1ec;
+}
+
+.panel.stage .stats .stat-ic svg { width: 20px; height: 20px; }
+
+.panel.stage .stats .stat-tx { display: block; min-width: 0; flex: 1; }
+.panel.stage .stats dt { margin: 0; }
+.panel.stage .stats dd { margin: 1px 0 0; }
+.panel.stage .stats .stat-sub { margin: 0; }
+.panel.stage .stats dt { color: #6b7280; font-size: 11.5px; letter-spacing: 0.05em; }
+
+.panel.stage .stats dd {
+  margin: 1px 0 0;
+  font-size: 21px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #232b36;
+}
+
+.panel.stage .stats dd.gold { color: var(--gold-deep, #8a6a2f); }
+
+.panel.stage .stats .stat-sub { display: block; margin-top: 1px; color: var(--muted); font-size: 10.5px; }
+
+body.theme-light .panel.stage .stats div { background: rgba(255, 255, 255, 0.92); }
+
 
 .stats div { text-align: center; }
 
@@ -485,6 +678,114 @@ h2::before {
 
 /* ---------- realm ---------- */
 
+/* 境界 hero 卡（2026-10-30 对齐 newui 预览版）：月亮 + 大字境界 + pills + 右置 CTA + 底部行 */
+.realm-hero {
+  position: relative;
+  overflow: hidden;
+  margin: 4px 0 14px;
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(216, 179, 106, 0.24);
+  border-radius: 18px;
+  color: #f3efe2;
+  background:
+    radial-gradient(90% 70% at 78% 8%, rgba(216, 179, 106, 0.26), transparent 55%),
+    radial-gradient(120% 100% at 15% 100%, rgba(20, 34, 28, 0.9), transparent 60%),
+    linear-gradient(160deg, #22302a 0%, #16211c 55%, #101815 100%);
+  box-shadow: 0 14px 30px rgba(22, 33, 28, 0.35);
+}
+
+.realm-hero-moon {
+  position: absolute;
+  right: 24px;
+  top: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 38% 35%, rgba(247, 237, 210, 0.9), rgba(216, 196, 138, 0.55) 62%, rgba(216, 196, 138, 0.12));
+  box-shadow: 0 0 18px rgba(240, 217, 168, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+.realm-hero-moon svg { width: 62%; height: 62%; filter: drop-shadow(0 0 4px rgba(247, 237, 210, 0.5)); }
+
+.realm-hero-tag {
+  margin: 0 0 2px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: rgba(243, 239, 226, 0.72);
+}
+
+.realm-hero-name {
+  margin: 2px 0 12px;
+  color: #f3efe2;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  line-height: 1.1;
+}
+
+.realm-hero-pills { display: flex; gap: 8px; margin-bottom: 14px; }
+
+.realm-hero-pills .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(243, 239, 226, 0.28);
+  border-radius: 999px;
+  background: rgba(243, 239, 226, 0.08);
+  font-size: 11.5px;
+  color: rgba(243, 239, 226, 0.9);
+  white-space: nowrap;
+}
+
+.realm-hero-exp {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(243, 239, 226, 0.75);
+}
+
+.realm-hero-exp span:last-child { color: #f3efe2; font-weight: 700; font-variant-numeric: tabular-nums; }
+.realm-hero-label { letter-spacing: 0.08em; }
+
+.realm-hero .bar { height: 8px; margin: 8px 0 14px; background: rgba(243, 239, 226, 0.16); }
+
+.realm-hero-cta { display: flex; justify-content: flex-end; }
+
+.realm-hero-cta .btn {
+  padding: 12px 26px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #e8cf95, #d8b36a);
+  color: #3a2c10;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  box-shadow: 0 6px 16px rgba(216, 179, 106, 0.35);
+}
+
+.realm-hero-cta .btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(243, 239, 226, 0.3);
+  color: rgba(243, 239, 226, 0.9);
+  box-shadow: none;
+}
+
+.realm-hero-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 16px;
+}
+
+.realm-hero-foot .label { display: block; font-size: 12px; color: rgba(243, 239, 226, 0.72); }
+.realm-hero-foot b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.realm-hero-foot div:last-child { text-align: right; }
+
+
 .realm-line {
   display: flex;
   align-items: baseline;
@@ -524,6 +825,109 @@ h2::before {
   font-size: 11px;
   line-height: 1.6;
 }
+
+/* 赌石开璞玉结果行：档位配色 + 弹出动画 */
+.gamble-result {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(216, 179, 106, 0.25);
+  border-radius: 8px;
+  background: rgba(216, 179, 106, 0.06);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.gamble-result.pop {
+  animation: gamblePop 0.45s ease-out;
+}
+
+@keyframes gamblePop {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.gamble-result.g-none { color: rgba(139, 147, 167, 0.9); }
+.gamble-result.g-dust { color: #d8b36a; }
+.gamble-result.g-stone { color: #ffd479; }
+.gamble-result.g-item {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.08);
+  font-weight: 700;
+}
+
+/* ---------- 第七批：云游奇遇 / 藏宝图 / 钓鱼 / 灵圃 ---------- */
+
+/* 云游奇遇 */
+.wander-card {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(216, 179, 106, 0.25);
+  border-radius: 10px;
+  background: rgba(216, 179, 106, 0.05);
+}
+.wander-card .wander-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0d9a8;
+}
+.wander-card .btn { margin-top: 8px; }
+.hint b.k-good { color: #86efac; }
+.hint b.k-bad { color: #f87171; }
+
+/* 秘境图藏宝点 */
+.map-tile.treasure-spot {
+  border-color: rgba(255, 212, 121, 0.65);
+  background: rgba(255, 212, 121, 0.14);
+  color: #ffd479;
+  font-weight: 700;
+  animation: treasureGlow 1.6s ease-in-out infinite;
+}
+@keyframes treasureGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 121, 0.0); }
+  50% { box-shadow: 0 0 10px 2px rgba(255, 212, 121, 0.35); }
+}
+.treasure-tip { color: #ffd479; }
+
+/* 钓鱼时机条 */
+.fish-track {
+  position: relative;
+  height: 22px;
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+.fish-zone {
+  position: absolute;
+  /* 2026-10-30 绿区 30%→15%（要求减半）：15% 宽恰为「妙手」判定线 acc>0.85 的
+   光标区间，视觉绿区与最高档判定对齐 */
+  left: 42.5%;
+  top: 0;
+  width: 15%;
+  height: 100%;
+  background: rgba(134, 239, 172, 0.18);
+  border-left: 1px solid rgba(134, 239, 172, 0.35);
+  border-right: 1px solid rgba(134, 239, 172, 0.35);
+}
+.fish-cursor {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 4px;
+  height: calc(100% - 4px);
+  border-radius: 2px;
+  background: #ffd479;
+  box-shadow: 0 0 6px rgba(255, 212, 121, 0.7);
+}
+
+/* 果报/资源小字补色（明色主题兜底） */
+.light .fish-track { background: rgba(0, 0, 0, 0.04); border-color: rgba(0, 0, 0, 0.12); }
+.light .wander-card { border-color: rgba(160, 120, 40, 0.35); background: rgba(160, 120, 40, 0.05); }
 
 /* ---------- combat ---------- */
 
@@ -717,6 +1121,50 @@ h2::before {
   gap: 5px;
   flex-wrap: wrap;
   margin-bottom: 10px;
+}
+
+/* 野外关卡分组标签行：每 20 关一组，点击展开该组关卡 */
+.zone-groups {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.zone-group {
+  padding: 5px 10px;
+  border: 1px solid rgba(216, 179, 106, 0.22);
+  border-radius: 7px;
+  background: rgba(216, 179, 106, 0.05);
+  color: var(--gold-2);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.zone-group:hover { border-color: rgba(216, 179, 106, 0.45); }
+
+.zone-group.open {
+  border-color: rgba(216, 179, 106, 0.55);
+  background: rgba(216, 179, 106, 0.16);
+}
+
+.zone-group.cur { box-shadow: inset 0 0 0 1px rgba(216, 179, 106, 0.4); }
+
+.zone-group.locked {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zone-list {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .zone-chip {
@@ -1040,7 +1488,8 @@ h2::before {
 
 .equip-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0,1fr)：1fr 轨道默认 min-width:auto，词条/宝石长文本会把轨道撑出屏幕 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1171,6 +1620,52 @@ h2::before {
 
 .bag-tools .btn { flex: 1; }
 
+.bag-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.chip-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.bag-chip {
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bag-chip:hover { color: var(--gold-2); }
+
+.bag-chip.active {
+  border-color: rgba(216, 179, 106, 0.35);
+  background: rgba(216, 179, 106, 0.1);
+  color: var(--gold-2);
+}
+
+.bi-cmp { margin-right: 3px; font-size: 9px; font-style: normal; }
+.bi-cmp.up { color: var(--green); }
+.bi-cmp.down { color: var(--red); }
+.bi-cmp.eq { color: var(--muted); }
+
+.bi-meta b, .slot-power b { font-weight: 600; }
+.bi-meta .jin, .slot-power .jin { color: #fbbf24; }
+.bi-meta .mu, .slot-power .mu { color: #4ade80; }
+.bi-meta .shui, .slot-power .shui { color: #60a5fa; }
+.bi-meta .huo, .slot-power .huo { color: #f87171; }
+.bi-meta .tu, .slot-power .tu { color: #c084fc; }
+
 .bag-list {
   max-height: 445px;
   margin: 0;
@@ -1297,9 +1792,9 @@ h2::before {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(3, 5, 9, 0.68);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* 原 backdrop-filter: blur(6px) 已去（2026-10-30）：战斗动画等高频重绘压在
+     全屏模糊遮罩下是平板闪屏病灶，改加深遮罩底色替代 */
+  background: rgba(3, 5, 9, 0.78);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
@@ -1307,8 +1802,41 @@ h2::before {
 
 .modal.show { opacity: 1; pointer-events: auto; }
 
+/* 玩法说明弹层（2026-10-30）：整体玩法总览，宽卡+分区滚动 */
+.help-card {
+  width: min(560px, 100%);
+}
+
+.help-body {
+  margin: 12px 0 16px;
+  padding-right: 4px;
+}
+
+.help-body h3 {
+  margin: 14px 0 4px;
+  color: var(--gold-2);
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+}
+
+.help-body p {
+  margin: 0;
+  color: rgba(214, 219, 230, 0.92);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.help-body h3:first-child { margin-top: 0; }
+
+body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
+
 .modal-card {
-  width: min(420px, 92vw);
+  /* 宽高都用百分比相对 .modal 内容盒（固定层自身 = 屏宽屏高减内边距）：
+     用 vw/vh 会被 body zoom（字号放大）成倍放大，手机竖屏下弹层右侧溢出屏幕 */
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 26px 24px 22px;
   border: 1px solid rgba(216, 179, 106, 0.3);
   border-radius: 18px;
@@ -1342,8 +1870,8 @@ h2::before {
 /* ---------- battle modal ---------- */
 
 .battle-card {
-  width: min(580px, 94vw);
-  max-height: calc(100vh - 40px);
+  width: min(580px, 100%);
+  max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1581,6 +2109,438 @@ h2::before {
   100% { opacity: 0; transform: translate(-50%, -22px) scale(1.04); }
 }
 
+/* ---------- affix / forge ---------- */
+
+.slot-affix { margin: 0 0 3px; color: var(--green); font-size: 10px; line-height: 1.55; }
+.slot-gems { margin: 0 0 8px; color: var(--blue); font-size: 10px; line-height: 1.55; }
+
+.bi-affix {
+  display: block;
+  margin-top: 3px;
+  color: var(--green);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.forge-card {
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  text-align: left;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
+}
+
+.forge-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.forge-head h3 { margin: 0; font-size: 17px; }
+
+.forge-kicker {
+  margin: 4px 0 0 !important;
+  color: var(--muted) !important;
+  font-size: 10px !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0.05em;
+}
+
+.forge-dust {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.07);
+  color: #86efac;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.forge-dust b { font-variant-numeric: tabular-nums; }
+
+.forge-section-title {
+  margin: 0 0 7px;
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+#forgeAffixes,
+#forgeGems { margin-top: 14px; }
+
+.affix-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.018);
+  font-size: 11px;
+}
+
+.affix-row .affix-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.affix-row b { color: var(--green); font-variant-numeric: tabular-nums; }
+
+.affix-row .mini {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 3px 9px;
+  font-size: 9px;
+}
+
+.affix-row.locked {
+  border-color: rgba(216, 179, 106, 0.35);
+  background: rgba(216, 179, 106, 0.06);
+}
+
+.affix-row.locked b { color: var(--gold-2); }
+
+.affix-row.empty-socket { border-style: dashed; }
+
+.forge-reroll {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.forge-reroll .btn {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forge-reroll p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.forge-empty { margin: 0; color: var(--muted); font-size: 11px; }
+
+.forge-picker {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 10px 6px;
+  border: 1px dashed rgba(216, 179, 106, 0.25);
+  border-radius: 10px;
+}
+
+.gem-row {
+  display: grid;
+  grid-template-columns: 34px repeat(3, 1fr);
+  gap: 5px;
+  align-items: stretch;
+}
+
+.gem-row > span {
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.gem-row .mini {
+  padding: 4px 2px;
+  font-size: 8.5px;
+  line-height: 1.5;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.forge-msg {
+  margin: 10px 0 0 !important;
+  min-height: 15px;
+  color: var(--red) !important;
+  font-size: 11px !important;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.forge-msg.show { opacity: 1; }
+
+.forge-actions { margin-top: 8px; }
+
+.forge-actions .btn.wide { margin-top: 0; }
+
+/* ---------- pets / cave / daily / achievements / set-collect ---------- */
+
+.pet-list,
+#caveList,
+#dailyList,
+#achvList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pet-row,
+.cave-row,
+.daily-row,
+.achv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.pet-row.active {
+  border-color: rgba(216, 179, 106, 0.35);
+  background: rgba(216, 179, 106, 0.06);
+}
+
+.pet-row.locked { opacity: 0.62; border-style: dashed; }
+
+.daily-row.claimed,
+.achv-row.claimed { opacity: 0.5; }
+
+.achv-row.ready {
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.pet-icon,
+.cave-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(216, 179, 106, 0.3);
+  border-radius: 9px;
+  background: rgba(216, 179, 106, 0.07);
+  color: var(--gold-2);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 16px;
+}
+
+.pet-main,
+.cave-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pet-name,
+.cave-name {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-name em,
+.cave-name em {
+  margin-left: 4px;
+  color: var(--gold);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.pet-desc,
+.cave-desc {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.pet-actions { display: flex; gap: 5px; }
+
+/* 灵圃采集（2026-10-30）：收取/采集/扩建三钮固定一行，不随 .pet-actions 的
+   窄屏换行/限宽规则（2247 行 flex-wrap+62%）走 */
+.gather-actions { display: flex; gap: 6px; flex: 1; max-width: none; }
+.gather-actions .mini { flex: 1 1 0; min-width: 0; margin-left: 0; }
+
+.pet-actions .mini,
+.daily-row .mini,
+.achv-row .mini {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 9px;
+}
+
+.signin-box { margin-bottom: 8px; }
+
+.signin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(216, 179, 106, 0.2);
+  border-radius: 10px;
+  background: rgba(216, 179, 106, 0.05);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.signin-row b { color: var(--gold-2); }
+
+.set-collect {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.set-collect .set-row { margin-top: 0; }
+
+#volumeSlider {
+  width: 88px;
+  accent-color: var(--gold);
+}
+
+/* ---------- trials / market / bestiary / element / title ---------- */
+
+.title-badge {
+  padding: 8px 15px;
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 999px;
+  background: rgba(192, 132, 252, 0.08);
+  color: var(--purple);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.enemy-el {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 12px;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+}
+
+.el-jin { color: #fbbf24; }
+.el-mu { color: #4ade80; }
+.el-shui { color: #60a5fa; }
+.el-huo { color: #f87171; }
+.el-tu { color: #c084fc; }
+
+.rogue-box {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.rogue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rogue-box .hint { margin-top: 6px; }
+
+.rogue-box .combat-actions { margin-top: 9px; }
+
+.rogue-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.rogue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 10px;
+  border: 1px solid rgba(216, 179, 106, 0.28);
+  border-radius: 12px;
+  background: rgba(216, 179, 106, 0.05);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rogue-card:hover {
+  border-color: rgba(216, 179, 106, 0.55);
+  background: rgba(216, 179, 106, 0.12);
+}
+
+.rogue-card-name {
+  color: var(--gold-2);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rogue-card-desc { color: var(--muted); font-size: 10px; }
+
+.pet-top { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+.pet-actions { flex-wrap: wrap; max-width: 62%; }
+
+.pet-row.claimed { opacity: 0.5; }
+
+.title-row { margin-bottom: 10px; }
+
+.title-label {
+  align-self: center;
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.title-empty { color: var(--muted); font-size: 10px; }
+
+.bestiary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 128px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
+}
+
+.beast-chip {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.beast-chip i { color: var(--gold-2); font-style: normal; }
+
+.inherit-list { display: flex; flex-direction: column; gap: 5px; }
+
 /* ---------- footer ---------- */
 
 .foot {
@@ -1648,23 +2608,32 @@ h2::before {
   .stage { padding: 22px 16px 18px; }
   .box-wrap { width: 208px; height: 208px; }
   .box { width: 130px; height: 130px; }
-  .box-char { font-size: 48px; }
+  .box-icon { width: 86px; height: 86px; }
   .stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .stats dd { font-size: 16px; }
   .collection-list { grid-template-columns: 1fr; }
-  .realm-badge { margin-left: 0; }
+  .realm-badge:first-of-type { margin-left: 0; }
   .combat-tabs { width: 100%; }
   .combat-tab { flex: 1; padding: 7px 8px; }
   .enemy-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .combat-side { grid-template-columns: 1fr; }
-  .set-list { grid-template-columns: 1fr; }
+  .set-list,
+  .set-collect { grid-template-columns: 1fr; }
+  .rogue-choices { grid-template-columns: 1fr; }
+  .pet-actions { max-width: 100%; }
   .combat-actions .btn { flex: 1 1 100%; }
+  .modal { padding: 10px; }
   .battle-card { padding: 20px 16px 16px; }
   .battle-arena { min-height: 120px; padding: 10px 5px; gap: 3px; }
   .fighter-avatar { width: 48px; height: 48px; font-size: 18px; }
   .battle-log { max-height: 132px; }
   .battle-damage { font-size: 14px; }
   .battle-damage.crit { font-size: 17px; }
+  .forge-card { padding: 20px 16px 16px; }
+  .gem-row { grid-template-columns: 28px repeat(3, 1fr); }
+  .story-card { padding: 16px 14px 14px; }
+  .story-stage { gap: 8px; }
+  .story-slot { aspect-ratio: 4 / 5; }
 }
 
 @media (max-width: 430px) {
@@ -1673,10 +2642,15 @@ h2::before {
   .bag-item { gap: 6px; }
 }
 
+/* 装备卡操作按钮两行（2026-10-30 全宽度生效）：强化独占一行不截断、工坊/卸下第二行 */
+.slot-actions { flex-wrap: wrap; }
+.slot-actions .mini[data-act="enhance"] { flex: 1 1 100%; }
+.equip-slot { min-height: 0; }
+.slot-empty { margin: 14px 0 2px; }
+
 @media (max-width: 359px) {
+  /* 极窄屏兜底：双列实在放不下才退单列 */
   .equip-grid { grid-template-columns: 1fr; }
-  .equip-slot { min-height: 0; }
-  .slot-empty { margin: 14px 0 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1685,4 +2659,1295 @@ h2::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------- 可读性 pass：全局字号加大（2026-10-27） ---------- */
+
+h2 { font-size: 15px; }
+.btn { font-size: 14px; }
+.btn.tiny { font-size: 12px; }
+.mini { font-size: 11px; }
+.hint { font-size: 12px; line-height: 1.65; }
+.muted { font-size: 13px; }
+.tip { font-size: 12px; }
+.count { font-size: 11px; }
+.u-desc { font-size: 12px; }
+.lv { font-size: 12px; }
+.exp-text { font-size: 12px; }
+.stats dt { font-size: 11px; }
+.stats dd { font-size: 18px; }
+.realm-badge { font-size: 11px; }
+.combat-lead { font-size: 12px; }
+.combat-tab { font-size: 13px; }
+.enemy-kicker { font-size: 11px; }
+.enemy-title h3 { font-size: 18px; }
+.enemy-stats dt { font-size: 10px; }
+.enemy-stats dd { font-size: 15px; }
+.player-strip > span { font-size: 10px; }
+.player-strip b { font-size: 11px; }
+.zone-chip { font-size: 10px; }
+.combat-progress { font-size: 11px; }
+.battle-report { font-size: 12px; }
+.trophy-list span { font-size: 9px; }
+.trophy-list b { font-size: 14px; }
+.training-name { font-size: 12px; }
+.training-name em { font-size: 10px; }
+.training-desc { font-size: 10px; }
+.set-head { font-size: 11px; }
+.set-count { font-size: 10px; }
+.set-desc { font-size: 9px; }
+.side-title { font-size: 11px; }
+.bi-name { font-size: 13px; }
+.bi-name em { font-size: 11px; }
+.bi-meta { font-size: 10px; }
+.bi-affix { font-size: 10px; }
+.bi-power { font-size: 12px; }
+.bag-chip { font-size: 11px; }
+.log-list { font-size: 13px; }
+.collection-list { font-size: 12px; }
+.slot-name { font-size: 11px; }
+.slot-lv { font-size: 12px; }
+.slot-item-name { font-size: 14px; }
+.slot-power { font-size: 11px; }
+.slot-affix, .slot-gems { font-size: 11px; }
+.pet-name, .cave-name { font-size: 13px; }
+.pet-desc, .cave-desc { font-size: 10px; }
+.signin-row { font-size: 12px; }
+.bestiary-list .beast-chip { font-size: 10px; }
+.modal-card h3 { font-size: 19px; }
+.modal-card p { font-size: 14px; }
+.offline-note { font-size: 11px; }
+.battle-kicker { font-size: 11px; }
+.battle-round { font-size: 10px; }
+.fighter-name { font-size: 12px; }
+.hp-text { font-size: 9px; }
+.battle-log p { font-size: 11px; }
+.battle-result { font-size: 12px; }
+.battle-result .result-title { font-size: 14px; }
+.forge-kicker { font-size: 11px; }
+.forge-dust { font-size: 11px; }
+.forge-section-title { font-size: 11px; }
+.affix-row { font-size: 12px; }
+.forge-reroll p { font-size: 10px; }
+.rogue-card-name { font-size: 16px; }
+.rogue-card-desc { font-size: 11px; }
+.foot { font-size: 11px; }
+
+/* ---------- 手机布局优化（2026-10-27） ---------- */
+
+@media (max-width: 540px) {
+  .btn { padding: 12px 16px; }
+  .btn.tiny { padding: 8px 12px; }
+  .mini { padding: 7px 9px; min-height: 30px; }
+  .bag-chip { padding: 6px 10px; min-height: 30px; }
+  .combat-actions .btn { padding: 12px 10px; }
+  .modal .modal-card { padding: 20px 16px 16px; }
+  .modal-card .btn.wide { padding: 13px 16px; }
+
+  /* 灵宠 / 试炼 / 黑市 / 日常行：主信息和按钮上下两行，按钮成 2 列网格 */
+  .pet-row, .cave-row, .daily-row, .achv-row {
+    flex-wrap: wrap;
+    padding: 10px 11px;
+  }
+  .pet-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    width: 100%;
+    max-width: none;
+    margin-top: 7px;
+  }
+  .daily-row .mini,
+  .achv-row .mini,
+  .cave-row .mini {
+    min-width: 96px;
+    padding: 8px 10px;
+  }
+
+  /* 状态卡与词条行更透气 */
+  .stats dd { font-size: 19px; }
+  .enemy-card { padding: 14px 12px; }
+  .equip-slot { min-height: 128px; }
+  .affix-row { padding: 9px 11px; }
+  .rogue-box { padding: 12px 11px; }
+
+  /* 战斗弹窗按钮好按 */
+  .battle-actions { gap: 6px; }
+  .battle-actions .btn.tiny { padding: 9px 12px; min-height: 38px; }
+
+  /* 图鉴与页脚 */
+  .bestiary-list { max-height: none; }
+  .foot { gap: 8px; }
+  #volumeSlider { width: 110px; height: 26px; }
+}
+
+@media (max-width: 430px) {
+  .mini { font-size: 10.5px; padding: 7px 6px; }
+  .pet-actions { grid-template-columns: 1fr 1fr; }
+  .btn { font-size: 13.5px; }
+}
+
+/* ---------- 第三批：共鸣 / 道童 / 秘境图 / 陈列室 / 灵田 / 天道录 ---------- */
+
+.res-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.res-chip {
+  padding: 4px 10px;
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.06);
+  color: #86efac;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.res-chip.max {
+  border-color: rgba(216, 179, 106, 0.4);
+  background: rgba(216, 179, 106, 0.08);
+  color: var(--gold-2);
+}
+
+.map-grid {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.map-tile {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--muted);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 13px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.map-tile:disabled { cursor: default; }
+
+.map-tile.fog { color: rgba(139, 147, 167, 0.28); background: rgba(0, 0, 0, 0.2); }
+.map-tile.adj {
+  border-color: rgba(216, 179, 106, 0.4);
+  background: rgba(216, 179, 106, 0.08);
+  color: var(--gold-2);
+}
+.map-tile.adj:hover:not(:disabled) { background: rgba(216, 179, 106, 0.18); }
+.map-tile.here {
+  border-color: rgba(216, 179, 106, 0.65);
+  background: rgba(216, 179, 106, 0.22);
+  color: #17130d;
+  font-weight: 700;
+}
+.map-tile.looted { color: rgba(139, 147, 167, 0.45); background: rgba(255, 255, 255, 0.008); }
+.map-tile.stones { color: #fbbf24; }
+.map-tile.dust { color: #94a3b8; }
+.map-tile.monster { color: #f87171; }
+.map-tile.shrine { color: #c084fc; }
+
+.chapter-text {
+  margin: 4px 0 8px;
+  color: #c8cbd4;
+  font-size: 12px;
+  line-height: 1.9;
+  border-left: 2px solid rgba(216, 179, 106, 0.35);
+  padding-left: 10px;
+}
+
+
+#achvList {
+  max-height: 470px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
+}
+
+#achvList::-webkit-scrollbar { width: 4px; }
+#achvList::-webkit-scrollbar-thumb { background: rgba(216, 179, 106, 0.3); border-radius: 4px; }
+
+/* ---------- 双列独立列布局（消除行耦合空白） ---------- */
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.panel-wide { grid-column: 1 / -1; }
+
+@media (min-width: 901px) {
+  #achvList { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+}
+
+/* ---------- 顶部功能标签 ---------- */
+
+.top-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 16px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(7, 9, 15, 0.96);
+  /* 原 backdrop-filter: blur(10px) 已去（2026-10-30）：常驻吸顶层+页面滚动重绘
+     是平板闪屏高发组合，改提背景不透明度替代毛玻璃，视觉差半档 */
+}
+
+.top-tab {
+  padding: 9px 28px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.top-tab:hover { color: var(--gold-2); }
+
+.top-tab.active {
+  background: rgba(216, 179, 106, 0.16);
+  color: var(--gold-2);
+  box-shadow: inset 0 0 0 1px rgba(216, 179, 106, 0.28);
+}
+
+.tab-page { display: none; }
+
+.tab-page.active {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.tab-page .panel-wide { grid-column: 1 / -1; }
+
+@media (max-width: 900px) {
+  .tab-page.active { grid-template-columns: 1fr; }
+  .top-tab { flex: 1; padding: 9px 10px; }
+}
+
+/* ---------- 第四批：时辰徽章 / 道侣 / 战功碑 / 天劫 ---------- */
+
+.shichen-badge {
+  padding: 3px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.07);
+  color: #93c5fd;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dao-gifts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  width: 100%;
+  margin-top: 5px;
+}
+
+.dao-gifts .mini { text-align: center; }
+
+.stat-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stat-line:last-child { border-bottom: 0; }
+
+.stat-line b {
+  color: var(--gold-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- 玩法解锁链：锁定态与修行指南 ---------------- */
+
+/* 未解锁区块：内容淡化只可远观，横幅写明解锁条件；inert 已屏蔽点击与聚焦
+   （只作用于玩法容器，避免误伤页签 / 灵宠行等既有的 .locked 叶子元素） */
+.panel.locked > *:not(.lock-note),
+.rogue-box.locked > *:not(.lock-note),
+#gongfaSec.locked > *:not(.lock-note),
+#caveSec.locked > *:not(.lock-note),
+#farmSec.locked > *:not(.lock-note),
+#museumSec.locked > *:not(.lock-note),
+#craftSec.locked > *:not(.lock-note) {
+  opacity: 0.38;
+  filter: saturate(0.25);
+  pointer-events: none;
+  user-select: none;
+}
+
+.lock-note {
+  margin: 4px 0 10px;
+  padding: 9px 12px;
+  border: 1px dashed rgba(216, 179, 106, 0.45);
+  border-radius: 10px;
+  background: rgba(216, 179, 106, 0.07);
+  color: var(--gold-2);
+  font-size: 12.5px;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+/* 修行指南：解锁链一览（列表限高内部滚动，可视约 6 条） */
+#guideList {
+  max-height: 30rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.35) transparent;
+  padding-right: 4px;
+}
+
+#guideList::-webkit-scrollbar { width: 6px; }
+
+#guideList::-webkit-scrollbar-thumb {
+  background: rgba(216, 179, 106, 0.35);
+  border-radius: 3px;
+}
+
+.guide-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 8px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.guide-row:last-of-type { border-bottom: 0; }
+
+.guide-row .g-status {
+  flex: 0 0 auto;
+  width: 22px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guide-row.open .g-status { color: var(--green); }
+
+.guide-row .g-main { flex: 1 1 auto; min-width: 0; }
+
+.guide-row .g-name {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.guide-row.locked .g-name { color: var(--muted); }
+
+.guide-row .g-where {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.guide-row .g-desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  opacity: 0.82;
+}
+
+.guide-row.locked .g-desc { opacity: 0.5; }
+
+.guide-row .g-cond {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--gold);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.guide-row.open .g-cond { color: var(--muted); }
+
+/* 下一个目标：高亮提示 */
+.guide-row.next {
+  background: rgba(216, 179, 106, 0.08);
+  border-left: 2px solid var(--gold);
+  border-radius: 6px;
+}
+
+.guide-row.next .g-cond {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.guide-meta {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .guide-row { flex-wrap: wrap; }
+  .guide-row .g-cond {
+    margin-left: 32px;
+    white-space: normal;
+  }
+}
+
+/* 故事模式「红尘录」—— 草稿 Part 4：样式（合入 styles.css 末尾用）    */
+/* ================================================================== */
+
+/* ---------- 故事页：红尘录 ---------- */
+
+.story-panel .story-lead {
+  margin: 2px 0 14px;
+  color: #c8cbd4;
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.story-vol {
+  border: 1px solid rgba(216, 179, 106, 0.16);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.1));
+}
+
+.story-vol.vol-locked { opacity: 0.62; }
+.story-vol.vol-done { border-color: rgba(126, 224, 163, 0.3); }
+.story-vol.vol-active { border-color: rgba(216, 179, 106, 0.36); }
+
+.story-vol-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.story-vol-chev {
+  flex: none;
+  color: var(--gold-2);
+  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+
+.story-vol-head:hover .story-vol-name { text-decoration: underline; text-underline-offset: 3px; }
+
+.story-vol-name {
+  color: var(--gold-2);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.story-vol-place { color: #8b93a7; font-size: 11px; }
+.story-vol-head .count { margin-left: auto; }
+
+.story-vol-intro {
+  margin: 6px 0 10px;
+  color: #9aa4b2;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.story-stage-list { display: grid; gap: 6px; }
+
+.story-stage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.story-stage-row.open { border-color: rgba(216, 179, 106, 0.3); background: rgba(216, 179, 106, 0.06); }
+.story-stage-row.done { opacity: 0.78; }
+.story-stage-row.locked { opacity: 0.5; }
+
+.ss-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--gold-2);
+  background: rgba(216, 179, 106, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(216, 179, 106, 0.2);
+}
+
+.ss-info { min-width: 0; flex: 1; display: grid; gap: 1px; }
+.ss-info b { color: #dfe3ea; font-size: 13px; }
+.ss-note { color: #8b93a7; font-size: 10.5px; }
+
+.ss-state { color: #8b93a7; font-size: 11px; margin-right: 8px; white-space: nowrap; }
+.ss-state.ok { color: #7ee0a3; }
+
+.story-stage-row .mini { flex: none; }
+
+/* ---------- 人物志 ---------- */
+
+.cast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 12px;
+}
+
+.cast-card {
+  border: 1px solid rgba(216, 179, 106, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #131824;
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+.cast-card.unknown { opacity: 0.55; filter: grayscale(0.4); }
+
+.cast-art {
+  aspect-ratio: 5 / 6;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 30%, #1c2230, #0d111a);
+}
+
+.cast-art svg,
+.cast-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.cast-card b { display: block; margin-top: 6px; color: #dfe3ea; font-size: 12.5px; }
+
+.cast-brief {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding: 0 8px;
+  color: #8b93a7;
+  font-size: 10px;
+  line-height: 1.5;
+  min-height: 30px;
+}
+
+/* ---------- 立绘容器（对话 + 人物志共用） ---------- */
+
+.story-art { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.story-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.story-art svg { width: 100%; height: 100%; display: block; }
+.story-art.story-art-corrupt img,
+.story-art.story-art-corrupt svg { filter: grayscale(0.35) hue-rotate(35deg) brightness(0.78) contrast(1.15); }
+
+/* ---------- 对话弹层 ---------- */
+
+.story-card {
+  width: min(600px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  text-align: left;
+  background:
+    radial-gradient(420px 200px at 50% -10%, rgba(216, 179, 106, 0.12), transparent 70%),
+    linear-gradient(180deg, #171c27, #0d111a);
+}
+
+.story-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.story-head h3 { margin: 0 0 4px; }
+
+.story-kicker { margin: 0; color: #8b93a7; font-size: 11.5px; }
+
+.story-head-btns { display: flex; gap: 6px; flex: none; }
+.story-close { padding: 4px 10px; }
+
+.story-stage {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.story-slot {
+  flex: 1;
+  aspect-ratio: 5 / 6;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(216, 179, 106, 0.22);
+  background: radial-gradient(120% 90% at 50% 30%, #1c2230, #0d111a);
+  opacity: 0.34;
+  filter: saturate(0.55);
+  transform: scale(0.985);
+  transition: opacity 0.25s ease, filter 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
+.story-slot.active {
+  opacity: 1;
+  filter: none;
+  transform: none;
+  border-color: rgba(216, 179, 106, 0.45);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+}
+
+.story-dialog {
+  min-height: 96px;
+  border: 1px solid rgba(216, 179, 106, 0.24);
+  border-radius: 12px;
+  padding: 10px 14px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+.story-name {
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+}
+
+.story-text {
+  margin: 6px 0 0;
+  color: #d5d8e0;
+  font-size: 14px;
+  line-height: 1.95;
+  animation: storyLine 0.28s ease;
+}
+
+.story-text.sys { color: var(--gold-2); }
+
+@keyframes storyLine {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.story-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.story-actions .btn.primary { min-width: 132px; }
+
+/* ---------- 手机端 ---------- */
+
+@media (max-width: 640px) {
+  .cast-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .story-stage { gap: 6px; }
+  .story-slot { aspect-ratio: 4 / 5; }
+  .story-text { font-size: 13px; }
+  .story-stage-row { flex-wrap: wrap; }
+  .ss-state { margin-left: 40px; }
+}
+
+/* ---------------- 境界清单（点击面板标题展开） ---------------- */
+
+.panel.realm h2 {
+  cursor: pointer;
+  user-select: none;
+}
+
+.realm-toggle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.panel.realm h2:hover .realm-toggle { color: var(--gold-2); }
+
+.realm-list {
+  margin: 6px 0 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(7, 9, 15, 0.35);
+}
+
+.realm-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 6px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  font-size: 12.5px;
+}
+
+.realm-row:last-child { border-bottom: 0; }
+
+.realm-row .r-idx {
+  flex: 0 0 16px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.realm-row .r-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.realm-row .r-note {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.realm-row.done .r-note { color: var(--green); }
+
+.realm-row.lock { opacity: 0.5; }
+
+.realm-row.cur {
+  background: rgba(216, 179, 106, 0.10);
+  border-radius: 8px;
+}
+
+.realm-row.cur .r-name { color: var(--gold-2); }
+
+.realm-row.cur .r-note {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+/* ---------- 登录 / 注册页 ---------- */
+
+.auth-body { padding: 0; }
+
+.auth-wrap {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 30px 28px 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.auth-head { text-align: center; margin-bottom: 18px; }
+
+.auth-logo { display: inline-block; filter: drop-shadow(0 0 14px rgba(216, 179, 106, 0.45)); }
+
+.auth-head h1 {
+  margin: 10px 0 4px;
+  font-size: 26px;
+  letter-spacing: 6px;
+  color: var(--gold-2);
+  text-shadow: 0 0 22px rgba(216, 179, 106, 0.35);
+}
+
+.auth-sub { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: 2px; }
+/* 公测公告（2026-10-30）：数值调整期会有删档，登录卡内的常驻提示 */
+.auth-notice {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(216, 179, 106, 0.35);
+  border-radius: 8px;
+  background: rgba(216, 179, 106, 0.08);
+  color: #d8b36a;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 18px 0 16px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(7, 9, 15, 0.55);
+}
+
+.auth-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 4px;
+  padding: 9px 0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.auth-tab:hover { color: var(--text); }
+
+.auth-tab.active {
+  background: rgba(216, 179, 106, 0.14);
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.auth-form { display: flex; flex-direction: column; gap: 13px; }
+
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+
+.auth-field span { font-size: 12px; color: var(--muted); letter-spacing: 1px; }
+
+.auth-field input {
+  width: 100%;
+  padding: 11px 13px;
+  font-size: 15px;
+  color: var(--text);
+  background: rgba(7, 9, 15, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.auth-field input:focus {
+  border-color: rgba(216, 179, 106, 0.55);
+  box-shadow: 0 0 0 3px rgba(216, 179, 106, 0.12);
+}
+
+.auth-field input::placeholder { color: rgba(139, 147, 167, 0.55); font-size: 12px; }
+
+.auth-error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 9px;
+  padding: 9px 12px;
+}
+
+.auth-submit { margin-top: 4px; padding: 12px 0; font-size: 15px; letter-spacing: 4px; }
+
+.auth-note {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 页脚账号条 ---------- */
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--gold-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  background: rgba(216, 179, 106, 0.08);
+}
+
+/* ---------------- 天下（排行 / 竞技场 / 妖王 / 仙盟） ---------------- */
+
+.rank-list { display: flex; flex-direction: column; gap: 6px; }
+
+.rank-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 13px;
+}
+
+.rank-row.top3 { border-color: rgba(216, 179, 106, 0.45); background: rgba(216, 179, 106, 0.07); }
+
+.rank-row .rk {
+  min-width: 26px;
+  color: var(--gold);
+  font-weight: 700;
+  text-align: center;
+}
+
+.rank-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rank-row .gd { color: var(--gold-2); font-size: 12px; font-style: normal; }
+
+.rank-row .pw { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.arena-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+.arena-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.ac-head { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+
+.ac-head span { color: var(--muted); font-size: 12px; }
+
+.worldboss .bar { height: 14px; border: 1px solid var(--line); }
+
+.guild-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+
+.guild-head span { color: var(--muted); font-size: 12px; }
+
+.guild-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 13px;
+}
+
+.guild-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.guild-row .gd { color: var(--gold-2); font-size: 12px; font-style: normal; }
+
+.guild-row .pw { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.guild-row-input { display: flex; gap: 8px; margin: 8px 0 12px; }
+
+.guild-row-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.guild-row-input input:focus {
+  outline: none;
+  border-color: rgba(216, 179, 106, 0.5);
+}
+
+@media (max-width: 720px) {
+  .top-tabs { flex-wrap: wrap; justify-content: center; width: 100%; }
+  .top-tab { padding: 9px 14px; letter-spacing: 0.06em; }
+  .rank-row, .guild-row { font-size: 14px; }
+}
+
+/* 假人「剑影」标识：灰蓝小签，与真人金签区分 */
+.bot-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 999px;
+  color: var(--blue);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 16px;
+  vertical-align: 1px;
+  background: rgba(96, 165, 250, 0.08);
+}
+
+/* ---------------- 战斗弹层头像：立绘 / 徽记 ---------------- */
+
+.battle-modal { z-index: 60; } /* 压过故事 / 天劫等弹窗，战斗动画永远在最上层 */
+
+.fighter-avatar {
+  position: relative;
+  overflow: hidden;
+}
+
+.fighter-avatar .story-art {
+  position: absolute;
+  inset: 0;
+}
+
+.fighter-avatar .story-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 10%; /* 半身立绘裁到头肩 */
+}
+
+.fighter-avatar .story-art svg {
+  width: 100%;
+  height: 100%;
+  transform: scale(2.2) translateY(9%);
+  transform-origin: 50% 0;
+}
+
+.fighter-avatar .art-svg svg {
+  transform: none; /* 徽记类 SVG 自带圆底，铺满即可 */
+}
+
+.fighter-avatar.avatar-gray,
+.fighter-avatar.avatar-gray .story-art img,
+.fighter-avatar.avatar-gray .story-art svg {
+  filter: grayscale(1) brightness(0.82);
+}
+
+
+/* ---------------- 顶部用户区（道号 + 退出登录） ---------------- */
+
+.user-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto; /* header 是 flex，推到最右 */
+}
+
+@media (max-width: 720px) {
+  .user-area { margin-left: 0; width: 100%; justify-content: flex-end; }
+}
+
+
+.ver-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+
+/* ---------------- 设置页 ---------------- */
+
+.set-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.set-value {
+  min-width: 52px;
+  text-align: center;
+  color: var(--gold-2);
+  font-weight: 700;
+}
+
+/* ---------- 教程 / 新玩法引导弹层 ---------- */
+
+.guide-modal { z-index: 55; } /* 压普通弹层，让位于战斗动画 */
+
+.guide-card {
+  width: min(480px, 100%);
+  text-align: left;
+}
+
+.guide-kicker {
+  margin: 0 0 8px;
+  color: var(--gold-2);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+}
+
+.guide-card h3 { margin: 0 0 14px; }
+
+.guide-body p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #c8cbd4;
+  text-align: left;
+}
+
+.guide-body b { color: var(--gold-2); }
+
+.guide-tip.clickable { cursor: pointer; text-decoration: underline dotted; }
+
+.guide-tip {
+  color: #8b93a7 !important;
+  font-size: 11.5px !important;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 12px !important;
+}
+
+body.theme-light .guide-body p { color: var(--text); }
+
+/* ---------- 明色主题（羊皮纸日间风） ---------- */
+
+body.theme-light {
+  --bg: #f2e9d5;
+  --panel: rgba(255, 252, 242, 0.94);
+  --line: rgba(138, 106, 47, 0.3);
+  --gold: #a8781f;
+  --gold-2: #8a6210;
+  --gold-dim: #8a6a2f;
+  --text: #3a3226;
+  --muted: #85775f;
+  --blue: #2f6fce;
+  --purple: #7c4dc4;
+  --green: #1f9d55;
+  background:
+    radial-gradient(1100px 560px at 18% -8%, rgba(216, 179, 106, 0.22), transparent 62%),
+    radial-gradient(900px 520px at 92% 8%, rgba(96, 165, 250, 0.12), transparent 62%),
+    radial-gradient(820px 620px at 50% 118%, rgba(192, 132, 252, 0.10), transparent 62%),
+    var(--bg);
+}
+
+body.theme-light::before {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+}
+
+body.theme-light .bg-glow {
+  background: radial-gradient(circle, rgba(216, 179, 106, 0.30), transparent 62%);
+}
+
+body.theme-light .top,
+body.theme-light .top-tabs {
+  background: rgba(255, 252, 242, 0.92);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.theme-light .panel {
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgba(255, 253, 246, 0.96), rgba(250, 244, 228, 0.96));
+  box-shadow: 0 14px 30px rgba(94, 74, 38, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.theme-light .modal {
+  background: rgba(60, 50, 30, 0.42);
+}
+
+body.theme-light .modal-card {
+  background: linear-gradient(180deg, #fffdf6, #f7efdc);
+  border-color: var(--line);
+  box-shadow: 0 24px 60px rgba(94, 74, 38, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+body.theme-light .bar,
+body.theme-light .hp-bar {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+body.theme-light .rank-row,
+body.theme-light .guild-row,
+body.theme-light .arena-card,
+body.theme-light .battle-log,
+body.theme-light .story-stage-row,
+body.theme-light .chip-row .chip {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+body.theme-light .fighter-avatar {
+  background: radial-gradient(circle at 35% 30%, rgba(216, 179, 106, 0.35), rgba(255, 252, 242, 0.9));
+}
+
+body.theme-light .fighter-enemy .fighter-avatar {
+  background: radial-gradient(circle at 35% 30%, rgba(248, 113, 113, 0.25), rgba(255, 252, 242, 0.9));
+}
+
+body.theme-light .guild-row-input input {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.theme-light .battle-modal .modal-card {
+  background: linear-gradient(180deg, #fffdf6, #f3ead6);
+}
+
+
+/* ---------------- 资源小图标（内联 SVG，跟在花费/收益数字后） ---------------- */
+
+.res-ic {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-left: 3px;
+}
+
+.btn .res-ic,
+.mini .res-ic {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2.5px;
+  margin-left: 3px;
+}
+
+.cave-desc .res-ic,
+.pet-desc .res-ic,
+.guide-body .res-ic {
+  margin-left: 2px;
+}
+
+body.theme-light .res-ic { filter: saturate(0.92); }
+
+/* ---------------- 装备部位小图标 ---------------- */
+
+.slot-ic {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.equip-slot .slot-icon svg.slot-ic {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  margin-right: 0;
 }

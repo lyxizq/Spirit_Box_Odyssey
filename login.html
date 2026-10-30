@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>灵匣纪元 · 登录</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="auth-body">
+  <div class="bg-glow"></div>
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <header class="auth-head">
+        <img class="auth-logo" src="/favicon.svg" alt="" width="52" height="52">
+        <h1>灵匣纪元</h1>
+        <p class="auth-sub">开匣得灵宝 · 立账号留道途</p>
+      </header>
+
+      <p class="auth-notice">游戏公测中，各项数值还在调整和优化，会存在删档的情况。如果账号无法登录，请重新注册一个。</p>
+
+      <nav class="auth-tabs" aria-label="登录或注册">
+        <button type="button" class="auth-tab active" data-mode="login">登 录</button>
+        <button type="button" class="auth-tab" data-mode="register">注 册</button>
+      </nav>
+
+      <form id="authForm" class="auth-form" novalidate>
+        <label class="auth-field">
+          <span>道号</span>
+          <input type="text" id="username" name="username" autocomplete="username"
+                 maxlength="16" placeholder="2-16 位中文 / 英文 / 数字 / 下划线" required>
+        </label>
+        <label class="auth-field">
+          <span>口令</span>
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" maxlength="64" placeholder="8-64 位，含字母与数字" required>
+        </label>
+        <label class="auth-field auth-field-confirm hidden" id="confirmField">
+          <span>确认口令</span>
+          <input type="password" id="password2" maxlength="64" placeholder="再输一遍口令" tabindex="-1">
+        </label>
+
+        <p class="auth-error hidden" id="authError" role="alert"></p>
+
+        <button type="submit" class="btn primary auth-submit" id="submitBtn">进入修行</button>
+      </form>
+
+      <p class="auth-note">注册即代表同意妥善保管口令；连续输错 5 次账号将临时锁定。</p>
+    </section>
+  </main>
+
+  <script src="/login.js"></script>
+</body>
+</html>

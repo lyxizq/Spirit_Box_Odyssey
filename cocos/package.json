@@ -1,0 +1,9 @@
+{
+  "name": "lingxia-cocos",
+  "version": "1.0.0",
+  "description": "灵匣纪元 · Cocos Creator 3.8 表现层脚手架（小游戏适配用，数值上游为根目录 game.js）",
+  "private": true,
+  "creator": {
+    "version": "3.8.0"
+  }
+}

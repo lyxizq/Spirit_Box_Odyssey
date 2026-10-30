@@ -1,0 +1,21 @@
+# 灵匣纪元 · Docker Compose
+# 用法（仓库根目录执行）：docker compose -f docker/docker-compose.yml up -d --build
+# 首次或更新代码后 --build；构建上下文是仓库根（Dockerfile 在 docker/ 下，.dockerignore 必须留在根）
+services:
+  lingxia:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: lingxia:latest
+    container_name: lingxia
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai       # 服务器时区：页脚服务器时间与每日重置（签到/日常/竞技场/妖王）以此为准；改完需重建容器生效
+      - PORT=8080
+      - DB_PATH=/app/data/game.db
+      # 对接 EdgeOne 免费版锁源时取消注释并填 32 位以上随机串（EdgeOne 侧规则引擎同步加 x-origin-token 头）：
+      # - ORIGIN_TOKEN=please-change-me-to-a-long-random-string
+    volumes:
+      - ../data:/app/data

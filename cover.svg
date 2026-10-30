@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="540" viewBox="0 0 350 180">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10152b"/>
+      <stop offset="0.55" stop-color="#1b2242"/>
+      <stop offset="1" stop-color="#2b3157"/>
+    </linearGradient>
+    <radialGradient id="aura" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8a6cff" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#5d4bb8" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#5d4bb8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="burst" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff6d8" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#ffd76b" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mouth" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fffdf2"/>
+      <stop offset="0.6" stop-color="#ffe9a8"/>
+      <stop offset="1" stop-color="#f2b23e"/>
+    </radialGradient>
+    <radialGradient id="moonG" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fdf6d8" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#fdf6d8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="0" stop-color="#060814" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#060814" stop-opacity="0"/>
+      <stop offset="1" stop-color="#060814" stop-opacity="0.45"/>
+    </radialGradient>
+    <linearGradient id="ray" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff3c4"/>
+      <stop offset="0.55" stop-color="#ffd76b"/>
+      <stop offset="1" stop-color="#d29a3a"/>
+    </linearGradient>
+    <linearGradient id="lacquer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7a3038"/>
+      <stop offset="1" stop-color="#431c26"/>
+    </linearGradient>
+    <linearGradient id="lacquerLid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a2430"/>
+      <stop offset="1" stop-color="#341520"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#dceafd"/>
+      <stop offset="0.5" stop-color="#9cc0e8"/>
+      <stop offset="1" stop-color="#6e93c4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 天空 -->
+  <rect x="0" y="0" width="350" height="180" fill="url(#sky)"/>
+
+  <!-- 星星 -->
+  <g fill="#e8eeff">
+    <circle cx="20" cy="24" r="0.9" opacity="0.9"/>
+    <circle cx="46" cy="56" r="0.7" opacity="0.7"/>
+    <circle cx="72" cy="32" r="0.8" opacity="0.8"/>
+    <circle cx="14" cy="74" r="0.6" opacity="0.6"/>
+    <circle cx="30" cy="110" r="0.6" opacity="0.5"/>
+    <circle cx="88" cy="96" r="0.5" opacity="0.5"/>
+    <circle cx="256" cy="28" r="0.7" opacity="0.7"/>
+    <circle cx="272" cy="66" r="0.6" opacity="0.6"/>
+    <circle cx="332" cy="72" r="0.7" opacity="0.7"/>
+    <circle cx="338" cy="24" r="0.8" opacity="0.8"/>
+  </g>
+  <g fill="#bcd0ff" opacity="0.6">
+    <circle cx="60" cy="88" r="0.9"/>
+  </g>
+  <path d="M34 40 Q34.7 43.3 38 44 Q34.7 44.7 34 48 Q33.3 44.7 30 44 Q33.3 43.3 34 40 Z" fill="#e8eeff" opacity="0.75"/>
+  <path d="M262 86 Q262.7 89.3 266 90 Q262.7 90.7 262 94 Q261.3 90.7 258 90 Q261.3 89.3 262 86 Z" fill="#e8eeff" opacity="0.6"/>
+
+  <!-- 月亮 -->
+  <circle cx="306" cy="34" r="26" fill="url(#moonG)"/>
+  <circle cx="306" cy="34" r="13" fill="#f7eecb" opacity="0.95"/>
+
+  <!-- 中央灵光大氛围 -->
+  <ellipse cx="175" cy="105" rx="140" ry="82" fill="url(#aura)"/>
+
+  <!-- 远山与宝塔 -->
+  <path d="M0 126 L34 112 L66 122 L104 104 L140 118 L178 108 L214 120 L248 106 L272 122 L300 114 L330 124 L350 118 L350 180 L0 180 Z" fill="#262e52" opacity="0.9"/>
+  <g fill="#10152e">
+    <rect x="299.4" y="60" width="1.2" height="6"/>
+    <path d="M285 73 Q295 70 300 63 Q305 70 315 73 Q300 70 285 73 Z"/>
+    <rect x="296.6" y="72.5" width="6.8" height="7"/>
+    <path d="M280 88 Q292 84.5 300 77 Q308 84.5 320 88 Q300 84.5 280 88 Z"/>
+    <rect x="295" y="87.5" width="10" height="7.5"/>
+    <path d="M275 104 Q289 100 300 92 Q311 100 325 104 Q300 99.5 275 104 Z"/>
+    <rect x="293.4" y="103.5" width="13.2" height="7"/>
+    <rect x="291" y="110.5" width="18" height="3" rx="1"/>
+  </g>
+  <circle cx="300" cy="58.5" r="1.8" fill="#ffd76b"/>
+  <g fill="#ffd76b">
+    <rect x="299" y="74.5" width="2" height="2.6"/>
+    <rect x="298.8" y="89.5" width="2.4" height="3"/>
+    <rect x="298.6" y="105" width="2.8" height="3.2"/>
+  </g>
+
+  <!-- 中景山 -->
+  <path d="M0 150 L46 136 L92 148 L138 134 L184 147 L226 136 L268 149 L310 138 L350 148 L350 180 L0 180 Z" fill="#1c2344"/>
+
+  <!-- 祥云 -->
+  <g fill="#cbb6ff" opacity="0.16">
+    <ellipse cx="52" cy="118" rx="12" ry="3"/>
+    <ellipse cx="63" cy="115" rx="9" ry="2.6"/>
+    <ellipse cx="72" cy="118" rx="10" ry="2.8"/>
+  </g>
+  <g fill="#cbb6ff" opacity="0.13">
+    <ellipse cx="256" cy="128" rx="10" ry="2.6"/>
+    <ellipse cx="266" cy="126" rx="7" ry="2.2"/>
+  </g>
+
+  <!-- 雾带 -->
+  <ellipse cx="175" cy="152" rx="150" ry="12" fill="#aebbff" opacity="0.07"/>
+  <ellipse cx="90" cy="158" rx="70" ry="8" fill="#aebbff" opacity="0.05"/>
+
+  <!-- 前景地 -->
+  <path d="M0 168 Q55 161 110 166 Q175 171 240 165 Q295 160 350 166 L350 180 L0 180 Z" fill="#131830"/>
+
+  <!-- 灵匣：阴影 / 盖 / 箱体 -->
+  <ellipse cx="175" cy="151" rx="34" ry="4.5" fill="#0b0e1f" opacity="0.55"/>
+  <path d="M146 121 Q146 95 175 93 Q204 95 204 121 Z" fill="url(#lacquerLid)" stroke="#f2c14e" stroke-width="1" stroke-opacity="0.85"/>
+  <path d="M144.5 121 L205.5 121" stroke="url(#gold)" stroke-width="1.6"/>
+  <path d="M152 119 Q152 100 175 98 Q198 100 198 119 Z" fill="#8a3a44" opacity="0.55"/>
+  <g fill="#f2c14e" opacity="0.9">
+    <circle cx="160" cy="105" r="1.3"/>
+    <circle cx="175" cy="101" r="1.3"/>
+    <circle cx="190" cy="105" r="1.3"/>
+  </g>
+  <rect x="145" y="124" width="60" height="26" rx="3.5" fill="url(#lacquer)" stroke="#2c1016" stroke-width="0.8"/>
+  <rect x="146" y="124.8" width="58" height="3" rx="1.4" fill="url(#gold)" opacity="0.9"/>
+  <rect x="146" y="146.2" width="58" height="2" rx="1" fill="url(#gold)" opacity="0.55"/>
+  <rect x="146.2" y="124.5" width="2.6" height="25" rx="1.2" fill="url(#gold)" opacity="0.8"/>
+  <rect x="201.2" y="124.5" width="2.6" height="25" rx="1.2" fill="url(#gold)" opacity="0.8"/>
+  <circle cx="175" cy="134" r="3.6" fill="url(#gold)" stroke="#8a5a1e" stroke-width="0.6"/>
+  <circle cx="175" cy="133" r="1" fill="#431c26"/>
+  <rect x="174.4" y="133" width="1.2" height="3" fill="#431c26"/>
+  <path d="M154 139 q3 -4 6 0 q3 -4 6 0" stroke="#f2c14e" stroke-width="1" fill="none" opacity="0.5"/>
+  <path d="M184 139 q3 -4 6 0 q3 -4 6 0" stroke="#f2c14e" stroke-width="1" fill="none" opacity="0.5"/>
+  <g fill="#f2c14e" opacity="0.8">
+    <circle cx="151" cy="129" r="1"/>
+    <circle cx="199" cy="129" r="1"/>
+    <circle cx="151" cy="144" r="1"/>
+    <circle cx="199" cy="144" r="1"/>
+  </g>
+
+  <!-- 金光：先光晕，后光线 -->
+  <ellipse cx="175" cy="116" rx="85" ry="58" fill="url(#burst)" opacity="0.85"/>
+  <polygon points="169,119 181,119 175,60" fill="url(#ray)" opacity="0.6"/>
+  <polygon points="160,122 168,118 141,66" fill="url(#ray)" opacity="0.45"/>
+  <polygon points="190,118 198,122 209,66" fill="url(#ray)" opacity="0.45"/>
+  <polygon points="152,124 158,120 121,90" fill="url(#ray)" opacity="0.32"/>
+  <polygon points="192,120 198,124 229,90" fill="url(#ray)" opacity="0.32"/>
+  <polygon points="148,126 154,123 112,116" fill="url(#ray)" opacity="0.22"/>
+  <polygon points="196,123 202,126 238,116" fill="url(#ray)" opacity="0.22"/>
+
+  <!-- 匣口金光 -->
+  <ellipse cx="175" cy="122" rx="28" ry="5.5" fill="#1c0d18"/>
+  <ellipse cx="175" cy="121.5" rx="25" ry="4.5" fill="url(#mouth)"/>
+  <ellipse cx="175" cy="116" rx="14" ry="7" fill="#fff6d8" opacity="0.5"/>
+
+  <!-- 飞剑 -->
+  <g transform="translate(103,84) rotate(-33)">
+    <circle cx="0" cy="0" r="20" fill="#9cc0e8" opacity="0.12"/>
+    <polygon points="0,-26 2.8,-19 2.8,10 -2.8,10 -2.8,-19" fill="url(#steel)"/>
+    <path d="M0 -24 L0 9" stroke="#e8f2ff" stroke-width="0.6" opacity="0.8"/>
+    <rect x="-6.5" y="10" width="13" height="3" rx="1.2" fill="url(#gold)" stroke="#8a5a1e" stroke-width="0.5"/>
+    <rect x="-2.2" y="13" width="4.4" height="8" fill="#7c4dbb"/>
+    <path d="M-2.2 15.5 L2.2 15.5 M-2.2 18.5 L2.2 18.5" stroke="#a586e0" stroke-width="0.8"/>
+    <circle cx="0" cy="23" r="2.4" fill="url(#gold)"/>
+  </g>
+
+  <!-- 灵符 -->
+  <g transform="translate(124,66) rotate(-10)">
+    <circle cx="0" cy="0" r="13" fill="#f6e9bc" opacity="0.12"/>
+    <rect x="-5.5" y="-9.5" width="11" height="19" rx="0.8" fill="#f6e9bc" stroke="#c9a44e" stroke-width="0.7"/>
+    <rect x="-5.5" y="-9.5" width="11" height="3" fill="#c0392b" opacity="0.85"/>
+    <path d="M0 -4 L0 6 M-2.6 0 L-2.6 4 M2.6 0 L2.6 4" stroke="#b0362c" stroke-width="1"/>
+    <circle cx="0" cy="7.5" r="0.9" fill="#b0362c"/>
+  </g>
+
+  <!-- 葫芦 -->
+  <g transform="translate(247,86)">
+    <circle cx="0" cy="0" r="16" fill="#4fae82" opacity="0.12"/>
+    <circle cx="0" cy="-6" r="4.6" fill="#4fae82" stroke="#2f7f56" stroke-width="1"/>
+    <circle cx="0" cy="5" r="8.2" fill="#4fae82" stroke="#2f7f56" stroke-width="1"/>
+    <rect x="-3.2" y="-3" width="6.4" height="2.2" rx="1" fill="url(#gold)" stroke="#8a5a1e" stroke-width="0.4"/>
+    <rect x="-2.6" y="-13" width="5.2" height="2.4" rx="1" fill="url(#gold)"/>
+    <ellipse cx="-2.6" cy="2.5" rx="1.8" ry="3.2" fill="#c9f2dd" opacity="0.7"/>
+    <path d="M2 12 q4 6 1 12" stroke="#c0392b" stroke-width="1.2" fill="none"/>
+    <polygon points="3,23 5,25.5 3,28 1,25.5" fill="#c0392b"/>
+  </g>
+
+  <!-- 六品灵光珠 -->
+  <g>
+    <circle cx="118" cy="92" r="5.5" fill="#9aa4b2" opacity="0.22"/><circle cx="118" cy="92" r="2.6" fill="#9aa4b2"/>
+    <circle cx="132" cy="82" r="5.5" fill="#4ade80" opacity="0.22"/><circle cx="132" cy="82" r="2.6" fill="#4ade80"/>
+    <circle cx="148" cy="74" r="5.5" fill="#60a5fa" opacity="0.22"/><circle cx="148" cy="74" r="2.6" fill="#60a5fa"/>
+    <circle cx="202" cy="74" r="5.5" fill="#c084fc" opacity="0.22"/><circle cx="202" cy="74" r="2.6" fill="#c084fc"/>
+    <circle cx="218" cy="82" r="5.5" fill="#f87171" opacity="0.22"/><circle cx="218" cy="82" r="2.6" fill="#f87171"/>
+    <circle cx="232" cy="92" r="5.5" fill="#fbbf24" opacity="0.22"/><circle cx="232" cy="92" r="2.6" fill="#fbbf24"/>
+  </g>
+
+  <!-- 金色星光 -->
+  <g fill="#ffe9a8">
+    <path d="M152 60 Q152.8 63.2 156 64 Q152.8 64.8 152 68 Q151.2 64.8 148 64 Q151.2 63.2 152 60 Z" opacity="0.85"/>
+    <path d="M198 57 Q198.7 59.8 201.5 60.5 Q198.7 61.2 198 64 Q197.3 61.2 194.5 60.5 Q197.3 59.8 198 57 Z" opacity="0.75"/>
+    <path d="M175 91 Q176.1 95.5 180.5 96.5 Q176.1 97.5 175 102 Q173.9 97.5 169.5 96.5 Q173.9 95.5 175 91 Z" opacity="0.9"/>
+    <path d="M232 55 Q232.7 57.8 235.5 58.5 Q232.7 59.2 232 62 Q231.3 59.2 228.5 58.5 Q231.3 57.8 232 55 Z" opacity="0.75"/>
+    <path d="M120 60 Q120.7 62.8 123.5 63.5 Q120.7 64.2 120 67 Q119.3 64.2 116.5 63.5 Q119.3 62.8 120 60 Z" opacity="0.7"/>
+  </g>
+  <circle cx="110" cy="102" r="1.2" fill="#ffe9a8" opacity="0.8"/>
+  <circle cx="242" cy="106" r="1.2" fill="#ffe9a8" opacity="0.8"/>
+
+  <!-- 标题 -->
+  <g font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <text x="175" y="41.2" font-size="30" font-weight="700" letter-spacing="2" fill="#120a04" opacity="0.85">灵匣纪元</text>
+    <text x="175" y="40" font-size="30" font-weight="700" letter-spacing="2" fill="url(#gold)" stroke="#3a230a" stroke-width="1" paint-order="stroke">灵匣纪元</text>
+    <text x="175" y="55" font-size="8" font-weight="500" letter-spacing="4" fill="#ecd9a0" opacity="0.95">SPIRIT BOX ODYSSEY</text>
+  </g>
+  <g fill="#f2c14e" opacity="0.8">
+    <rect x="90.3" y="50.3" width="3.2" height="3.2" transform="rotate(45 91.9 51.9)"/>
+    <rect x="256.5" y="50.3" width="3.2" height="3.2" transform="rotate(45 258.1 51.9)"/>
+  </g>
+  <path d="M62 51.9 L86 51.9 M264 51.9 L288 51.9" stroke="#c9a44e" stroke-width="0.6" opacity="0.5"/>
+
+  <!-- 暗角与描边框 -->
+  <rect x="0" y="0" width="350" height="180" fill="url(#vig)"/>
+  <rect x="4" y="4" width="342" height="172" rx="6" fill="none" stroke="#f2c14e" stroke-width="1" stroke-opacity="0.3"/>
+</svg>

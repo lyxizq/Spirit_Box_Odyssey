@@ -1,0 +1,334 @@
+// 云存档服务：游戏进度 JSON 的读取与入库，带体积与频次限制
+import { sendJSON, SlidingWindow } from './http-util.js';
+
+const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
+const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
+
+export function createSaveService(db) {
+  const saveWindow = new SlidingWindow(60 * 1000, SAVE_PER_MIN);
+  const stmts = {
+    getSave: db.prepare('SELECT data, updated_at FROM game_saves WHERE user_id = ?'),
+    upsert: db.prepare(
+      `INSERT INTO game_saves (user_id, data, size, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, size = excluded.size, updated_at = excluded.updated_at`),
+    setPower: db.prepare('UPDATE users SET power_score = ? WHERE id = ?'),
+    setProfile: db.prepare('UPDATE users SET power_score = ?, realm = ?, pvp_snapshot = ? WHERE id = ?'),
+  };
+
+  function get(req, res, ctx) {
+    const row = stmts.getSave.get(ctx.user.id);
+    if (!row) return sendJSON(res, 200, { found: false, text: null, updatedAt: null });
+    return sendJSON(res, 200, { found: true, text: row.data, updatedAt: row.updated_at });
+  }
+
+  // 核心数值字段的类型与量级校验：真实客户端总是整份 state 序列化上传，缺字段、
+  // 非数字（含数字字符串）或超出量级天花板的一律拒绝。上限与客户端 load() 钳制同口径。
+  // 只锁「量级」不锁「增速」：放置游戏数值随时长无界增长，静态上限取远超正常游玩的防火墙值。
+  const SAVE_NUM_FIELDS = [
+    ['stones', 0, 1e18],
+    ['totalStones', 0, 1e18],
+    ['dust', 0, 1e15],
+    ['dustTotal', 0, 1e15],
+    ['opens', 0, 1e15],
+    ['exp', 0, 1e12],
+  ];
+
+  function validateSave(text) {
+    if (typeof text !== 'string' || text.length === 0 || text.length > MAX_SAVE) return null;
+    try {
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+      for (const [key, lo, hi] of SAVE_NUM_FIELDS) {
+        const v = data[key];
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) return null;
+      }
+      // 十境 0–9 整数
+      if (typeof data.realm !== 'number' || !Number.isInteger(data.realm) ||
+        data.realm < 0 || data.realm > 9) return null;
+      // 现有灵石不可能超过历史总收益（客户端同款自洽约束）
+      if (data.stones > data.totalStones) return null;
+      // 自报战力交给深度校验做「仙位感知」上限（1.25^仙位 会合法放大量级，
+      // 静态天花板会误拒高仙位真玩家），此处不再检查
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // —— 深度校验：与客户端 load()/fixItem 钳制同口径的结构与量级检查 ——
+  // 客户端 persist 的是 load() 软钳后的 state，正常玩家永远满足以下口径；
+  // 越界说明存档被手改（或前后端版本严重错配），直接 400 拒收——作弊档进不了库，
+  // 也就进不了 users.power_score / 榜单 / PvP 快照。
+  // 仙位感知上界：套装件与秘境要求的生成值乘 1.25^仙位，合法量级随仙位水涨船高，
+  // 上界必须同步放宽，否则高仙位真玩家会被误拒。
+  const DEEP = {
+    SLOT_KEYS: new Set(['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman']),
+    ELEMENT_KEYS: new Set(['jin', 'mu', 'shui', 'huo', 'tu']),
+    AFFIX_KEYS: new Set(['atk', 'hp', 'def', 'crit', 'ls', 'pierce']),
+    SET_KEYS: new Set(['tower', 'stage', 'wild']),
+    BASE_POWER: [3, 10, 30, 90, 280, 900],
+    AFFIX_COUNT: [0, 0, 0, 1, 2, 3],   // 各品质词条条数
+    ENHANCE_MAX: 200, STAR_MAX: 5, PROGRESS_MAX: 200,
+    BAG_MAX: 300, PETS_MAX: 64,
+    SPECIAL_POWER_BASE: 1e9,           // 套装件战力基准（合法顶配 ~1e8 量级 ×10 余量）
+    POWER_BASE: 4e14,                  // 自报总战力基准（六件 theoretical ~3.3e14 ×余量）
+    IMMORTAL_STEP: 1.25,               // 仙位倍率：1.25^immortal
+    POWER_GROWTH_ALLOWANCE: 25,        // 实际战力成长余量：装备分 × 实战乘区（词条/宝石/灵宠/套装等综合放大）
+  };
+
+  const deepErrs = [];
+  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  const bad = (msg) => deepErrs.push(msg);
+  // 战力类上界的统一封顶：超过 MAX_SAFE_INTEGER（2^53）的数写入 users 列后，
+  // 读取阶段 node:sqlite 转 Number 会抛 RangeError，把该账号所有请求打挂
+  const safeCap = (v) => Math.min(Math.round(v), Number.MAX_SAFE_INTEGER);
+  const immortalMult = (data) =>
+    Math.pow(DEEP.IMMORTAL_STEP, isInt(data.immortal, 0, 999) ? data.immortal : 0);
+  // 轮回攻击乘区（与客户端 playerCombatStats 的 1 + 0.08·轮回 同源）：实际战力口径下
+  // 自报战力含此放大，上界必须同步放宽
+  const ascensionMult = (data) =>
+    1 + 0.08 * (isInt(data.ascensions, 0, 1e6) ? data.ascensions : 0);
+
+  function validateItem(it, where, immortal) {
+    if (!it || typeof it !== 'object' || Array.isArray(it)) return bad(where + ' 非对象');
+    if (!isInt(it.id, 1, 1e9)) return bad(where + ' id 越界');
+    if (!DEEP.SLOT_KEYS.has(it.slot)) return bad(where + ' 部位非法');
+    if (!isInt(it.r, 0, 5)) return bad(where + ' 品质非法');
+    if (!DEEP.ELEMENT_KEYS.has(it.el)) return bad(where + ' 五行非法');
+    if (typeof it.name !== 'string' || it.name.length > 40) return bad(where + ' 名称非法');
+    const special = !!it.special;
+    if (special) {
+      if (it.r !== 5) return bad(where + ' 套装件品质必为仙品');
+      if (!DEEP.SET_KEYS.has(it.setKey)) return bad(where + ' 套装件缺合法套装键');
+    } else if (it.setKey !== undefined && !DEEP.SET_KEYS.has(it.setKey)) {
+      return bad(where + ' setKey 非法');
+    }
+    // 战力上界：普通件=品质基准×1.3（客户端 fixItem 同款）；套装件随仙位放宽
+    const powerCap = special
+      ? safeCap(DEEP.SPECIAL_POWER_BASE * immortalMult({ immortal }))
+      : Math.round(DEEP.BASE_POWER[it.r] * 1.3);
+    if (typeof it.power !== 'number' || !Number.isFinite(it.power) || it.power < 1 || it.power > powerCap) {
+      return bad(where + ' 战力越界（上限 ' + powerCap + '）');
+    }
+    // 词条：数量 ≤ 品质条数，键白名单，值 0..0.6，不重复
+    // 可选字段缺失按客户端语义放行（it.star || 0、空数组）——新获得的装备在
+    // 当前会话内可能没有 star / gems 字段，JSON 序列化时会被丢弃
+    const lv = it.lv === undefined ? 0 : it.lv;
+    const star = it.star === undefined ? 0 : it.star;
+    if (!isInt(lv, 0, DEEP.ENHANCE_MAX)) return bad(where + ' 强化越界');
+    if (!isInt(star, 0, DEEP.STAR_MAX)) return bad(where + ' 升星越界');
+    const count = DEEP.AFFIX_COUNT[it.r];
+    if (it.affixes !== undefined && !Array.isArray(it.affixes)) return bad(where + ' 词条类型非法');
+    const affixes = it.affixes || [];
+    if (affixes.length > count) return bad(where + ' 词条数越界');
+    const seen = new Set();
+    for (const a of affixes) {
+      if (!a || typeof a !== 'object' || !DEEP.AFFIX_KEYS.has(a.k)) return bad(where + ' 词条键非法');
+      if (typeof a.v !== 'number' || !Number.isFinite(a.v) || a.v < 0 || a.v > 0.6) return bad(where + ' 词条值越界');
+      if (seen.has(a.k)) return bad(where + ' 词条重复');
+      seen.add(a.k);
+      if (a.lock !== undefined && typeof a.lock !== 'boolean') return bad(where + ' 词条锁类型非法');
+    }
+    // 宝石：孔位 ≤2（仙品 2 / 其余 1），等级 1..3
+    const sockets = it.r >= 5 ? 2 : 1;
+    if (it.gems !== undefined && !Array.isArray(it.gems)) return bad(where + ' 宝石类型非法');
+    const gems = it.gems || [];
+    if (gems.length > sockets) return bad(where + ' 宝石孔数越界');
+    for (const g of gems) {
+      if (g === null) continue;
+      if (!g || typeof g !== 'object' || !DEEP.AFFIX_KEYS.has(g.k)) return bad(where + ' 宝石键非法');
+      if (!isInt(g.t, 1, 3)) return bad(where + ' 宝石等级越界');
+    }
+    return null;
+  }
+
+  // 返回 null = 通过；字符串 = 第一个违规原因。只做「拒收判定」，不改写数据。
+  function validateDeep(data) {
+    deepErrs.length = 0;
+    if (!isInt(data.immortal, 0, 999)) bad('仙位越界');
+    if (!isInt(data.ascensions, 0, 1e6)) bad('轮回越界');
+    for (const k of ['trainAtk', 'trainHp', 'trainPierce']) {
+      if (!isInt(data[k], 0, DEEP.PROGRESS_MAX)) bad(k + ' 越界');
+    }
+    if (!isInt(data.towerCleared, 0, DEEP.PROGRESS_MAX)) bad('爬塔进度越界');
+    if (!isInt(data.stageCleared, 0, DEEP.PROGRESS_MAX)) bad('闯关进度越界');
+    if (data.gongfa && typeof data.gongfa === 'object' && !Array.isArray(data.gongfa)) {
+      for (const k of ['atk', 'hp', 'hui']) {
+        if (!isInt(data.gongfa[k], 0, DEEP.PROGRESS_MAX)) bad('功法 ' + k + ' 越界');
+      }
+    }
+    if (data.cave && typeof data.cave === 'object' && !Array.isArray(data.cave)) {
+      for (const k of ['array', 'garden', 'library']) {
+        if (!isInt(data.cave[k], 0, DEEP.PROGRESS_MAX)) bad('洞府 ' + k + ' 越界');
+      }
+    }
+    if (data.pets !== undefined) {
+      if (!data.pets || typeof data.pets !== 'object' || Array.isArray(data.pets)) {
+        bad('灵宠表非法');
+      } else {
+        const keys = Object.keys(data.pets);
+        if (keys.length > DEEP.PETS_MAX) bad('灵宠数越界');
+        for (const k of keys) {
+          if (!isInt(data.pets[k], 0, DEEP.PROGRESS_MAX)) bad('灵宠等级越界');
+        }
+      }
+    }
+    // 外围资源：与客户端 load() 钳制同口径（器魂/兽骨/券/符）
+    if (data.souls !== undefined && !isInt(data.souls, 0, 1e9)) bad('器魂越界');
+    if (data.beastBones !== undefined && !isInt(data.beastBones, 0, 1e9)) bad('兽骨越界');
+    if (data.petTickets !== undefined && !isInt(data.petTickets, 0, 1e9)) bad('招募券越界');
+    if (data.rerollCoupon !== undefined && !isInt(data.rerollCoupon, 0, 99)) bad('洗练券越界');
+    if (data.talismans !== undefined && !isInt(data.talismans, 0, 99)) bad('护体符越界');
+    // 第七批玩法字段：与客户端 load() 钳制同口径（只锁量级；时间戳类不校验——
+    // 客户端时钟可能有偏差，且 until/last 等超前只损玩家自身、无收益）
+    if (data.wander !== undefined) {
+      if (!data.wander || typeof data.wander !== 'object' || Array.isArray(data.wander)) bad('奇遇字段非法');
+      else {
+        if (!isInt(data.wander.karma, -10, 10)) bad('果报越界');
+        if (data.wander.done !== undefined && !isInt(data.wander.done, 0, 1e9)) bad('奇遇计数越界');
+      }
+    }
+    if (data.treasure !== undefined) {
+      if (!data.treasure || typeof data.treasure !== 'object' || Array.isArray(data.treasure)) bad('藏宝图字段非法');
+      else {
+        if (!isInt(data.treasure.frags, 0, 1e6)) bad('残片越界');
+        if (!isInt(data.treasure.maps, 0, 99)) bad('藏宝图数量越界');
+        if (!isInt(data.treasure.at, -1, 95)) bad('宝点越界');
+        if (!isInt(data.treasure.digs, 0, 1e6)) bad('挖宝计数越界');
+      }
+    }
+    if (data.fishing !== undefined) {
+      if (!data.fishing || typeof data.fishing !== 'object' || Array.isArray(data.fishing)) bad('钓鱼字段非法');
+      else {
+        if (!isInt(data.fishing.bait, 0, 99)) bad('鱼饵越界');
+        if (!isInt(data.fishing.casts, 0, 1e9)) bad('垂钓计数越界');
+        if (!isInt(data.fishing.bestT, -1, 4)) bad('鱼档越界');
+      }
+    }
+    if (data.petCores !== undefined) {
+      if (!data.petCores || typeof data.petCores !== 'object' || Array.isArray(data.petCores)) bad('内丹表非法');
+      else {
+        const keys = Object.keys(data.petCores);
+        if (keys.length > DEEP.PETS_MAX) bad('内丹数越界');
+        for (const k of keys) {
+          if (!isInt(data.petCores[k], 0, 10)) bad('内丹等级越界');
+        }
+      }
+    }
+    if (data.gather !== undefined) {
+      if (!data.gather || typeof data.gather !== 'object' || Array.isArray(data.gather) ||
+        !data.gather.nodes || typeof data.gather.nodes !== 'object' || Array.isArray(data.gather.nodes)) {
+        bad('灵圃字段非法');
+      } else {
+        if (!isInt(data.gather.ore, 0, 1e6)) bad('矿石越界');
+        if (!isInt(data.gather.herb, 0, 1e6)) bad('灵药越界');
+        const keys = Object.keys(data.gather.nodes);
+        if (keys.length > 4) bad('灵圃节点越界');
+        for (const k of keys) {
+          const n = data.gather.nodes[k];
+          if (!n || typeof n !== 'object' || Array.isArray(n)) { bad('灵圃节点非法'); break; }
+          if (!isInt(n.lv, 0, 60)) bad('灵圃等级越界');
+        }
+      }
+    }
+    const immortal = isInt(data.immortal, 0, 999) ? data.immortal : 0;
+    // 背包：数量与逐件口径
+    if (data.bag !== undefined) {
+      if (!Array.isArray(data.bag) || data.bag.length > DEEP.BAG_MAX) {
+        bad('背包数量越界');
+      } else {
+        data.bag.forEach((it, i) => validateItem(it, '背包[' + i + ']', immortal));
+      }
+    }
+    // 已穿戴六件：深度校验（战力直接驱动 totalPower 与榜单）
+    if (data.equipped !== undefined) {
+      if (!data.equipped || typeof data.equipped !== 'object' || Array.isArray(data.equipped)) {
+        bad('穿戴表非法');
+      } else {
+        for (const slot of DEEP.SLOT_KEYS) {
+          const it = data.equipped[slot];
+          if (it === null || it === undefined) continue;
+          validateItem(it, '穿戴[' + slot + ']', immortal);
+        }
+      }
+    }
+    // 自报总战力（实际战力口径：装备分 × 实战乘区）：与仙位、轮回相关的理论上界，
+    // 再乘成长余量放行词条/宝石/灵宠/套装等综合放大；9e15 封顶见 safeCap 注释——
+    // 超 MAX_SAFE_INTEGER 的战力入列会砖掉账号读取
+    const powerCap = safeCap(
+      DEEP.POWER_BASE * immortalMult({ immortal }) * ascensionMult(data) * DEEP.POWER_GROWTH_ALLOWANCE
+    );
+    if (data.power !== undefined &&
+      (typeof data.power !== 'number' || !Number.isFinite(data.power) || data.power < 0 || data.power > powerCap)) {
+      bad('自报战力越界（上限 ' + powerCap.toExponential() + '）');
+    }
+    return deepErrs.length ? deepErrs[0] : null;
+  }
+
+  function store(req, res, ctx) {
+    if (!saveWindow.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '保存过于频繁，请稍后再试' }, { 'Retry-After': '30' });
+    }
+    const data = validateSave(ctx.rawBody);
+    if (!data) {
+      return sendJSON(res, 400, { error: '存档校验失败' });
+    }
+    const deepFail = validateDeep(data);
+    if (deepFail) {
+      console.error('[saves] 深度校验拒收 user=' + ctx.user.id + '：' + deepFail);
+      return sendJSON(res, 400, { error: '存档校验失败' });
+    }
+    const now = Date.now();
+    stmts.upsert.run(ctx.user.id, ctx.rawBody, ctx.rawBody.length, now);
+    syncPowerScore(ctx.user.id, data);
+    return sendJSON(res, 200, { ok: true, updatedAt: now });
+  }
+
+  // 存档同步顺带落战力档案：power / realm / PvP 快照（客户端 persist 时打包）。
+  // 快照做边界钳制，防存档被改出天际数值直接进天梯与排行。
+  function syncPowerScore(userId, data) {
+    const power = Number(data && data.power);
+    const realm = Number(data && data.realm);
+    if (!Number.isFinite(power) || power < 0) return;
+    const snap = sanitizeSnapshot(data.pvp, power);
+    // 榜单战力天花板与深度校验的自报战力上界同口径（深度校验已拒越界档，此处兜底），
+    // 9e15 封顶保证入库值始终在 JS 安全整数内（见 safeCap 注释）
+    const cap = safeCap(
+      DEEP.POWER_BASE * immortalMult({ immortal: data.immortal }) *
+      ascensionMult(data) * DEEP.POWER_GROWTH_ALLOWANCE
+    );
+    stmts.setProfile.run(
+      Math.min(Math.floor(power), cap),
+      Number.isFinite(realm) && realm >= 0 && realm <= 9 ? String(Math.floor(realm)) : '0',
+      snap ? JSON.stringify(snap) : null,
+      userId
+    );
+  }
+
+  // PvP 快照：{atk, hp, def, crit, critMult, lifesteal, dr, pierce}，与 power 量级挂钩钳制
+  function sanitizeSnapshot(raw, power) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const num = (v, lo, hi) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      return Math.min(hi, Math.max(lo, n));
+    };
+    const p = Math.max(1, power);
+    const atk = num(raw.atk, 1, p * 100);
+    const hp = num(raw.hp, 1, p * 1000);
+    const def = num(raw.def, 0, p * 50);
+    if (atk === null || hp === null || def === null) return null;
+    return {
+      atk: Math.round(atk * 100) / 100,
+      hp: Math.round(hp * 100) / 100,
+      def: Math.round(def * 100) / 100,
+      crit: num(raw.crit, 0, 0.6) ?? 0.1,
+      critMult: num(raw.critMult, 1, 10) ?? 2,
+      lifesteal: num(raw.lifesteal, 0, 0.5) ?? 0,
+      dr: num(raw.dr, 0, 0.6) ?? 0,
+      pierce: num(raw.pierce, 0, 1) ?? 0,
+    };
+  }
+
+  return { get, store };
+}

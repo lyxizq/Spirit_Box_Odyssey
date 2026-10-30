@@ -1,0 +1,440 @@
+/* ============================================================
+ * newui.css · 新样式换肤层（2026-10-30，TODO 156）
+ * 在 styles.css 之后加载，同选择器覆盖为「修仙问道」式卡牌风。
+ * 明暗双主题：默认 body = 新暗色（墨绿炭底金 accent）；
+ * body.theme-light = 新明色（米白纸感墨绿，参考截图）。
+ * 全部表面走 --n-* token，布局一份、两主题自动换色。
+ * 弹层（modal/战斗卡）保留深色作对比层；游戏逻辑与 id 零改动。
+ * ============================================================ */
+
+/* ---------- 主题 token ---------- */
+:root {
+  /* 新暗色：墨绿炭底 + 金 */
+  --n-bg: #101614;
+  --n-bg-2: #161e1b;
+  --n-card: #1a231f;
+  --n-card-2: rgba(255, 255, 255, 0.04);
+  --n-line: rgba(216, 179, 106, 0.16);
+  --n-ink: #e8e6df;
+  --n-mut: #96a08f;
+  --n-accent: #3d5a4c;
+  --n-accent-soft: rgba(61, 90, 76, 0.22);
+  --n-gold: #d8b36a;
+  --n-gold-2: #f0d9a8;
+  --n-cta-ink: #3a2c10;
+  --n-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+body.theme-light {
+  /* 新明色：米白纸感 + 墨绿 */
+  --n-bg: #edefe8;
+  --n-bg-2: #e6e9e0;
+  --n-card: #ffffff;
+  --n-card-2: rgba(61, 90, 76, 0.05);
+  --n-line: rgba(43, 52, 64, 0.1);
+  --n-ink: #2b3440;
+  --n-mut: #6b7280;
+  --n-accent: #3d5a4c;
+  --n-accent-soft: rgba(61, 90, 76, 0.08);
+  --n-gold: #b8945a;
+  --n-gold-2: #8a6a2f;
+  --n-cta-ink: #3a2c10;
+  --n-shadow: 0 6px 18px rgba(43, 52, 64, 0.07);
+}
+
+/* ---------- 页面基底 ---------- */
+body {
+  background:
+    radial-gradient(900px 480px at 20% -6%, var(--n-accent-soft), transparent 60%),
+    var(--n-bg);
+  color: var(--n-ink);
+}
+
+/* 强制竖屏单列（2026-10-30）：所有分辨率按手机版式渲染，内容居中限宽 */
+main { max-width: 560px; }
+
+.tab-page.active {
+  grid-template-columns: 1fr;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.bg-glow { opacity: 0.35; }
+
+/* ---------- 顶栏（标题/徽章/用户区）：卡化参考日常模块 ---------- */
+.top {
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--n-line);
+  border-radius: 16px;
+  background: var(--n-card);
+  box-shadow: var(--n-shadow);
+  margin-bottom: 14px;
+  row-gap: 8px;
+  column-gap: 4px;
+  justify-content: center; /* 第二行数据徽章居中；首行由 auto margin 占位不受影响 */
+}
+
+/* 两行布局：行1 = logo 标题（左）+ 用户名/退出（右）；行2 = 数据徽章居中 */
+.top .brand { order: 0; margin-right: auto; }
+.top .user-area { order: 1; margin-left: auto; width: auto; justify-content: flex-end; }
+/* 数据徽章容器：状态行（order 2）与资源行（order 3，固定独占一行）各自成行居中 */
+.top-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  row-gap: 6px;
+}
+
+.top-badges { order: 2; }
+.top-badges.top-res { order: 3; flex: 0 0 100%; }
+
+.top-badges .realm-badge,
+.top-badges .shichen-badge,
+.top-badges .title-badge {
+  margin: 0 !important;
+  padding: 2px 4px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.brand-text h1 { color: var(--n-accent); }
+.brand-text p { color: var(--n-mut); }
+
+/* 窄屏首行收紧：logo 标题 + 用户名 + 退出 三元素一行放得下 */
+@media (max-width: 540px) {
+  .top { padding: 12px; row-gap: 8px; }
+  .top .seal { width: 34px; height: 34px; }
+  .top .seal svg.seal-icon { width: 26px; height: 26px; }
+  .brand { gap: 8px; }
+  .brand-text h1 { font-size: 18px; }
+  .brand-text p { display: none; }
+  .top .user-area .btn,
+  .top .user-area button { padding: 6px 10px; font-size: 12px; }
+}
+
+/* 压过 styles.css 旧明色主题的顶栏底色（同特异性、后加载赢） */
+body.theme-light .top { background: var(--n-card); }
+
+.realm-badge {
+  border-color: var(--n-line);
+  background: var(--n-card-2);
+  color: var(--n-mut);
+}
+
+.ver-chip { border-color: var(--n-line); background: var(--n-card-2); color: var(--n-mut); }
+
+.user-area button, .foot button { color: var(--n-accent); }
+
+/* 明色下徽章用白底（--n-card-2 是淡绿底，徽章换白卡更清爽） */
+body.theme-light .realm-badge, body.theme-light .ver-chip { background: #fff; }
+
+/* ---------- 底部悬浮图标导航（原 .top-tabs）：毛玻璃 + 高清晰度 ---------- */
+.top-tabs {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  top: auto;
+  z-index: 60;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  max-width: none;
+  margin: 0;
+  padding: 8px 4px;
+  justify-content: space-around;
+  flex-wrap: nowrap;
+  border: 1px solid var(--n-line);
+  border-radius: 22px;
+  background: rgba(26, 35, 31, 0.66);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+body.theme-light .top-tabs {
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 10px 28px rgba(43, 52, 64, 0.14);
+}
+
+.top-tab {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--n-ink);
+  opacity: 0.78;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.top-tab svg { width: 20px; height: 20px; display: block; }
+
+.top-tab.active {
+  background: var(--n-accent-soft);
+  color: var(--n-accent);
+  opacity: 1;
+  font-weight: 800;
+  padding-left: 12px;
+  padding-right: 12px;
+  min-width: 62px;
+}
+
+body.theme-light .top-tab.active { color: #2e463b; }
+
+.top-tab.locked { opacity: 0.45; }
+
+/* 底部导航占位：main 底部留出浮动条高度 */
+main { padding-bottom: 86px; }
+
+/* ---------- 面板白卡化 ---------- */
+.panel {
+  border: 1px solid var(--n-line);
+  background: var(--n-card);
+  box-shadow: var(--n-shadow);
+}
+
+.panel > h2 { color: var(--n-ink); }
+
+.side-title { color: var(--n-mut); }
+.hint { color: var(--n-mut); }
+.muted { color: var(--n-mut); }
+.tip { color: var(--n-mut); }
+.exp-text { color: var(--n-mut); }
+
+/* ---------- 按钮体系 ---------- */
+.btn {
+  border-color: var(--n-line);
+  background: var(--n-card-2);
+  color: var(--n-accent);
+}
+
+.btn.primary {
+  border-color: transparent;
+  background: linear-gradient(180deg, #e8cf95, #d8b36a);
+  color: var(--n-cta-ink);
+  box-shadow: 0 6px 16px rgba(216, 179, 106, 0.3);
+}
+
+.btn.ghost { background: transparent; color: var(--n-mut); }
+.btn.buy { border-color: rgba(216, 179, 106, 0.4); color: var(--n-gold-2); background: rgba(216, 179, 106, 0.08); }
+.btn.tiny { background: var(--n-card); color: var(--n-accent); }
+
+.btn:disabled, .mini:disabled, button:disabled {
+  opacity: 0.45;
+}
+
+.mini {
+  border-color: var(--n-line);
+  background: var(--n-card-2);
+  color: var(--n-ink);
+}
+
+.mini.ghost { background: transparent; color: var(--n-mut); }
+
+/* ---------- 输入 / 选择 ---------- */
+input, select, textarea {
+  background: var(--n-card-2);
+  border: 1px solid var(--n-line);
+  color: var(--n-ink);
+}
+
+input::placeholder { color: var(--n-mut); }
+
+/* ---------- 进度条 / 文本 ---------- */
+.bar { background: var(--n-card-2); }
+
+/* ---------- 行卡体系（灵宠/洞府/日常/成就/行式列表） ---------- */
+.pet-row, .cave-row, .daily-row, .achv-row {
+  border: 1px solid var(--n-line);
+  border-radius: 14px;
+  background: var(--n-card-2);
+}
+
+.stat-line { border-bottom-color: var(--n-line); }
+.stat-line dd { color: var(--n-ink); }
+
+.log-list li { border-bottom-color: var(--n-line); }
+.log-list li.sys { color: var(--n-mut); }
+.log-list li.special { color: var(--n-gold-2); }
+.log-list li.gold { color: var(--n-gold-2); }
+.log-list li.buff { color: #f8b4a8; }
+
+.chip {
+  border-color: var(--n-line);
+  background: var(--n-card-2);
+  color: var(--n-ink);
+}
+
+.arena-card, .rank-row, .guild-row, .ladder-row {
+  border-color: var(--n-line);
+  background: var(--n-card-2);
+  color: var(--n-ink);
+}
+
+.res-box { border-color: var(--n-line); background: var(--n-card-2); }
+
+/* ---------- 横幅对齐 token ---------- */
+.event-banner {
+  max-width: 560px;
+  margin: -12px auto 12px;
+  color: var(--n-gold-2);
+  background: var(--n-card);
+  border: 1px solid var(--n-line);
+  border-radius: 16px;
+  padding: 10px 16px;
+}
+body.theme-light .event-banner { color: var(--n-accent); }
+
+/* 横幅内按钮：自然宽度居中悬浮，不拉满、不贴边（.mini 基准是 flex:1 拉满） */
+.event-banner .mini {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+
+/* ---------- 境界 hero 卡（两主题保留暗色场景卡，微调边框） ---------- */
+.realm-hero { border-color: var(--n-line); }
+body.theme-light .realm-hero { border-color: rgba(107, 74, 15, 0.3); }
+body.theme-light .realm-hero .btn.ghost { color: #6b4a0f; }
+body.theme-light .realm-hero .btn.primary { color: var(--n-cta-ink); }
+
+/* ---------- 角色状态 ---------- */
+.status-grid .stats dt { color: var(--n-mut); }
+.status-grid .stats dd { color: var(--n-ink); }
+
+/* ---------- 淬炼 / 升级卡 ---------- */
+.upgrade { border-color: var(--n-line); background: var(--n-card-2); }
+.upgrade .lv { color: var(--n-mut); }
+.u-desc { color: var(--n-mut); }
+.btn.buy:disabled { opacity: 0.45; }
+
+/* ---------- 灵匣舞台保留暗色聚光（浅色页里的深色焦点块） ---------- */
+.panel.stage .box-wrap {
+  border: 1px solid var(--n-line);
+  border-radius: 16px;
+}
+
+/* ---------- 修炼指南 / 角色状态 ---------- */
+.panel.guide, .panel.status { color: var(--n-ink); }
+.guide-meta { color: var(--n-mut); }
+
+/* ---------- 滚动条微调（浅色下系统深色滚动条突兀） ---------- */
+.panel ::-webkit-scrollbar-thumb { background: var(--n-line); }
+
+/* ---------- 明色下暗色硬编码浅字统一转墨色（防对比失败漏网） ---------- */
+body.theme-light .chapter-text,
+body.theme-light .story-panel .story-lead,
+body.theme-light .ss-info b,
+body.theme-light .cast-card b,
+body.theme-light .guide-tip { color: var(--n-ink); }
+
+body.theme-light .chapter-text { border-left-color: rgba(107, 74, 15, 0.35); }
+
+/* ---------- 故事章节行（2026-10-30 竖屏修复）：锁定提示 nowrap 不收缩，
+   flex 把标题挤成逐字竖排——窄屏下标题行独占整行（超长省略不折行），
+   解锁信息与按钮落到第二行并与图标对齐 ---------- */
+@media (max-width: 640px) {
+  .story-stage-row { flex-wrap: wrap; row-gap: 2px; }
+  .ss-info { flex: 1 1 100%; }
+  .ss-info b {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ss-state { margin-left: 40px; }
+  .story-stage-row .mini { margin-left: auto; }
+}
+
+
+/* 断服横幅同样对齐内容柱宽度（覆盖 styles.css 全宽负边距） */
+body .server-down-banner {
+  max-width: 560px;
+  margin: -12px auto 16px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 16px;
+}
+body.theme-light .server-down-banner { border-bottom-color: rgba(138, 31, 31, 0.35); }
+
+/* 修炼页数据卡：底色随明暗主题（暗=墨绿暗卡，明=白卡），文字/边框同源 token */
+.panel.stage .stats div {
+  background: var(--n-card);
+  border-color: var(--n-line);
+  color: var(--n-ink);
+}
+.panel.stage .stats dt,
+.panel.stage .stats .stat-sub { color: var(--n-mut); }
+.panel.stage .stats dd { color: var(--n-ink); }
+.panel.stage .stats dd.gold { color: var(--n-gold-2); }
+body.theme-light .panel.stage .stats dd.gold { color: #8a6a2f; }
+
+/* 设置弹层（2026-10-30）：设置不再是标签页，改顶栏齿轮按钮 → 弹层（面板白卡堆叠可滚动） */
+.set-modal { padding: 30px 20px; } /* 弹层四周留白：卡不满屏，小一圈 */
+
+.set-modal .modal-card {
+  width: min(540px, 100%);
+  background: var(--n-bg-2, var(--n-bg));
+  border: 1px solid var(--n-line);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.set-modal .set-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 10px;
+}
+.set-modal .set-head h2 { color: var(--n-ink); font-size: 16px; letter-spacing: 0.1em; }
+.set-modal .set-head .mini {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  line-height: 1;
+  border-radius: 10px;
+}
+.set-modal .set-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding-right: 2px;
+}
+.set-modal .set-scroll .panel { box-shadow: none; }
+.set-modal .col { display: grid; gap: 10px; }
+
+/* 顶栏设置齿轮按钮：小尺寸 */
+#setOpenBtn { padding: 4px 6px; }
+#setOpenBtn svg { width: 14px; height: 14px; }
+
+/* 灵匣舞台紧凑化（2026-10-30）：区域高度压缩（320→240）、宝箱图标放大（102→128） */
+.stage { padding: 18px 20px 14px; }
+.box-wrap { width: min(100%, 240px); height: 240px; }
+.box { width: 150px; height: 150px; }
+.box-icon { width: 128px; height: 128px; }
+.ring.r2 { inset: 14px; }
+.ring.r3 { inset: 30px; }
+
+/* 装备页战力行：左战力数据、右一键穿戴按钮（收益徽章贴战力数字） */
+.power-line .power-main { flex: 1; min-width: 0; }
+.power-line .power-bonus { margin-left: 0; }
+.power-line .btn { flex: none; padding: 8px 14px; font-size: 12.5px; }

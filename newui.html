@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <title>灵匣纪元 · 新界面预览</title>
+  <style>
+    /* ============================================================
+     * newui · 独立预览页（2026-10-30，参考「修仙问道」卡牌式设计）
+     * 浅色纸感主题：米白底 / 墨绿点缀 / 金色 CTA。
+     * 自包含：零依赖 styles.css / game.js；同源只读 localStorage 真实存档渲染。
+     * 不写任何存档字段，不影响现有游戏界面。预览入口：/newui.html
+     * ============================================================ */
+    :root {
+      --bg: #edefe8;
+      --card: #ffffff;
+      --ink: #2b3440;
+      --ink-2: #6b7280;
+      --green: #3d5a4c;
+      --green-soft: rgba(61, 90, 76, 0.08);
+      --gold: #d8b36a;
+      --gold-deep: #b8945a;
+      --line: rgba(43, 52, 64, 0.08);
+      --shadow: 0 6px 18px rgba(43, 52, 64, 0.06);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { touch-action: manipulation; }
+    body {
+      min-height: 100vh;
+      padding: 0 0 96px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 0 16px; }
+
+    /* 头部：大标题 + 副标 */
+    .head { padding: 26px 2px 14px; }
+    .head h1 { font-size: 30px; font-weight: 800; letter-spacing: 0.14em; color: var(--green); }
+    .head p { margin-top: 4px; font-size: 12.5px; color: var(--ink-2); letter-spacing: 0.06em; }
+
+    /* 通知条 */
+    .notice {
+      display: flex; align-items: center; gap: 10px;
+      margin: 4px 0 14px; padding: 12px 14px;
+      border-radius: 14px; background: var(--green-soft);
+      color: var(--green); font-size: 13px;
+    }
+    .notice svg { flex: 0 0 auto; }
+
+    /* 境界 hero 卡 */
+    .hero {
+      position: relative; overflow: hidden;
+      border-radius: 18px; padding: 20px 18px 18px;
+      color: #f3efe2;
+      background:
+        radial-gradient(90% 70% at 78% 8%, rgba(216, 179, 106, 0.28), transparent 55%),
+        radial-gradient(120% 100% at 15% 100%, rgba(20, 34, 28, 0.9), transparent 60%),
+        linear-gradient(160deg, #22302a 0%, #16211c 55%, #101815 100%);
+      box-shadow: 0 14px 30px rgba(22, 33, 28, 0.35);
+    }
+    .hero-moon {
+      position: absolute; right: 26px; top: 18px;
+      width: 54px; height: 54px; border-radius: 50%;
+      background: radial-gradient(circle at 38% 35%, #f7edd2, #d8c48a 70%, rgba(216, 196, 138, 0));
+      opacity: 0.85; filter: blur(0.4px);
+    }
+    .hero-tag { font-size: 12px; letter-spacing: 0.2em; color: rgba(243, 239, 226, 0.72); }
+    .hero-realm { margin: 2px 0 12px; font-size: 40px; font-weight: 800; letter-spacing: 0.18em; line-height: 1.1; }
+    .hero-pills { display: flex; gap: 8px; margin-bottom: 16px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid rgba(243, 239, 226, 0.28);
+      background: rgba(243, 239, 226, 0.08);
+      font-size: 11.5px; color: rgba(243, 239, 226, 0.9);
+    }
+    .hero-exp-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: rgba(243, 239, 226, 0.75); }
+    .hero-exp-row b { font-size: 13px; color: #f3efe2; font-variant-numeric: tabular-nums; }
+    .hero-bar { height: 8px; margin: 8px 0 16px; border-radius: 999px; background: rgba(243, 239, 226, 0.16); overflow: hidden; }
+    .hero-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #c9973f, #f0d9a8); }
+    .hero-cta-row { display: flex; justify-content: flex-end; }
+    .cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 12px 26px; border: 0; border-radius: 14px;
+      background: linear-gradient(180deg, #e8cf95, #d8b36a);
+      color: #3a2c10; font-size: 15px; font-weight: 700; letter-spacing: 0.1em;
+      box-shadow: 0 6px 16px rgba(216, 179, 106, 0.35);
+    }
+    .hero-foot { display: flex; justify-content: space-between; align-items: flex-end; }
+    .hero-foot .label { font-size: 12px; color: rgba(243, 239, 226, 0.72); }
+    .hero-foot .num { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    /* 2×2 数据卡 */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 22px; }
+    .stat-card {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card); border-radius: 16px; padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+    .stat-ic {
+      flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px;
+      display: grid; place-items: center; background: var(--green-soft);
+    }
+    .stat-card .label { font-size: 11.5px; color: var(--ink-2); }
+    .stat-card .num { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat-card .sub { font-size: 10.5px; color: var(--ink-2); }
+
+    /* 行式列表（日常修行式） */
+    .sec-title { margin: 4px 2px 12px; font-size: 16px; font-weight: 800; letter-spacing: 0.08em; color: var(--ink); }
+    .row-card {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card); border-radius: 16px; padding: 14px 16px;
+      box-shadow: var(--shadow); margin-bottom: 10px;
+    }
+    .row-ic { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--green-soft); }
+    .row-main { flex: 1; min-width: 0; }
+    .row-main b { display: block; font-size: 14.5px; }
+    .row-main span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--ink-2); }
+    .row-btn {
+      flex: 0 0 auto; padding: 9px 16px; border-radius: 12px;
+      border: 1px solid var(--line); background: #fff;
+      color: var(--green); font-size: 13px; font-weight: 600;
+    }
+    .row-btn.done { color: var(--ink-2); }
+
+    /* 底部 tab 栏 */
+    .tabbar {
+      position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
+      width: min(488px, calc(100% - 24px));
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 10px 6px; border-radius: 22px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 10px 30px rgba(43, 52, 64, 0.16);
+    }
+    .tab { display: grid; justify-items: center; gap: 3px; font-size: 10.5px; color: var(--ink-2); }
+    .tab.active {
+      width: 58px; padding: 7px 0; border-radius: 16px;
+      background: var(--green-soft); color: var(--green); font-weight: 700;
+    }
+    .foot-note { margin: 18px 2px 0; font-size: 11px; color: var(--ink-2); text-align: center; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="head">
+      <h1>灵匣纪元</h1>
+      <p>灵匣修仙界 · 洞府修行</p>
+    </header>
+
+    <div class="notice">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13M12 8c-2.5 0-5-1.2-5-3.2C7 3 8.6 2.4 9.8 3.4 11 4.5 12 8 12 8zm0 0c2.5 0 5-1.2 5-3.2C17 3 15.4 2.4 14.2 3.4 13 4.5 12 8 12 8z"/></svg>
+      游戏公测中 · 数值调整期可能删档，无法登录请重新注册
+    </div>
+
+    <section class="hero">
+      <span class="hero-moon"></span>
+      <p class="hero-tag" id="hTag">修士</p>
+      <div class="hero-realm" id="hRealm">炼气</div>
+      <div class="hero-pills">
+        <span class="pill" id="hPill1">✦ 凡俗之身</span>
+        <span class="pill" id="hPill2">◔ 修行之中</span>
+      </div>
+      <div class="hero-exp-row"><span>境界修为</span><b id="hExp">0 / 60</b></div>
+      <div class="hero-bar"><i id="hExpFill" style="width:0%"></i></div>
+      <div class="hero-cta-row"><button class="cta" id="hCta">✦ 突破境界</button></div>
+      <div class="hero-foot" style="margin-top:14px">
+        <div><div class="label">累计开箱</div><div class="num" id="hOpens">0</div></div>
+        <div style="text-align:right"><div class="label">飞升轮回</div><div class="num" id="hAsc">0</div></div>
+      </div>
+    </section>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 18M15 3l-3 18"/></svg></span>
+        <div><div class="label">灵石</div><div class="num" id="sStones">0</div><div class="sub" id="sStonesSub">累计 0</div></div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg></span>
+        <div><div class="label">修为</div><div class="num" id="sExp">0</div><div class="sub">开箱即得</div></div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></span>
+        <div><div class="label">战力</div><div class="num" id="sPower">0</div><div class="sub">实战口径</div></div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M12 3l1.8 5.6L19 10l-5.2 1.4L12 17l-1.8-5.6L5 10l5.2-1.4zM19 16l.9 2.6L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.4z"/></svg></span>
+        <div><div class="label">暴击</div><div class="num">5% ×10</div><div class="sub">开箱暴击 ×10</div></div>
+      </div>
+    </div>
+
+    <h2 class="sec-title">日常修行</h2>
+    <div class="row-card">
+      <span class="row-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M12 21c-5 0-8-3-8-8 0-6 5-9 8-10 3 1 8 4 8 10 0 5-3 8-8 8z"/><path d="M12 21V9"/></svg></span>
+      <div class="row-main"><b>淬炼灵匣</b><span id="rQuench">灵石拿去淬炼速度与收益，越滚越快</span></div>
+      <button class="row-btn">前往</button>
+    </div>
+    <div class="row-card">
+      <span class="row-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13"/></svg></span>
+      <div class="row-main"><b>每日签到</b><span id="rSign">连续签到领灵石与碎屑</span></div>
+      <button class="row-btn done">已领</button>
+    </div>
+    <div class="row-card">
+      <span class="row-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14l-8-4z"/></svg></span>
+      <div class="row-main"><b>征战秘境</b><span id="rWar">闯关 / 爬塔 / 野外 / 无尽，套装战力主力</span></div>
+      <button class="row-btn">查看</button>
+    </div>
+    <div class="row-card">
+      <span class="row-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3d5a4c" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+      <div class="row-main"><b>云游奇遇</b><span id="rWander">在线每 25 分钟一遇，页顶横幅提示</span></div>
+      <button class="row-btn">前往</button>
+    </div>
+
+    <nav class="tabbar">
+      <span class="tab active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 20h18M5 20V9l5 4V9l5 4V9l4 3v8"/></svg>洞府</span>
+      <span class="tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.8 5.6L19 10l-5.2 1.4L12 17l-1.8-5.6L5 10l5.2-1.4z"/></svg>修行</span>
+      <span class="tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5 10 10l-1.5 5.5L14 13.5z"/></svg>万象</span>
+      <span class="tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V10M9 21V10M15 21V10M20 21V10M2 10h20L12 3z"/></svg>仙盟</span>
+      <span class="tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>道我</span>
+    </nav>
+
+    <p class="foot-note">独立预览页 · 数据来自本机真实存档（只读）<br>进入完整游戏请打开根路径首页</p>
+  </div>
+
+  <script>
+    // 只读渲染：同源取真实存档；无档时展示演示数值。绝不写回，零影响现有游戏。
+    (function () {
+      const REALMS = ["炼气", "筑基", "金丹", "元婴", "化神", "炼虚", "合体", "大乘", "渡劫", "仙人"];
+      const REALM_COSTS = [0, 60, 400, 2500, 20000, 160000, 1600000, 20000000, 300000000, 5000000000];
+      const fmt = (n) => {
+        if (!isFinite(n)) return "∞";
+        n = Math.floor(n);
+        if (n < 10000) return String(n);
+        if (n >= 1e12) return (n / 1e12).toFixed(2) + "兆";
+        if (n >= 1e8) return (n / 1e8).toFixed(2) + "亿";
+        if (n >= 1e4) return (n / 1e4).toFixed(2) + "万";
+        return String(n);
+      };
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem("lingxia_idle_v1") || "null"); } catch (e) { /* 无档 */ }
+      if (!s) s = { realm: 3, immortal: 6, exp: 20000, ascensions: 1, stones: 4655, totalStones: 99999, power: 702, opens: 1234 };
+      const realm = Math.max(0, Math.min(REALMS.length - 1, s.realm | 0));
+      const cost = Math.ceil(REALM_COSTS[Math.min(realm + 1, REALM_COSTS.length - 1)] * Math.pow(2.5, Math.max(0, s.ascensions | 0)));
+      const maxed = realm >= REALMS.length - 1;
+      const $ = (id) => document.getElementById(id);
+      $("hTag").textContent = (s.immortal > 0 ? "仙位 " + s.immortal + " · " : "") + "修士";
+      $("hRealm").textContent = REALMS[realm] + (maxed ? " · 圆满" : "");
+      $("hPill1").textContent = "✦ 仙缘 ×" + (s.ascensions | 0);
+      $("hPill2").textContent = "◔ 修行之中";
+      $("hExp").textContent = maxed ? "修为圆满" : fmt(s.exp || 0) + " / " + fmt(cost);
+      $("hExpFill").style.width = (maxed ? 100 : Math.min(100, (s.exp || 0) / cost * 100)).toFixed(1) + "%";
+      $("hCta").textContent = maxed ? "✦ 飞升轮回" : "✦ 突破至 " + REALMS[realm + 1];
+      $("hOpens").textContent = fmt(s.opens || 0);
+      $("hAsc").textContent = String(s.ascensions | 0);
+      $("sStones").textContent = fmt(s.stones || 0);
+      $("sStonesSub").textContent = "累计 " + fmt(s.totalStones || 0);
+      $("sExp").textContent = fmt(s.exp || 0);
+      $("sPower").textContent = fmt(s.power || 0);
+      $("rQuench").textContent = "淬炼 Lv." + (s.speedLv || 0) + "/" + (s.gainLv || 0) + "/" + (s.luckLv || 0) + " · 速度与收益";
+      $("rSign").textContent = "上次签到 " + (s.lastSignIn || "尚未签到");
+      $("rWar").textContent = "闯关 " + (s.stageCleared || 0) + " · 爬塔 " + (s.towerCleared || 0) + " · 无尽 " + (s.endlessBest || 0);
+    })();
+  </script>
+</body>
+</html>
