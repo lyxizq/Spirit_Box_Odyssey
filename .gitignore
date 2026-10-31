@@ -1,8 +1,5 @@
 .DS_Store
 data/
-cocos/library/
-cocos/temp/
-cocos/local/
-cocos/build/
-cocos/profiles/
 .claude/
+.research/
+.zcode/

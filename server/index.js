@@ -87,10 +87,14 @@ function sendHtml(res, file, headers = {}) {
 
 // 静态文件：白名单根目录约束 + 扩展名 MIME，路径穿越直接 403
 function serveStatic(req, res, urlPath) {
-  const rel = decodeURIComponent(urlPath);
+  // urlPath 在请求入口已 decodeURIComponent 一次；此处绝不再解——二次解码会让
+  // %252e%252e（双重编码的 ..）穿透白名单读到 server/docs 等敏感文件
+  const rel = urlPath;
+  // 封死残余穿越面：任何 .. / . 路径段与空字节直接 403（不依赖 normalize 善后）
+  if (rel.includes('\0') || /(^|\/)\.\.?(\/|$)/.test(rel)) return forbidden(res);
   // 文档 / 服务端源码 / 构建目录不对外：.md 在 MIME 表里会当文本发出，
-  // docs/（交接文档与部署手册）、server/、docker/、cocos/ 一律按不存在处理
-  if (/^\/(docs|docker|server|cocos)\//.test(rel)) return notFound(res);
+  // docs/（交接文档与部署手册）、server/、docker/ 一律按不存在处理
+  if (/^\/(docs|docker|server|data|\.claude|\.research|\.zcode|\.git)\//.test(rel)) return notFound(res);
   const full = path.normalize(path.join(ROOT, rel));
   if (!full.startsWith(ROOT + path.sep) && full !== ROOT) return forbidden(res);
   let stat;

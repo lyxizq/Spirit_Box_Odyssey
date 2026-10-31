@@ -13,9 +13,6 @@
 </head>
 <body>
   <div class="bg-glow" aria-hidden="true"></div>
-  <div class="server-down-banner hidden" id="serverDownBanner" role="status">
-    ⚠ 服务器暂不可用，进度已保存在本机，恢复后自动上云
-  </div>
   <div class="event-banner hidden" id="wanderBanner" role="status">
     <span id="wanderBannerText">✦ 奇遇降临</span>
     <button class="mini" id="wanderGo">前往奇遇 ▸</button>
@@ -104,18 +101,22 @@
       <div class="realm-badge hidden" id="ascBadge" title="飞升次数（仙缘）">飞升 <strong id="resAsc">+0</strong></div>
     </div>
     <div class="user-area">
+      <button class="btn tiny ghost" id="themeToggleBtn" title="切换明暗主题">
+        <svg class="ic-sun" id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" width="15" height="15"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ic-moon" id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
       <button class="btn tiny ghost" id="setOpenBtn" title="设置"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.72 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
-      <span class="user-chip" id="userChip" title="江湖称呼">…</span>
+      <span class="btn tiny" id="userChip" title="江湖称呼">…</span>
       <button class="btn tiny" id="logoutBtn">退出登录</button>
     </div>
   </header>
 
   <main>
     <nav class="top-tabs" id="topTabs" aria-label="功能分组">
-      <button class="top-tab active" data-tab="xiu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3l1.8 5.6L19 10l-5.2 1.4L12 17l-1.8-5.6L5 10l5.2-1.4z"/></svg><span>修炼</span></button>
       <button class="top-tab" data-tab="equip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M14 4 20 10 8.5 21.5 3 22l.5-5.5z"/><path d="M13 5.5 18.5 11"/></svg><span>装备</span></button>
       <button class="top-tab" data-tab="richang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>日常</span></button>
       <button class="top-tab" data-tab="zhan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 8v8M8.5 12h7"/></svg><span>征战</span></button>
+      <button class="top-tab active" data-tab="xiu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3l1.8 5.6L19 10l-5.2 1.4L12 17l-1.8-5.6L5 10l5.2-1.4z"/></svg><span>修炼</span></button>
       <button class="top-tab" data-tab="gushi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14l-8-4z"/><path d="M8 7h8M8 11h5"/></svg><span>故事</span></button>
       <button class="top-tab" data-tab="world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span>天下</span></button>
       <button class="top-tab" data-tab="xian"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 21c-5 0-8-3-8-8 0-6 5-9 8-10 3 1 8 4 8 10 0 5-3 8-8 8z"/><path d="M12 21V9"/></svg><span>闲趣</span></button>
@@ -126,11 +127,18 @@
       <h2>日常</h2>
       <p class="hint" id="weekBuffLine"></p>
       <div class="signin-box" id="signInBox"></div>
+      <p class="side-title">签到战绩 · 流水</p>
+      <div class="hint" id="signStatsLine"></div>
+      <div id="signLogList"></div>
       <div id="dailyList"></div>
       <p class="hint">每日 0 点刷新；三项全部领取有额外奖励。</p>
       <p class="side-title">周常（周一刷新）</p>
       <div id="weeklyList"></div>
       <p class="hint">周常进度跨天累计，三项全领有额外奖励。</p>
+</section>
+<section class="panel daily-ext" aria-label="日常扩容">
+      <h2>日活福利</h2>
+      <div id="dailyExt"></div>
 </section>
       </div>
       <div class="col col-b">
@@ -140,7 +148,10 @@
       <p class="hint">每日 0 点换货，每件限购一次。</p>
       <p class="side-title">赌石</p>
       <p class="hint">2000 灵石开一块璞玉：多为石屑，也可能开出碎屑、灵石，甚至天品装备。</p>
-      <button class="btn wide" id="gambleBtn">开璞玉（2000 灵石）</button>
+      <div class="btn-row">
+        <button class="btn" id="gambleBtn">开璞玉（2000 灵石）</button>
+        <button class="btn" id="gamble10Btn">连开 10 次（2 万灵石）</button>
+      </div>
       <p class="gamble-result" id="gambleResult" hidden></p>
 </section>
       </div>
@@ -243,23 +254,26 @@
 <section class="panel upgrades" aria-label="淬炼">
       <h2>淬炼</h2>
 
-      <article class="upgrade">
-        <div class="u-top"><h3>开箱速度</h3><span class="lv" id="speedLv">Lv.0</span></div>
-        <p class="u-desc" id="speedDesc">每 2.00 秒自动开一次</p>
-        <button class="btn buy" id="buySpeed">50 灵石</button>
-      </article>
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">开箱速度 <em id="speedLv">Lv.0</em></span>
+          <p class="cave-desc" id="speedDesc">每 2.00 秒自动开一次</p></div>
+        <button class="mini" id="buySpeed">升级 50</button>
+      </div>
 
-      <article class="upgrade">
-        <div class="u-top"><h3>灵石收益</h3><span class="lv" id="gainLv">Lv.0</span></div>
-        <p class="u-desc" id="gainDesc">灵石收益 +0%</p>
-        <button class="btn buy" id="buyGain">40 灵石</button>
-      </article>
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 3h12l3 6-9 12L3 9l3-6z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">灵石收益 <em id="gainLv">Lv.0</em></span>
+          <p class="cave-desc" id="gainDesc">灵石收益 +0%</p></div>
+        <button class="mini" id="buyGain">升级 40</button>
+      </div>
 
-      <article class="upgrade">
-        <div class="u-top"><h3>气运</h3><span class="lv" id="luckLv">Lv.0</span></div>
-        <p class="u-desc" id="luckDesc">高品质权重 +0% / 阶</p>
-        <button class="btn buy" id="buyLuck">150 灵石</button>
-      </article>
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">气运 <em id="luckLv">Lv.0</em></span>
+          <p class="cave-desc" id="luckDesc">高品质权重 +0% / 阶</p></div>
+        <button class="mini" id="buyLuck">升级 150</button>
+      </div>
     </section>
       </div>
       <div class="col col-b">
@@ -389,6 +403,16 @@
       <h2>秘境征战</h2>
       <p class="combat-lead">四处秘境产出开匣得不到的专属套装与战利品。难度逐层递增，建议先闯关，再野外，最后爬塔，通关爬塔后开启无尽。</p>
 
+      <div class="trophy-box">
+        <p class="side-title">战利品</p>
+        <ul class="trophy-list" id="trophyList"></ul>
+      </div>
+
+      <div class="training-box">
+        <p class="side-title">战技</p>
+        <div class="training-list" id="trainingList"></div>
+      </div>
+
       <div class="combat-tabs" role="tablist" aria-label="秘境玩法">
         <button class="combat-tab active" data-mode="stage" role="tab" aria-selected="true">闯关</button>
         <button class="combat-tab" data-mode="tower" role="tab" aria-selected="false">爬塔</button>
@@ -404,6 +428,7 @@
               <div class="enemy-title">
                 <p class="enemy-kicker" id="enemyKicker">第 1 关</p>
                 <h3 id="enemyName">山贼</h3>
+                <span class="diff" id="difficultyBadge">势均力敌</span>
               </div>
               <span class="enemy-el el-jin" id="enemyEl">金</span>
               <span class="enemy-tag hidden" id="enemyTag">首领</span>
@@ -422,7 +447,6 @@
             <span>生命 <b id="combatHp">0</b></span>
             <span>防御 <b id="combatDef">0</b></span>
             <span>五行 <b id="combatEl">持平</b></span>
-            <span class="diff" id="difficultyBadge">势均力敌</span>
           </div>
 
           <div class="zone-strip hidden" id="zoneStrip"></div>
@@ -444,16 +468,6 @@
         </div>
 
         <aside class="combat-side">
-          <div class="trophy-box">
-            <p class="side-title">战利品</p>
-            <ul class="trophy-list" id="trophyList"></ul>
-          </div>
-
-          <div class="training-box">
-            <p class="side-title">战技</p>
-            <div class="training-list" id="trainingList"></div>
-          </div>
-
           <p class="hint" id="combatHint">链路：闯关 3 关解锁野外，5 关解锁爬塔；通塔 60 层开启无尽秘境。境界一路筑基、金丹、元婴……更有功法、道童、探幽、黑市、灵宠、洞府相继现世，详见「修行指南」。</p>
         </aside>
       </div>
@@ -480,6 +494,14 @@
         <p class="hint" id="bossRushNote"></p>
         <button class="btn wide" id="bossRushBtn">首领连战</button>
       </div>
+      <div class="rogue-box" id="anomalyBox">
+        <div class="rogue-head">
+          <span class="side-title">异象秘境</span>
+          <span class="count">每日一词缀组合 · 0 点更替</span>
+        </div>
+        <p class="hint" id="anomalyNote"></p>
+        <button class="btn wide" id="anomalyBtn">平定异象</button>
+      </div>
       <div class="rogue-box" id="trialsBox">
         <div class="rogue-head">
           <span class="side-title">条件试炼</span>
@@ -497,7 +519,7 @@
       <div class="rogue-box" id="bountyBox">
         <div class="rogue-head">
           <span class="side-title">悬赏令</span>
-          <span class="count">每日 0 点换榜 · 刷新 2000 灵石</span>
+          <span class="count">白/绿/蓝/紫 各一单 · 每日 0 点换榜</span>
         </div>
         <div id="bountyList"></div>
       </div>
@@ -519,7 +541,8 @@
     </section>
       </div>
 <section class="panel panel-wide map-panel" aria-label="秘境图">
-      <h2>秘境图 <span class="count" id="mapAp">行动力 0 / 12</span></h2>
+      <h2>秘境图 <span class="count" id="mapAp">行动力 0 / 12</span>
+        <span class="h2-actions"><button class="btn tiny" id="mapBuyBtn">加购 1 行动力（1 万灵石）</button></span></h2>
       <div class="map-grid" id="mapGrid"></div>
       <p class="hint">每日 +6 行动力；点相邻的「+」格探雾前进，可采矿、拾尘、斩妖、闯藏宝窟。妖物越远越强。</p>
       <div id="treasureBox"></div>
@@ -529,7 +552,7 @@
     <div class="tab-page" data-page="gushi">
 <section class="panel panel-wide story-panel" aria-label="红尘录">
       <h2>红尘录 <span class="count" id="storyProg">0 / 50 关</span></h2>
-      <p class="story-lead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
+      <p class="story-lead" id="storyLead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
       <div id="storyBox"></div>
       <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。</p>
     </section>
@@ -543,14 +566,13 @@
     <div class="tab-page" data-page="world">
       <div class="col col-a">
 <section class="panel rank-panel" aria-label="战力榜">
-      <h2>战力榜 <button class="btn tiny" id="rankRefresh">刷新</button></h2>
+      <h2>战力榜<span class="h2-actions"><button class="btn tiny" id="rankRefresh">刷新</button></span></h2>
       <div class="rank-list" id="rankList"><p class="hint">加载中……</p></div>
       <p class="hint" id="rankMe">切到此页自动刷新。</p>
 </section>
 <section class="panel arena" aria-label="竞技场">
-      <h2>竞技场</h2>
+      <h2>竞技场<span class="h2-actions"><button class="btn tiny" id="arenaRefresh">刷新</button><button class="btn tiny" id="arenaBuy" disabled>加购 1 场（1 万灵石）</button></span></h2>
       <p class="hint" id="arenaInfo">加载中……</p>
-      <button class="btn tiny wide" id="arenaBuy" disabled>加购 1 场（1 万灵石）</button>
       <div class="arena-list" id="arenaOpps"></div>
       <p class="hint">与同辈修士切磋（战力快照对战），每日 15 场；灵石加购每场 1 万、每日至多 10 场，胜负皆动天梯分；同一对手每日至多三场。名单不足时由「剑影」补位。</p>
 </section>
@@ -636,7 +658,7 @@
         <input type="file" id="importFile" accept=".lxsave,.json,application/json" hidden>
         <button class="btn tiny" id="resetBtn">重置存档</button>
       </div>
-      <p class="hint">导出为 .json 文件；导入将覆盖当前进度并同步覆盖云端；重置前请先导出备份。</p>
+      <p class="hint">导出为加密 .lxsave 文件；导入将覆盖当前进度并同步覆盖云端；重置前请先导出备份。</p>
 </section>
       </div>
       </div>
@@ -663,7 +685,7 @@
       </div>
     </section>
 <section class="panel fishing" aria-label="垂钓">
-      <h2>垂钓</h2>
+      <h2>垂钓<span class="h2-actions"><button class="mini" id="fishBaitBtn" disabled>补饵</button></span></h2>
       <div id="fishingBox"></div>
 </section>
 <section class="panel collection" aria-label="图鉴">
@@ -710,6 +732,17 @@
       <button class="btn primary wide" id="offlineClose">收下</button>
     </div>
   </div>
+  <div class="modal" id="gambleModal" role="dialog" aria-modal="true" aria-labelledby="gambleModalTitle">
+    <div class="modal-card">
+      <h3 id="gambleModalTitle">璞玉结果</h3>
+      <div class="gamble-modal-list" id="gambleModalList"></div>
+      <p class="hint" id="gambleModalSum"></p>
+      <div class="modal-actions">
+        <button class="btn" id="gambleModalClose">关闭</button>
+        <button class="btn primary" id="gambleModalAgain">再开一次</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal battle-modal" id="battleModal" role="dialog" aria-modal="true" aria-labelledby="battleTitle">
     <div class="modal-card battle-card">
@@ -724,7 +757,7 @@
       <div class="battle-arena" id="battleArena">
         <div class="fighter fighter-player" id="battlePlayer">
           <span class="fighter-avatar" id="battlePlayerIcon"></span>
-          <span class="fighter-name">灵匣修士</span>
+          <span class="fighter-name" id="battlePlayerName">灵匣修士</span>
           <div class="hp-bar"><div class="hp-fill player" id="battlePlayerHp"></div></div>
           <span class="hp-text" id="battlePlayerHpText">0 / 0</span>
         </div>
@@ -781,6 +814,14 @@
       <h3 id="rogueTitle">神物加持</h3>
       <p>择一随身，继续深入。</p>
       <div class="rogue-choices" id="rogueChoices"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="quizBoxModal" role="dialog" aria-modal="true" aria-labelledby="quizBoxTitle">
+    <div class="modal-card">
+      <h3 id="quizBoxTitle">天品自选箱</h3>
+      <p>仙道问答七日连对之赏。择一部位，直接炼出天品装备。</p>
+      <div class="rogue-choices" id="quizBoxSlots"></div>
     </div>
   </div>
 
@@ -852,15 +893,15 @@
         <h3>修炼 · 境界与飞升</h3>
         <p>开箱产修为；修为够即突破境界（炼气→筑基→…→仙人）。仙人后可飞升（轮回）：重置灵石 / 境界 / 淬炼，换仙缘永久收益与更高的境界门槛。挑战修行在飞升时达成即记功。</p>
         <h3>征战 · 四大秘境</h3>
-        <p><b>闯关</b>起点玩法，5 关一首领；<b>爬塔</b> 200 层产镇塔套；<b>野外</b>刷材料与荒狩套；<b>无尽</b>无限层带词缀，通塔 60 层开启。首通里程碑必掉专属套装件。</p>
+        <p><b>闯关</b>起点玩法，5 关一首领；<b>爬塔</b> 200 层产镇塔套；<b>野外</b>刷材料与荒狩套；<b>无尽</b>无限层带词缀，通塔 60 层开启。首通里程碑必掉专属套装件。试炼区另有探幽 / 首领连战 / 条件试炼 / 悬赏令（白绿蓝紫四单，全清加奖）与<b>异象秘境</b>（每日双词缀 boss，按余血评 S/A/B 级，S 级 5% 掉仙品）。</p>
         <h3>装备</h3>
         <p>六部位（武器/衣袍/冠冕/云靴/法宝/灵符），品质白→绿→蓝→紫→金→仙。强化（+200）与升星加成；词条与宝石在工坊洗练镶嵌；符文组词按宝石顺序触发；套装凑件数有额外效果。炼器用器魂定向打造天品。</p>
         <h3>养成系统</h3>
         <p><b>战技</b>（塔印/战功/兽骨升级）、<b>功法</b>（修为参悟）、<b>灵宠</b>（出战加成+内丹特性）、<b>道侣</b>（好感永久加成）、<b>丹药 / 洞府 / 淬炼</b>——这些点击升级是战力主通道。</p>
         <h3>日常与闲趣</h3>
-        <p>签到 / 日常 / 周常领奖；黑市限购与赌石；垂钓、灵圃采集、秘境图探雾、藏宝图挖宝、云游奇遇（冷却到点页顶横幅提示）。</p>
+        <p><b>签到</b>二选一：普通签到稳拿当日奖，或<b>赌狗签到</b>押上当日奖励掷倍率——49% 狂赚 ×2~5、10% 保本 ×1、20% 空手、21% 倒扣 1~3 倍（灵石可扣成负债，碎屑扣到 0 为止，量力而赌）；战绩面板记流水。月度朝贺按月记到勤，缺勤可补签。<b>日活福利</b>：灵潮双时段（12–14 / 20–22 点）产出 ×2、每日占卜一签定运势、在线每 60 分钟聚一格灵气、仙道问答每日十题。日常 / 周常领奖；黑市限购与赌石；垂钓、灵圃采集、秘境图探雾、藏宝图挖宝、云游奇遇（冷却到点页顶横幅提示）。</p>
         <h3>天下 · 玩家玩法</h3>
-        <p><b>竞技场</b>每日 15 场可灵石加购，胜负动天梯分；<b>世界妖王</b>全服共血条；<b>仙盟</b>捐献 / 盟任务 / 盟妖王 / 贡献商店。</p>
+        <p><b>竞技场</b>每日 15 场可灵石加购，胜负动天梯分；<b>世界妖王</b>全服共血条；<b>仙盟</b>捐献 / 盟任务 / 盟妖王 / 贡献商店 / 同门互助（每日传功赠礼各一次，双方受益）。</p>
         <h3>战斗规则</h3>
         <p>回合制自动对战：伤害 = 攻 − 防×(1−破甲)，暴击 ×1.75，吸血按伤害回血，120 回合未分胜负判超时。战败不损失进度。</p>
         <h3>存档</h3>

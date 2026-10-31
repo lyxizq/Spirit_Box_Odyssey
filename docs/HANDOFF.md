@@ -469,8 +469,6 @@ ROGUE_BUFFS 8 种（攻/血/防/吸血/暴击/破甲/减伤 + 不灭·复活一�
 
 已全部完成：**P1 词条/洗练/宝石、QoL 插队包、收集留存包（TODO 1–5）、P2 灵宠+洞府、P3 无尽秘境与探幽 Roguelike、第二批扩展（TODO 10–24）、第三/四批（构筑探索 / 深度咬合，TODO 29–50）、故事模式「红尘录」（TODO 52）、后端账号 + 云存档（TODO 59–63/65）、天下多人玩法（TODO 66–70：排行 / 竞技场 / 世界妖王 / 仙盟，见 §10）**。
 
-剩余：**微信 / 抖音小游戏适配** —— `cocos/` 已备 Cocos Creator 3.8 脚手架（Platform / GameApi / SaveStore / BattleSim / WorldPanel 示例组件），场景搭建、wx.login、包体分包、防沉迷等在编辑器内推进（TODO 71）。
-
 ### P1 装备词条 · 洗练 · 宝石（✅ 已完成 2026-10-27）
 
 已按以下设计上线，落地细节见 §2 与 §4.10：
@@ -491,7 +489,6 @@ ROGUE_BUFFS 8 种（攻/血/防/吸血/暴击/破甲/减伤 + 不灭·复活一�
 ### QoL（✅ 排序/筛选/箭头/扫荡/连打/倍速已完成 2026-10-27；余项待做）
 
 - ~~背包排序 / 部位筛选 / 战力对比箭头；秘境「扫荡」；「连续挑战」；战斗倍速按钮~~ 已上线（见 §2）。
-- 微信/抖音小游戏适配、Cocos 表现层。
 
 ### 收集与留存系统（✅ 已完成 2026-10-27，对应 TODO 1–5）
 
@@ -537,23 +534,23 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 
 - **接口**：`GET /api/rank`；`GET /api/pvp`、`POST /api/pvp/fight`；`GET /api/boss`、`POST /api/boss/hit`；`GET /api/guild[|/list]`、`POST /api/guild/create|join|leave|kick|notice|donate`。全部要会话；写接口统一过同源 + JSON 校验与每用户 60 次/分滑窗。
 - **战力档案落库**：客户端 `persist()` 打包 `state.power` 与 `state.pvpSnap`（atk/hp/def/crit/critMult/lifesteal/dr/pierce），服务端存档入库时写 `users.power_score / realm / pvp_snapshot`，快照按 power 量级钳制（atk ≤ ×100、hp ≤ ×1000、def ≤ ×50，超界字段弃用）。
-- **竞技场**：匹配真人按天梯分距就近取 8 洗牌取 2，不足 3 人时由假人按战力就近补位；战斗在客户端 `simulateBattle` 跑，服务端只收胜负并记 Elo（K=32，下限 100，双方同步加减），每日 10 场 + 3 秒冷却 + 同一对手每日 3 场（`users.pvp_day/pvp_used/last_pvp_at`）。**结算未上服务端**，改数值防不住，只防刷场次；后续要做服务端战斗再迁 `BattleSim` 同款代码。
+- **竞技场**：匹配真人按天梯分距就近取 8 洗牌取 2，不足 3 人时由假人按战力就近补位；每日 10 场 + 3 秒冷却 + 同一对手每日 3 场（`users.pvp_day/pvp_used/last_pvp_at`）。**2026-10-31 起胜负由服务端复算**（双方 `pvp_snapshot` 进 `server/battle.js` 模拟，响应带 `win`），客户端上报的 `win` 不再采信；本地 `simulateBattle` 只做战斗动画，日志 / 浮层 / 音效改用响应的 `out.win`。
 - **假人「剑影」（2026-10-28，TODO 77）**：24 名内置 bot，users 表 `status='bot'`（口令哈希非法格式 + 非 active 状态，登录/注册道号均被挡）；战力 300×1.55^i 分档（约 300→700 万）、境界按战力阈值映射、快照与真人同量级口径、天梯分 700+38i 梯度。`ensureBots()` 服务启动时幂等补齐。假人参与 Elo 与对位日限（被打掉分后会自然轮出匹配名单）；**不进战力榜**（`/api/rank` 过滤 `status='active'`）。
 - **天梯榜（TODO 78）**：`GET /api/ladder` 按 `pvp_rating` 取 30 名，假人常驻、真人打满一场（wins+losses>0）即入榜；返回我的名次/评分/战绩。客户端切磋成功后即调 `ladderLoad()` 刷新（别只改本地 rating，榜会滞后）。
-- **世界妖王**：`world_boss` 按日一行（day 主键），血量 = 建BOSS 时全服最高战力 ×800（下限 2000 万，上限 1e12）；客户端打完一场报伤害，服务端按 `power×300` 钳制入池；每人每日 30 场（`world_boss_hits` 聚合）。讨平后有战功者客户端发参与奖（8 千 + 伤害/50 灵石、20 + 伤害/5000 碎屑，结击者翻倍），`state.boss.claimed` 防重复领——**奖励是客户端自发，可作弊，量级有限先接受**。
-- **仙盟**：立盟 5 万灵石（客户端扣，服务端不验灵石）；人数上限 30；捐献每人每日 10 万进 `guilds.fund`（`guild_donations` 按日累计限额），等级 = 1 + fund/20 万（封顶 10），每级全局收益 +2%（`baseGain()` 里 `guildBuffLevel()`）；盟主退盟转最早入盟者，无人则解散。
+- **世界妖王**：`world_boss` 按日一行（day 主键），血量 = 建BOSS 时全服最高战力 ×800（下限 2000 万，上限 1e12）；**2026-10-31 起伤害由服务端复算**（我的 `pvp_snapshot` vs `bossEnemyOf(maxHp)` 进 `server/battle.js`，客户端上报的 `damage` 不采信），仍按 `power×300` 量级钳制兜底；每人每日 30 场（`world_boss_hits` 聚合）。讨平后有战功者客户端发参与奖（8 千 + 伤害/50 灵石、20 + 伤害/5000 碎屑，结击者翻倍），`state.boss.claimed` 防重复领——奖励数值本身仍客户端自发，但伤害源已服务端化，可刷幅度大幅收窄。
+- **仙盟**：立盟 5 万灵石（客户端扣款，**2026-10-31 起服务端凭账本余额校验**，不足 400 拒绝）；人数上限 30；捐献每人每日 10 万进 `guilds.fund`（`guild_donations` 按日累计限额，**同日起凭账本余额校验**，零灵石空手刷基金/贡献被堵）；等级 = 1 + fund/20 万（封顶 10），每级全局收益 +2%（`baseGain()` 里 `guildBuffLevel()`）；盟主退盟转最早入盟者，无人则解散。
 - **盟玩法（2026-10-28 追加，TODO 73–75）**：贡献挂 `guild_members.contribution`（**退盟即清零**，重进从 0 起）。
   - **盟任务**：`GUILD_TASKS` 三项（捐献 10 万 / 盟妖王伤害 300 万 / 切磋 15 场），进度全部由服务端从 `guild_donations` / `guild_boss_hits` / `pvp_battles` 当日数据聚合（不信客户端自报）；每人每日每任务领一次（`guild_task_claims`），发 2 万灵石 + 25 贡献。改任务目标/口径只动 `GUILD_TASKS` 与聚合函数。
   - **盟主妖王**：`guild_boss` 每盟一行，血量 = 建BOSS 时成员最高战力 ×400 ×(1 + 0.25×(盟等级-1))（下限 200 万，上限 5e10），每日 5 场 / 人，伤害按 `power×300` 钳制；每 5000 伤害 +1 贡献。讨平奖客户端自发（4 千 + 伤害/40 灵石、10 + 伤害/4000 碎屑，结击 ×2，`state.guildBoss.claimed` 防重）。
   - **贡献商店**：`GUILD_SHOP` 五项（灵石俸禄 20×5 / 碎屑包 30×3 / 洗练券 40 / 护体符 60 / 招募券 50×2，每日限购），`spendContribution` 原子扣减防负余额，限购记 `guild_shop_log`；奖励客户端入包。
   - **贡献产出**：捐献每 2000 灵石 +1、盟妖王每 5000 伤害 +1、盟任务每项 +25；客户端各操作成功后调 `guildLoad()` 重拉 `/api/guild`（载荷含 tasks/boss/shop/myContribution），别在本地手补任务进度（会像当初一样漏刷）。
-- 已知取舍（后续可收紧）：战斗与奖励结算留客户端（防作弊弱，防刷强）；妖王对低战玩家是 120 回合伤害竞速、战力不足时单场只 1 点伤害属设计内；`pvp_seasons` 表仍预留未用（当前天梯分连续不清零）。
+- 已知取舍（2026-10-31 更新）：PvP 胜负与妖王伤害已服务端复算；**个人资产（灵石/装备/掉落）仍客户端权威**，由存档增速账本做包络拦截（见下节）；妖王对低战玩家是 120 回合伤害竞速、战力不足时单场只 1 点伤害属设计内；`pvp_seasons` 表仍预留未用（当前天梯分连续不清零）。
 - **战斗弹层与头像体系（2026-10-28，TODO 79）**：12 处静默战斗（PvP / 世界 / 盟妖王 / 昨日之我 / 心魔劫 / 天劫 / 探幽 / 首领连战 / 试炼 / 奇遇 / 秘境图 / 故事）统一经 `showBattlePopup(enemy, result, { title, playerHp, playerGray })` 进既有战斗弹窗；结果照旧即时结算，弹窗只做表现。约定：**弹窗对象必须带 `win`（finish 文案用）与 `specialBattle: true`（battleResultHtml 走独立文案分支）**——`b.special` 已被专属件掉落占用，别混用；首领连战只弹最终一战。头像：主人公 = `storyPortrait('xiaofan','battle')`（AI 图 / 内置 SVG，**懒加载**——SP_CFG 声明在头像块之后，脚本期立即调用会 TDZ）；敌人依次查 `ENEMY_CAST_MAP`（心魔→xinmo、修罗→xiuluo、独眼豹→baofeng 立绘）→ `MONSTER_MATCH` 名字关键词 → 17 枚 `MONSTER_ART` SVG 徽记（剑影/妖王/蛇/禽/蛛/猿/熊/狼/虎豹/草木/卫将/妖僧/虚空/幽魂/兽王/雷神/火焰/修士）→ 兜底 mo；昨日之我用主人公立绘加灰。battle-modal z-index 60，压过故事 / 天劫弹窗。
 - **显示名收口（同日补）**：三处漏网修复——pvpState 对手映射、guildPayload 同门映射（SQL 别名已改 `name`，映射还在读 `r.username/m.username` 会显示空名）、盟妖王战功流水写入名（改取 `display_name || username` 快照）。原则：**服务端任何返回玩家名的查询统一 `COALESCE(NULLIF(display_name,''), username) AS name`，客户端映射一律读 `.name`**；妖王战功按写入时快照展示，历史记录不追溯改名。
 - **实名与显示名（2026-10-28，TODO 90/91）**：
   - **先实名**：当日实现后按用户要求整体移除——注册不再收集姓名 / 证件号，`/api/profile/verify`、`showRealnameGate()`、`validIdCard` / `adultFromId` 与 users 表三列（verified/adult/realname_hash）的读写全部摘除；已建库里残留的这三列为无害孤儿列（SQLite 老版本删列麻烦，留着不动）。
   - **显示名**：`users.display_name`（唯一索引；老账号启动回填=道号），设置页「显示名」面板改（`POST /api/profile/name`，唯一 + 24h 一次 + `display_name_at` 记账）；`/api/auth/me` 返回 displayName，顶部 chip 与排行 / 天梯 / 候选 / 同门名单全部读 `COALESCE(NULLIF(display_name,''), username)`。妖王伤害流水的名字写入时取显示名快照。登录道号本身不变。
-  - **Docker 部署（2026-10-29，TODO 92）**：`docker/Dockerfile`（node:22-alpine、非 root、`/app/data` 卷、`/api/version` 健康检查）+ 根目录 `.dockerignore`（文档 / 数据 / cocos 不进镜像；必须留在构建上下文根）+ `docker/docker-compose.yml`（8080 映射、`../data` 挂卷、build context 指仓库根、ORIGIN_TOKEN 环境位）。docs/DEPLOY.md 增「方式三 · Docker 部署」。注意：本机无 Docker，**镜像构建与容器冒烟未实际执行**，首次在目标机构建时若遇 COPY 路径问题按实际仓库布局微调。- **兑换入口下架（2026-10-28，TODO 89）**：相关面板 / 绑定 / 函数已摘除，客户端不再调用。
+  - **Docker 部署（2026-10-29，TODO 92）**：`docker/Dockerfile`（node:22-alpine、非 root、`/app/data` 卷、`/api/version` 健康检查）+ 根目录 `.dockerignore`（文档 / 数据不进镜像；必须留在构建上下文根）+ `docker/docker-compose.yml`（8080 映射、`../data` 挂卷、build context 指仓库根、ORIGIN_TOKEN 环境位）。docs/DEPLOY.md 增「方式三 · Docker 部署」。注意：本机无 Docker，**镜像构建与容器冒烟未实际执行**，首次在目标机构建时若遇 COPY 路径问题按实际仓库布局微调。- **兑换入口下架（2026-10-28，TODO 89）**：相关面板 / 绑定 / 函数已摘除，客户端不再调用。
 - **背包扩容（2026-10-28，TODO 88）**：`bagCap()` = 100 + `state.bagExtra`（每张「乾坤扩容符」+20，`BAG_EXTRA_MAX` 200 封顶即 300 格）。道具计数 `state.bagTokens`（≤99）；掉落钩子 `rollBagToken(kind)` 挂开箱 / 战斗胜利 / 探幽过层三处，概率常量集中在 `BAG_TOKEN_CHANCE`（1/15000、1/3500、1/2000，调概率只动它）。使用入口在背包标题按钮（`bagExpandBtn`，paintBag 刷可见态；上限 / 无符时点击会被拒绝并强制刷新按钮）。注意：容量收缩（测试改档）时已有物品不强制分解，只是无法再拾新装备。：header 两枚 `realm-badge` 同款徽章——战力 / 灵石；`paintResources()` 挂在 render 尾部（100ms 节流），灵石走 sig 缓存只在变化时重绘，战力每帧 `totalPower()` 直刷。要加回其他货币：index.html 照抄一枚 realm-badge div + paintResources 加一行。
 - **日常标签（2026-10-28，TODO 84）**：顶部第 1 个标签「日常」（`data-page="richang"`，默认落地页）——签到 / 日常 / 周常 + 自闲趣迁入的黑市（含赌石）与成就（panel-wide 垫底）；闲趣只剩洞府 / 图鉴 / 灵宠 / 道侣。面板 id 与渲染函数零改动，纯 DOM 迁移。
 - **设置标签页（2026-10-28，TODO 83）**：顶部第 6 个标签「设置」（`data-page="set"`）收拢音效（muteBtn/volumeSlider）、存档管理（导出/导入/重置）；新增**游戏字号**（`state.fontScale` 0.85–1.25 步进 0.05，`document.body.style.zoom` 全页缩放，A±/重置）与**明暗主题**（`state.theme`，暗=默认；明=羊皮纸风，`body.theme-light` 类 + CSS 变量覆盖 + 关键硬编码面色覆盖：panel/modal/top-tabs/bar/行卡/头像/输入框）。两设置随存档持久化，`start()` 启动即应用。明色主题走的是「变量 + 重点面」覆盖，深色硬编码的边角（如图鉴小签、部分渐变文字）可能仍有低对比处，验收以实际页面为准。
@@ -562,9 +559,40 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 - **故事模式跨卷解锁（2026-10-28，TODO 80）**：`storyStateOf` 收紧——卷内仍按关顺序解锁，跨卷首关需**上一卷全部关卡通关**（原规则只看境界）；锁定文案区分「先通过上一关」（卷内）与「通关上一卷全部关卡」（跨卷）。renderStory 的锁定原因分支与 storyStateOf 规则要同步改。
 - **体检记录（2026-10-28，TODO 76）**：修了 4 处——① 盟妖王 `guild_boss` 主键是 guild_id、建行用 `ON CONFLICT DO NOTHING`，换日后旧行永驻（永远「已伏诛」），已改为带 `WHERE day != excluded.day` 的 upsert 换日重置；② PvP 加对位日限：同一对手每日 ≤3 场（`pvpVsCount`），堵双号互刷天梯分；③ `pvpFight` 里 byId(targetId) 重复查询合并；④ 客户端 `worldActivate` 加 15 秒 TTL（反复切页不再 5 连发请求）、盟任务日志的贡献数改读任务配置不再硬编码。复核结论：social.js 全同步无 await，单进程内查-判-写序列无竞态；写接口全部预编译语句无注入；客户端新面板所有用户名/盟名/公告/错误提示都走 esc()/textContent，无 XSS 路径；js/css 静态缓存已是 no-cache（TODO 72）。性能：persist 由 3 秒节流兜底，快照计算开销可忽略；`/api/pvp` 候选匹配 `ABS(rating)` 全表扫在用户量大后是首个优化点。
 
+### 服务端校验强化（2026-10-31：增速账本 + 战斗复算 + 余额校验）
+
+目标：绕过前台按钮 / 改内存 / 改存档刷出的非法收益与非法结果，在服务端被拦截。三道防线：
+
+- **增速账本（`server/economy.js` + `save_ledger` 表）**：`saves.js` 每次收档，与上次入库快照（账本行：stones / totalStones / dustTotal / opens / exp / petTickets / ascensions / immortal / power / towerCleared / stageCleared / endlessBest / wildMax / updated_at）比对：
+  1. **单调性**：累计计数器与进度字段不得回退（防「洗基线」；exp / stones 除外——突破 / 飞升 / 花费合法向下）；
+  2. **开箱增速**：Δopens ≤ elapsed×20×1.2 + 2000（`interval()` 下限 0.05s）；
+  3. **灵石收益包络**：单开上界（按存档自身字段推最坏：gainLv / realm / asc / immortal / 穿戴六件重算战力 / 图鉴 / 灵宠 / 聚灵阵，杂乘区常量 250 兜底）×Δopens + 战斗项（≈1000×战力×1.25^仙位×elapsed×3 场/s）+ 5e7/天杂项 + 兑换码授权收益（`redeem_log` 窗口内精确计入）；
+  4. **余额跳变**：Δstones ≤ ΔtotalStones + 杂项（防「只顶余额不改累计」；花费 / 负债向下不受限）；
+  5. **仙位 / 轮回限速**：与可支配灵石挂钩（入仙界逐级 ×5 灵石、飞升得点 = √(灵石/1e8)），刷不出灵石就快不了；
+  6. 碎屑 / 招募券 / 修为宽松包络兜底。
+  违规整档 **400 拒收**（`{error:'存档增速异常，已保留上次云端进度'}`），云端停在最后合法档；无账本行（首档 / 存量玩家迁移）以当档种入基线不回溯。**推论：导入旧档回滚会被拒收**（防重领一次性奖励），属设计内。前端 `flushCloud` 对 400 丢弃本份待推档并 10 分钟节流提示一次，不再 5 秒死循环重试。
+- **战斗复算（`server/battle.js`）**：`simulateBattle` / `bossEnemyOf` 与 game.js 同源移植（**客户端公式改动必须同步此文件**）。`/api/pvp/fight` 胜负、`/api/boss/hit` 与 `/api/guild/boss/hit` 伤害一律服务端复算，客户端上报的 `win` / `damage` 不采信；PvP 响应新增 `win` 字段。同批修复存量口径漂移：客户端 `persist()` 打包的字段名是 `pvpSnap`，服务端 `syncPowerScore` 一直在读 `data.pvp`——真客户端快照从未入库过（`saves.js` 现两处字段名都接受）；存量账号快照为 NULL 时打 PvP 会 400「战斗快照异常」，随下次存档上传（约 5 秒）自愈。
+- **灵石余额校验（`save_ledger.stones`）**：`/api/pvp/buy`（1 万）、`/api/guild/create`（5 万）、`/api/guild/donate`（金额）严格足额才放行（无账本行按 0 计，**刻意不留余量**——实测 1500 灵石 + 10 万余量会放行 5 万立盟；账本约 5 秒一档的滞后只会让「刚赚就花」偶发被拒，客户端不预扣、可重试）。
+
+局限（明示）：个人资产仍是客户端权威，增速包络在中后期（战力 / 仙位放大下）会放宽到接近存档量级天花板——账本拦的是「与自身进度完全脱节的注入」与洗基线，不承诺拦截贴着自身能力包络内的小幅作弊；包络口径调整只动 `server/economy.js` 顶部常量。
+
+### 复审加固（2026-10-31 当日第二轮：审计发现修复）
+
+全量复审（两个审计方向 + 19 场景单测 + curl 链路 + 浏览器冒烟）后修复，均已回归验证：
+
+- **砖号级**：`save_ledger` 大数值列（stones / total_stones / dust_total / opens / power）改 **REAL**——node:sqlite 读 INTEGER 列 >2^53 直接 RangeError，一次满档推送就能把云存档与所有消费接口打成永久 500（实测复现）。`openDb` 带**自动迁移**（旧 INTEGER 表在 SQL 内 CAST 重建，孤儿行丢弃防外键炸启动，迁移必须排在 SCHEMA 之后——账本外键引用 users）。妖王伤害在 `power×300` 钳制外再加 **1e15 硬顶**，防伤害值超 2^53 砖全服 BOSS 面板；快照校验补 hp 字段。
+- **首推种子校验**：注册 1 小时内且无账本行的首推，`totalStones>5e7 / opens>2e5 / immortal>0 / ascensions>0 / 装备战力>2e5` 等 any 越界直接 400——堵「手写 localStorage / 登出不清档继承旧大号 / 直调 API 一次推满档」三条种基线洗白线（冒烟实测复现串号拒收）。老号迁移（created_at 早）不受影响。
+- **离线额度改 elapsed 口径**：离线开箱额度 = `elapsed×12 + 豁免`，**整份 4h 额度（OFFLINE_OPENS）只发给种基线后的第一次校验推**（`save_ledger.grants` 列，用后即清）——客户端调钟伪造离线（真实 10s 报 4h）被堵；豁免是一次性设计，残口 = 新号首小时内一次性 +1.4e7 石（记录接受）。asc/immortal 删除与灵石无关的每推保底（原 3 分钟 curl 可拉满），改精确配额：飞升 `2√(pot/1e8)`、入仙界 `⌊log5(4·pot/1e8+1)⌋`。
+- **自报战力一致性**：`state.power ≤ max(5000, 装备重算分×2500×(1+0.08×asc))`——空装直写 9e15 战力刷榜单 / PvP 快照 / 妖王钳制基数的路线封死（realPower 是乘法结构，服务端按装备分锚定）。战斗包络基数另加 `min(包络战力, 账本战力×10 + 5e9)` 帽，防单推用合法顶配装备把包络从零顶爆。
+- **余额校验改原子扣款**：`spendLedger()`（`UPDATE ... WHERE stones >= ?`）替代只查不扣——原样同一笔账本灵石可在推送滞后窗内重复消费（curl 连打加购 10 次零成本）。客户端扣的 donate `accepted` 与服务端扣减口径一致，推送 `dStones` 向下不触发跳变。
+- **客户端奖励口径统一**：openBox / 世界与盟妖王讨平奖 / 盟任务 / 贡献商店 / 红尘录 / 拆宝石等 8 处改走 `addStones()/addDust()`——原先只加 `stones` 不加 `totalStones` 的路径既丢周/时辰增益、又触发云端「余额跳变」误拒（跳变规则另加 2e6 绝对底兼容旧客户端）；openBox 改 addStones 顺带修复「灵石周 +20% 对主收益路径无效」的平衡 bug。
+- **登出清本地档**：登出置 `authSignedOut` 标志停掉 persist / 关页兜底（导航触发 hidden 会把清掉的档写回——实测踩过），清 SAVE_KEY / TAB 锁 / OPFS 备份，堵同浏览器换账号串号。OPFS 恢复分支改「补结算差额」防同一次冷启动双份离线收益。
+- **杂项**：flushCloud 对 429/5xx 保留 pending 重试（只有校验类 400/422 丢弃）、空错误体也给通用提示；`redeemSince` 改 LEFT JOIN（删码后已兑奖励仍计入授权）；store 三步写包事务；立绘 aria-label 补 esc（昵称白名单本就挡死注入，消灭 latent）；导出文案改 .lxsave。
+
 ## 11. 给下一个开发工具的工作约定
 
 - 中文文案；原创素材；不动 `lingxia_idle_v1` 兼容性（新增字段先 `defaults()`，校验进 `load()`）。
+- **主角名展示（2026-10-31 用户指定）**：凡展示「林小凡/小凡」的地方（故事对白/说话人/人物志/卷简介/心魔敌名/战斗弹窗玩家名）一律走 `withPlayerName()` 替换为玩家昵称（`playerName()` = 服务端显示名，未改昵称即登录道号，兜底「林小凡」）。**故事数据原文（STORY 数据、STORY_CAST、foe.name）保持原名不动，只在渲染点替换**；`paintPlayerName()` 负责红尘录简介、战斗弹窗与人物志的刷新（人物志要清 `panelSigs.story` 强制重绘），改名 handler 与 `start()` 各调一次。
 - 控制台调试钩子：`LX.state()`（当前状态）、`LX.stats()`（玩家战斗属性）、`LX.open(n)`（批量开箱）、`LX.offline()`（手动触发离线结算，测离线巡猎用），便于浏览器实测。
 - 改完跑 `node --check game.js`，再用浏览器刷新 `http://127.0.0.1:8099/` 看控制台。
 - 测试时**不要**清 `localStorage`——里面带着能进中后期内容的测试档。

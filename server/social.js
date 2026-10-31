@@ -1,7 +1,9 @@
 // 天下玩法服务：战力排行 / PvP 竞技场 / 世界 BOSS / 仙盟 / 兑换码（零依赖）
-// 原则：天梯分、血条、盟务、兑换状态以本服务为准；战斗模拟留在客户端，
-// 服务端做冷却 / 日限 / 量级钳制（快照与伤害都和 power_score 挂钩）。
+// 原则：天梯分、血条、盟务、兑换状态以本服务为准。2026-10-31 起战斗结算也服务端化：
+// PvP 胜负、妖王伤害由服务端用双方 PvP 快照复算（battle.js），客户端上报不采信；
+// 灵石类花费（加购/立盟/捐献）凭增速账本余额（save_ledger，saves.js 维护）校验。
 import { sendJSON, SlidingWindow } from './http-util.js';
+import { simulateBattle, bossEnemyOf } from './battle.js';
 
 const GUILD_CAP = 30;                 // 仙盟人数上限
 const GUILD_LEVEL_FUND = 200000;      // 每级基金门槛
@@ -27,6 +29,7 @@ const WRITE_PER_MIN = 60;             // 单用户写接口滑窗限流
 const REDEEM_DAILY_CAP = 10;          // 单用户每日兑换次数
 const REDEEM_RE = /^[A-Z0-9]{4,32}$/;
 const GUILD_NAME_RE = /^[\u4e00-\u9fa5A-Za-z0-9]{2,8}$/;
+const GUILD_CREATE_COST = 50000;      // 立盟灵石（与客户端 GUILD_CREATE_COST 同口径）
 const TASK_CLAIM_REWARD = { stones: 20000, contribution: 25 }; // 每项盟任务领取奖励
 
 // 盟任务：进度全部由服务端从真实行为表聚合（捐献额 / 盟妖王伤害 / 盟员切磋场数）。
@@ -148,6 +151,17 @@ export function createSocialService(db) {
     myGuildRow: db.prepare(
       `SELECT g.id, g.name, g.notice, g.fund, g.leader_id, gm.role
        FROM guild_members gm JOIN guilds g ON g.id = gm.guild_id WHERE gm.user_id = ?`),
+    // 同门互助：传功 / 赠礼记账（发起方记日期与目标，受赠方记来源，领取后清除）
+    aidMe: db.prepare(
+      `SELECT aid_day, aid_skill_to, aid_gift_to, aid_from_type, aid_from_name, aid_from_day
+       FROM guild_members WHERE guild_id = ? AND user_id = ?`),
+    aidSetGive: db.prepare(
+      'UPDATE guild_members SET aid_day = ?, aid_skill_to = ?, aid_gift_to = ? WHERE guild_id = ? AND user_id = ?'),
+    aidSetFrom: db.prepare(
+      'UPDATE guild_members SET aid_from_type = ?, aid_from_name = ?, aid_from_day = ? WHERE guild_id = ? AND user_id = ?'),
+    aidClearFrom: db.prepare(
+      `UPDATE guild_members SET aid_from_type = '', aid_from_name = '', aid_from_day = ''
+       WHERE guild_id = ? AND user_id = ?`),
     guildMembers: db.prepare(
       `SELECT gm.user_id, COALESCE(NULLIF(u.display_name, ''), u.username) AS name, u.power_score, gm.role, gm.joined_at, gm.contribution
        FROM guild_members gm JOIN users u ON u.id = gm.user_id
@@ -249,7 +263,17 @@ export function createSocialService(db) {
     ladderBetter: db.prepare(
       `SELECT COUNT(*) AS n FROM users
        WHERE (status = 'bot' OR pvp_wins + pvp_losses > 0) AND pvp_rating > ?`),
+    // 灵石余额（增速账本，saves.js 随存档更新）：加购 / 立盟 / 捐献的服务端余额依据
+    ledgerSpend: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
   };
+
+  // 账本灵石原子扣款（2026-10-31 复审升级）：严格足额才扣成功——查而不扣时同一笔账本
+  // 灵石可在推送滞后窗口内重复消费（curl 连打加购 10 次零成本）。
+  // 无账本行（刚注册还没传过档）按 0 计直接拒绝，客户端传档后（约 5 秒）自愈；
+  // 服务端扣减后客户端存档侧同步扣款，下次推送 dStones 向下不触发跳变校验。
+  function spendLedger(userId, cost) {
+    return stmts.ledgerSpend.run(cost, userId, cost).changes > 0;
+  }
 
   // 服务启动时补齐假人名册（幂等：按道号查重）
   function ensureBots() {
@@ -296,7 +320,10 @@ export function createSocialService(db) {
     if (buys >= PVP_BUY_MAX) {
       return sendJSON(res, 429, { error: '今日加购已达上限（' + PVP_BUY_MAX + ' 次）' });
     }
-    // 灵石扣款在客户端（货币归存档管），服务端只记加购权益——上限封死 10 次
+    // 余额校验 + 原子扣款（2026-10-31）：账本灵石不足直接拒绝，堵改档白嫖场次
+    if (!spendLedger(ctx.user.id, PVP_BUY_COST)) {
+      return sendJSON(res, 400, { error: '灵石不足，无法加购' });
+    }
     stmts.pvpBuy.run(today, buys + 1, me.id);
     return sendJSON(res, 200, {
       ok: true, buys: buys + 1, buyMax: PVP_BUY_MAX,
@@ -310,7 +337,7 @@ export function createSocialService(db) {
     const today = dayStr();
     const used = me.pvp_day === today ? me.pvp_used : 0;
     const { cap, buys } = pvpCapOf(me, today);
-    // 匹配：真人按评分就近取 8 再洗牌取前 2；假人按战力就近补足到 3——
+    // 匹配：真人按评分就近取 8 再洗牌取前 4；假人按战力就近补足到 5——
     // 空服也有得打，真人多时假人自然被挤出名单
     const shuffle = (arr) => {
       for (let i = arr.length - 1; i > 0; i--) {
@@ -322,14 +349,14 @@ export function createSocialService(db) {
     const seen = new Set([me.id]);
     const picked = [];
     for (const r of shuffle(stmts.candidates.all(me.id, me.pvp_rating))) {
-      if (picked.length >= 2) break;
+      if (picked.length >= 4) break;
       if (seen.has(r.id)) continue;
       seen.add(r.id);
       picked.push(r);
     }
-    if (picked.length < 3) {
+    if (picked.length < 5) {
       for (const r of shuffle(stmts.botCandidates.all(me.power_score))) {
-        if (picked.length >= 3) break;
+        if (picked.length >= 5) break;
         if (seen.has(r.id)) continue;
         seen.add(r.id);
         picked.push(r);
@@ -380,7 +407,6 @@ export function createSocialService(db) {
   function pvpFight(req, res, ctx) {
     const body = ctx.body || {};
     const targetId = Math.floor(Number(body.targetId));
-    const win = body.win ? 1 : 0;
     const me = stmts.byId.get(ctx.user.id);
     if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
     if (!targetId || targetId === me.id) return sendJSON(res, 400, { error: '对手不存在' });
@@ -402,6 +428,14 @@ export function createSocialService(db) {
     if (stmts.pvpVsCount.get(me.id, opp.id, dayStart()).n >= PVP_PER_TARGET_DAILY) {
       return sendJSON(res, 429, { error: '今日已与这位道号切磋 3 场，换个人过招吧' });
     }
+    // 胜负由服务端复算（2026-10-31）：双方 PvP 快照进 battle.js 模拟，
+    // 客户端上报的 win 不再采信——改快照/改内存刷天梯分从此无效
+    let win;
+    try {
+      win = simulateBattle(JSON.parse(me.pvp_snapshot), JSON.parse(opp.pvp_snapshot)).win ? 1 : 0;
+    } catch (e) {
+      return sendJSON(res, 400, { error: '战斗快照异常，稍后再战' });
+    }
 
     const dMe = eloDelta(me.pvp_rating, opp.pvp_rating, win);
     const dOpp = eloDelta(opp.pvp_rating, me.pvp_rating, 1 - win);
@@ -412,7 +446,7 @@ export function createSocialService(db) {
     stmts.pvpOpp.run(oppRating, opp.pvp_wins + (win ? 0 : 1), opp.pvp_losses + (win ? 1 : 0), opp.id);
     stmts.logBattle.run(me.id, opp.id, win ? me.id : opp.id, Date.now());
     return sendJSON(res, 200, {
-      ok: true, delta: dMe, rating: myRating,
+      ok: true, win: !!win, delta: dMe, rating: myRating,
       wins: me.pvp_wins + (win ? 1 : 0), losses: me.pvp_losses + (win ? 0 : 1),
       used: used + 1, cap, oppDelta: dOpp, oppRating,
     });
@@ -445,18 +479,26 @@ export function createSocialService(db) {
   }
 
   function bossHit(req, res, ctx) {
-    const damage = Math.floor(Number(ctx.body && ctx.body.damage));
     const me = stmts.byId.get(ctx.user.id);
     if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
-    if (!Number.isFinite(damage) || damage <= 0) return sendJSON(res, 400, { error: '伤害无效' });
     const today = dayStr();
     const mine = stmts.myHits.get(today, ctx.user.id) || { damage: 0, hits: 0 };
     if (mine.hits >= BOSS_DAILY_HITS) {
       return sendJSON(res, 429, { error: '今日妖王已打过 30 场，歇息吧' });
     }
-    // 量级钳制：单场伤害不超过战力 × 300（120 回合理论上限再留余量）
-    const clamped = Math.min(damage, Math.max(1000, me.power_score * 300));
     const boss = ensureBoss(today);
+    // 伤害由服务端复算（2026-10-31）：我的 PvP 快照 vs 妖王（血池随 maxHp 伸缩），
+    // 客户端上报的 damage 不再采信——改快照/改内存刷伤害排名从此要过快照钳制
+    let snap;
+    try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { snap = null; }
+    if (!snap || !Number.isFinite(Number(snap.atk)) || Number(snap.atk) <= 0 ||
+      !Number.isFinite(Number(snap.hp)) || Number(snap.hp) <= 0) {
+      return sendJSON(res, 400, { error: '战档尚未同步，请稍后再战' });
+    }
+    const dealt = simulateBattle(snap, bossEnemyOf(boss.max_hp)).dealt;
+    // 量级钳制兜底：单场伤害不超过战力 × 300（120 回合理论上限再留余量）；
+    // 1e15 硬顶防超 2^53 的伤害值进 world_boss_hits（node:sqlite 读回会 RangeError 砖全服面板）
+    const clamped = Math.min(dealt, 1e15, Math.max(1000, me.power_score * 300));
     stmts.hitBoss.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null, boss.hp - clamped <= 0 ? Date.now() : null, today);
     stmts.upsertHit.run(today, ctx.user.id, me.display_name || me.username, clamped);
     const after = stmts.bossOfDay.get(today);
@@ -499,6 +541,7 @@ export function createSocialService(db) {
     const members = stmts.guildMembers.all(guildId).map((m) => ({
       id: m.user_id, name: m.name, power: m.power_score,
       role: m.role, joinedAt: m.joined_at, contribution: m.contribution || 0,
+      me: m.user_id === userId,
     }));
     const today = dayStr();
     // 盟任务：进度 + 我今日是否已领
@@ -518,12 +561,22 @@ export function createSocialService(db) {
       return { id: it.id, name: it.name, cost: it.cost, times: it.times, bought: row ? row.times : 0 };
     });
     const myContribRow = stmts.myContribution.get(guildId, userId);
+    // 同门互助：我今日是否已传功/赠礼，及是否有待领的传功/赠礼
+    const aidRow = stmts.aidMe.get(guildId, userId) || {};
+    const aidToday = aidRow.aid_day === today;
     return {
       id: g.id, name: g.name, notice: g.notice, fund: g.fund,
       level: guildLevel(g.fund), levelFund: GUILD_LEVEL_FUND, cap: GUILD_LEVEL_CAP,
       isLeader: g.leader_id === userId,
       myContribution: myContribRow ? myContribRow.contribution : 0,
       tasks, shop,
+      aid: {
+        skillGiven: aidToday && !!aidRow.aid_skill_to,
+        giftGiven: aidToday && !!aidRow.aid_gift_to,
+        from: (aidRow.aid_from_day === today && aidRow.aid_from_type)
+          ? { type: aidRow.aid_from_type, name: aidRow.aid_from_name }
+          : null,
+      },
       boss: {
         day: today, name: boss.name, hp: boss.hp, maxHp: boss.max_hp,
         defeated: boss.hp <= 0,
@@ -560,6 +613,10 @@ export function createSocialService(db) {
     }
     if (stmts.guildByName.get(name.toLowerCase())) {
       return sendJSON(res, 409, { error: '此盟名已被占用' });
+    }
+    // 立盟余额校验 + 原子扣款（2026-10-31）：账本灵石不足 5 万直接拒绝
+    if (!spendLedger(ctx.user.id, GUILD_CREATE_COST)) {
+      return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_COST + ' 灵石' });
     }
     const now = Date.now();
     let guildId;
@@ -635,6 +692,8 @@ export function createSocialService(db) {
     const row = stmts.myGuildRow.get(ctx.user.id);
     if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
     if (!Number.isFinite(amount) || amount <= 0) return sendJSON(res, 400, { error: '捐献数额无效' });
+    // 余额校验 + 原子扣款（2026-10-31）：堵「零灵石空手刷盟基金/贡献」——账本里没有的灵石捐不出去。
+    // 扣款放在日限额裁剪之后：客户端扣的正是返回的 accepted，两边口径一致
     const today = dayStr();
     const cur = stmts.donateRow.get(row.id, ctx.user.id, today);
     const given = cur ? cur.amount : 0;
@@ -642,6 +701,9 @@ export function createSocialService(db) {
       return sendJSON(res, 429, { error: '今日捐献已到上限（10 万灵石）' });
     }
     const accepted = Math.min(amount, DONATE_DAILY_CAP - given);
+    if (!spendLedger(ctx.user.id, accepted)) {
+      return sendJSON(res, 400, { error: '灵石余额不足' });
+    }
     stmts.donateUpsert.run(row.id, ctx.user.id, today, accepted);
     stmts.addFund.run(accepted, row.id);
     // 捐献产出贡献：每 2000 灵石 +1
@@ -677,21 +739,70 @@ export function createSocialService(db) {
     });
   }
 
-  // 盟主妖王：与世界妖王同款钳制，额外产贡献
+  // 同门互助（2026-10-31）：每日可向 1 位盟友传功、赠礼各一次，双方受益。
+  // 货币归存档管：服务端只记权益（发起记录 + 受赠来源），奖励由客户端结算发放。
+  function guildAid(req, res, ctx) {
+    const type = ctx.body?.type === 'gift' ? 'gift' : ctx.body?.type === 'skill' ? 'skill' : '';
+    const targetId = Math.floor(Number(ctx.body?.targetId));
+    const row = stmts.myGuildRow.get(ctx.user.id);
+    if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
+    if (!type) return sendJSON(res, 400, { error: '互助类型无效' });
+    if (!targetId || targetId === ctx.user.id) return sendJSON(res, 400, { error: '请选择一位同门' });
+    const target = stmts.myGuildRow.get(targetId);
+    if (!target || target.id !== row.id) return sendJSON(res, 400, { error: '对方不在本盟' });
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
+    const today = dayStr();
+    const aidRow = stmts.aidMe.get(row.id, ctx.user.id) || {};
+    const aidToday = aidRow.aid_day === today;
+    const givenCol = type === 'skill' ? 'aid_skill_to' : 'aid_gift_to';
+    if (aidToday && aidRow[givenCol]) {
+      return sendJSON(res, 429, { error: type === 'skill' ? '今日已传过功' : '今日已赠过礼' });
+    }
+    // 记发起：aid_day 供两类共用（每次写入带上另一类当天已有值，避免互相覆盖清掉）
+    const skillTo = type === 'skill' ? targetId : (aidToday ? aidRow.aid_skill_to : null);
+    const giftTo = type === 'gift' ? targetId : (aidToday ? aidRow.aid_gift_to : null);
+    stmts.aidSetGive.run(today, skillTo, giftTo, row.id, ctx.user.id);
+    // 记受赠（对方今日来源以最后一次为准，领取即清）
+    stmts.aidSetFrom.run(type, me.display_name || me.username, today, row.id, targetId);
+    return sendJSON(res, 200, { ok: true, guild: guildPayload(row.id, ctx.user.id) });
+  }
+
+  function guildAidCollect(req, res, ctx) {
+    const row = stmts.myGuildRow.get(ctx.user.id);
+    if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
+    const today = dayStr();
+    const aidRow = stmts.aidMe.get(row.id, ctx.user.id);
+    if (!aidRow || aidRow.aid_from_day !== today || !aidRow.aid_from_type) {
+      return sendJSON(res, 404, { error: '今日没有待领的互助' });
+    }
+    const type = aidRow.aid_from_type;
+    const name = aidRow.aid_from_name;
+    stmts.aidClearFrom.run(row.id, ctx.user.id);
+    return sendJSON(res, 200, { ok: true, type, name });
+  }
+
+  // 盟主妖王：与世界妖王同款服务端复算伤害，额外产贡献
   function guildBossHit(req, res, ctx) {
-    const damage = Math.floor(Number(ctx.body?.damage));
     const row = stmts.myGuildRow.get(ctx.user.id);
     if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
     const me = stmts.byId.get(ctx.user.id);
     if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
-    if (!Number.isFinite(damage) || damage <= 0) return sendJSON(res, 400, { error: '伤害无效' });
     const today = dayStr();
     const mine = stmts.gbossMyHits.get(row.id, ctx.user.id, today) || { damage: 0, hits: 0 };
     if (mine.hits >= GBOSS_DAILY_HITS) {
       return sendJSON(res, 429, { error: '今日盟妖王已打过 5 场，歇息吧' });
     }
     const boss = ensureGuildBoss(row.id, guildLevel(row.fund), today);
-    const clamped = Math.min(damage, Math.max(1000, me.power_score * 300));
+    // 伤害由服务端复算（2026-10-31），与世界妖王同口径（含 1e15 硬顶防砖库）
+    let snap;
+    try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { snap = null; }
+    if (!snap || !Number.isFinite(Number(snap.atk)) || Number(snap.atk) <= 0 ||
+      !Number.isFinite(Number(snap.hp)) || Number(snap.hp) <= 0) {
+      return sendJSON(res, 400, { error: '战档尚未同步，请稍后再战' });
+    }
+    const dealt = simulateBattle(snap, bossEnemyOf(boss.max_hp)).dealt;
+    const clamped = Math.min(dealt, 1e15, Math.max(1000, me.power_score * 300));
     stmts.gbossHit.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null,
       boss.hp - clamped <= 0 ? Date.now() : null, Date.now(), row.id);
     stmts.gbossHitUp.run(row.id, ctx.user.id, today, me.display_name || me.username, clamped);
@@ -793,6 +904,8 @@ export function createSocialService(db) {
       case '/api/guild/task/claim': return write ? (guildTaskClaim(req, res, ctx), true) : false;
       case '/api/guild/boss/hit': return write ? (guildBossHit(req, res, ctx), true) : false;
       case '/api/guild/shop/buy': return write ? (guildShopBuy(req, res, ctx), true) : false;
+      case '/api/guild/aid': return write ? (guildAid(req, res, ctx), true) : false;
+      case '/api/guild/aid/collect': return write ? (guildAidCollect(req, res, ctx), true) : false;
       case '/api/redeem':      return write ? (redeem(req, res, ctx), true) : false;
       default:                 return false;
     }

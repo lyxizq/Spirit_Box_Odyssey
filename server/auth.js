@@ -83,7 +83,7 @@ export function createAuthService(db) {
     insertSession: db.prepare(
       'INSERT INTO sessions (token_hash, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)'),
     sessionByHash: db.prepare(
-      `SELECT s.token_hash, s.expires_at, s.user_id, u.username, u.status, u.power_score
+      `SELECT s.token_hash, s.expires_at, s.user_id, u.username, u.status, u.power_score, u.created_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`),
     renewSession: db.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?'),
     delSession: db.prepare('DELETE FROM sessions WHERE token_hash = ?'),
@@ -122,7 +122,7 @@ export function createAuthService(db) {
     if (row.expires_at - now < SESSION_RENEW) {
       stmts.renewSession.run(now + SESSION_TTL, row.token_hash);
     }
-    return { id: row.user_id, username: row.username, powerScore: row.power_score };
+    return { id: row.user_id, username: row.username, powerScore: row.power_score, createdAt: row.created_at };
   }
 
   function parseCookieHeader(header) {

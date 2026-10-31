@@ -115,7 +115,7 @@ docker run -d --name lingxia --restart unless-stopped \
 
 ```bash
 curl -I http://127.0.0.1:8080/          # 期望 302 → /login.html
-curl http://127.0.0.1:8080/api/version  # 期望 {"version":"1.0.0"}
+curl http://127.0.0.1:8080/api/version  # 期望返回当前 package.json 的版本号，如 {"version":"1.0.1"}
 ls data/                                # 期望出现 game.db（容器写入宿主机卷）
 ```
 

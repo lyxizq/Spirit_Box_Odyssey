@@ -86,5 +86,11 @@
     submitBtn.textContent = mode === 'register' ? '开宗立派' : '进入修行';
   });
 
+  // 断服满 2 分钟从游戏页强制跳回（?down=1）：卡顶挂维护横幅
+  if (new URLSearchParams(location.search).get('down') === '1') {
+    var maint = $('maintBanner');
+    if (maint) maint.classList.remove('hidden');
+  }
+
   userInput.focus();
 })();

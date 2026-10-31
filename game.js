@@ -283,7 +283,6 @@
   ];
   const AFFIX_COUNT = [0, 0, 0, 1, 2, 3];               // 各品质词条条数：地1 / 天2 / 仙3
   const AFFIX_QMULT = [0.5, 0.6, 0.75, 0.9, 1.1, 1.35]; // 词条数值幅度随品质放大
-  const MAX_LOCK = 1;                                   // 洗练最多锁定 1 条
 
   const GEM_TIERS = [
     { name: '下品', dust: 20 },
@@ -311,6 +310,13 @@
     { id: 'rat', name: '灵瞳鼠', icon: '鼠', stat: 'crit', per: 0.004, cost: 2, desc: '暴击' },
     { id: 'pixiu', name: '招财貔貅', icon: '貔', stat: 'gain', per: 0.03, cost: 2, desc: '灵石收益' },
   ];
+  // 灵宠图标（SVG，currentColor 随 .pet-icon 金色；缺省回退 p.icon 文字）
+  const PET_ICONS = {
+    fox: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 3l4.6 2.6C10 5.2 11 5 12 5s2 .2 3.4.6L20 3l-1.4 4.8c.9 1.3 1.4 2.8 1.4 4.4 0 4.6-3.6 7.8-8 7.8s-8-3.2-8-7.8c0-1.6.5-3.1 1.4-4.4L4 3zm3.2 9.2a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm9.6 0a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 15.2c-1.2 0-2.2.6-2.2 1.2s1 .9 2.2.9 2.2-.3 2.2-.9-1-1.2-2.2-1.2z" fill-rule="evenodd"/></svg>',
+    turtle: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4.5 12a7.5 6.5 0 0 1 15 0v2h-15v-2z"/><path fill="currentColor" d="M2.5 14.5h3v3.5h-3zM18.5 14.5h3v3.5h-3zM7.5 16.5h3V20h-3zM13.5 16.5h3V20h-3z"/><circle fill="currentColor" cx="21" cy="12.5" r="2"/></svg>',
+    rat: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 15.5c0-4.4 4.1-7.5 8.5-7.5 2.6 0 4.8 1 6.3 2.7.9-.5 2-.8 3.2-.6-.6 1-1.5 1.8-2.6 2.2.4.9.6 1.9.6 3.2h-16zm9.9-6.3a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm1.6-1.7a3 3 0 1 1 0-4.3 3 3 0 0 1 0 4.3z"/></svg>',
+    pixiu: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3.5l2.6 2.6h3.2l-1.2 3.4 1.9 2.7c.1 4.9-3.4 8.8-6.5 8.8s-6.6-3.9-6.5-8.8l1.9-2.7-1.2-3.4h3.2L12 3.5zm-3.5 8.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z" fill-rule="evenodd"/></svg>',
+  };
   const petFeedCost = (lv) => Math.floor(200 * Math.pow(1.6, lv));
 
   const CAVE = {
@@ -318,23 +324,43 @@
     garden: { name: '药园', icon: '药', base: 800, growth: 1.75, max: 200, desc: '开箱暴击率 +0.4% / 级' },
     library: { name: '藏经阁', icon: '书', base: 1200, growth: 1.8, max: 200, desc: '修为收益 +10% / 级' },
   };
+  // 洞府建筑图标（SVG，currentColor 随 .cave-icon 金色；缺省回退 def.icon 文字）
+  const CAVE_ICONS = {
+    array: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l6 10.5H6z"/><path d="M12 20.5L6 10h12z"/></svg>',
+    garden: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20 4C11 4 5 9.5 5 16.5c0 1.9.8 3.5 1.5 4.5.8-5 4-10 9.5-13-4.5 4-7.5 9-8 13 .9.6 2 1 3.5 1C18 22 21 14 20 4z"/></svg>',
+    library: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 2h11a1 1 0 0 1 1 1v17a1 1 0 0 1-1 1H7a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3zm0 15a1.5 1.5 0 0 0 0 3h11v-3H7z"/></svg>',
+  };
+  // 丹药图标（SVG）
+  const ELIXIR_ICONS = {
+    atk: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="currentColor"><g id="elixirSword"><path d="M3 3l3.2.4L14 11.2l-2.8 2.8L3.4 6.2 3 3z"/><path d="M9.6 13.6l4-4 1.9 1.9-4 4-1.9-1.9z"/><path d="M13.8 15.8l1.5-1.5 4.9 4.9-1.5 1.5-4.9-4.9z"/></g><use href="#elixirSword" transform="translate(24 0) scale(-1 1)"/></g></svg>',
+    def: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2l8 3.2V11c0 5.2-3.4 9.4-8 11-4.6-1.6-8-5.8-8-11V5.2L12 2z"/></svg>',
+    gain: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM9.5 9.5h5v5h-5v-5z"/></svg>',
+  };
   const caveCost = (key) => Math.floor(CAVE[key].base * Math.pow(CAVE[key].growth, state.cave[key]));
 
+  // 旧日常数值放大（2026-10-30）：日活大盘子扩到 +5000 万~8000 万灵石/日（约翻倍），
+  // 每日任务/签到/试炼/BossRush 灵石同批 ×1000；碎屑稀缺性保留不动
   const DAILY_TASKS = [
-    { id: 'opens', name: '开箱 200 次', target: 200, reward: { stones: 3000 } },
-    { id: 'wins', name: '秘境获胜 15 场', target: 15, reward: { stones: 3000, dust: 20 } },
-    { id: 'forge', name: '工坊操作 5 次', target: 5, reward: { stones: 3000, dust: 30 } },
+    { id: 'opens', name: '开箱 200 次', target: 200, reward: { stones: 3e6 } },
+    { id: 'wins', name: '秘境获胜 15 场', target: 15, reward: { stones: 3e6, dust: 20 } },
+    { id: 'forge', name: '工坊操作 5 次', target: 5, reward: { stones: 3e6, dust: 30 } },
   ];
-  const DAILY_ALL_BONUS = { stones: 6000, dust: 50 }; // 三项全部领取的额外奖励
+  const DAILY_ALL_BONUS = { stones: 6e6, dust: 50 }; // 三项全部领取的额外奖励
   const SIGN_REWARDS = [
-    { stones: 1000, text: '1000 灵石' },
-    { stones: 2000, text: '2000 灵石' },
+    { stones: 1e6, text: '100 万灵石' },
+    { stones: 2e6, text: '200 万灵石' },
     { dust: 30, text: '30 碎屑' },
-    { stones: 4000, text: '4000 灵石' },
-    { stones: 6000, text: '6000 灵石' },
+    { stones: 4e6, text: '400 万灵石' },
+    { stones: 6e6, text: '600 万灵石' },
     { dust: 60, text: '60 碎屑' },
-    { stones: 12000, dust: 100, text: '12000 灵石 + 100 碎屑' },
+    { stones: 1.2e7, dust: 100, text: '1200 万灵石 + 100 碎屑' },
   ];
+  // 赌狗签到：押上当日普通签到奖励掷倍率——49% 狂赚 2~5 倍 / 10% 保本 ×1 /
+  // 20% 空手 / 21% 翻车倒扣 1~3 倍。倒扣直接减余额：灵石可负债（负到赚回来为止，
+  // 不吃增益、不动 totalStones），碎屑倒扣以 0 为底；果报双掷取优/劣（与赌石同口径）
+  const SIGN_GAMBLE = { pBig: 49, pKeep: 10, pZero: 20, bigMin: 2, bigMax: 5, bustMin: 1, bustMax: 3 };
+  const SIGN_LOG_MAX = 30;   // 签到流水保留条数（新条目在前）
+  const SIGN_LOG_SHOW = 7;   // 战绩面板展示条数
 
   function maxItemLv(s) {
     let m = 0;
@@ -371,7 +397,7 @@
     { id: 'open10w', name: '开匣传奇', desc: '累计开箱 100000 次', cur: (s) => s.opens, target: 100000, stones: 200000, title: '开匣传奇' },
     { id: 'dust1k', name: '碎屑成山', desc: '累计获得 1000 碎屑', cur: (s) => s.dustTotal || 0, target: 1000, stones: 20000 },
     { id: 'petMax', name: '心意相通', desc: '任一灵宠亲密度达到 10', cur: (s) => Math.max(0, ...Object.values(s.pets || {})), target: 10, stones: 30000 },
-    { id: 'petAll', name: '四灵齐全', desc: '招募全部 4 只灵宠', cur: (s) => Object.keys(s.pets).length, target: 4, stones: 50000, title: '驭灵师' },
+    { id: 'petAll', name: '四灵齐全', desc: '招募全部 4 只灵宠', cur: (s) => Object.keys(s.pets || {}).length, target: 4, stones: 50000, title: '驭灵师' },
     { id: 'tokenMax', name: '信物圆满', desc: '任一灵宠信物达到 10 级', cur: (s) => Math.max(0, ...Object.values(s.petTokens || {})), target: 10, stones: 40000 },
     { id: 'gongfaMax', name: '功法通玄', desc: '任一功法达到 5 级', cur: (s) => Math.max(s.gongfa.atk, s.gongfa.hp, s.gongfa.hui), target: 5, stones: 50000, title: '功法宗师' },
     { id: 'immortal5', name: '仙界大能', desc: '仙位达到 5', cur: (s) => s.immortal, target: 5, stones: 500000, title: '仙界大能' },
@@ -531,13 +557,131 @@
   const WEEKLY_ALL_BONUS = { stones: 2000000, dust: 10000 };
 
   const SIGN_MILESTONES = {
-    30: { stones: 20000, dust: 100, text: '20000 灵石 + 100 碎屑' },
-    100: { stones: 100000, dust: 500, tickets: 2, text: '100000 灵石 + 500 碎屑 + 2 招募券' },
-    365: { stones: 1000000, dust: 2000, tickets: 7, text: '100 万灵石 + 2000 碎屑 + 7 招募券' },
-    1000: { stones: 10000000, dust: 10000, tickets: 30, text: '1000 万灵石 + 10000 碎屑 + 30 招募券' },
+    30: { stones: 2e7, dust: 100, text: '2000 万灵石 + 100 碎屑' },
+    100: { stones: 1e8, dust: 500, tickets: 2, text: '1 亿灵石 + 500 碎屑 + 2 招募券' },
+    365: { stones: 1e9, dust: 2000, tickets: 7, text: '10 亿灵石 + 2000 碎屑 + 7 招募券' },
+    1000: { stones: 1e10, dust: 10000, tickets: 30, text: '100 亿灵石 + 10000 碎屑 + 30 招募券' },
   };
 
+  /* ---------------- 第九批：灵潮 / 朝贺 / 悬赏改档 / 问答 / 异象 / 灵气 / 占卜 / 同门互助 ---------------- */
+
+  // 灵潮：每日两窗（12–14 / 20–22），窗口内开箱与秘境产出 ×2，各可领一枚灵潮符
+  const TIDE_WINDOWS = [{ s: 12, e: 14 }, { s: 20, e: 22 }];
+  const TIDE_MULT = 2;
+  const TIDE_CLAIM = 4e6;             // 400 万灵石/符
+
+  // 月度朝贺：与签到联动记本月到勤日，里程碑 10/20/26 天；缺勤次日可花灵石补签（每月 3 次）
+  const MONTH_MILESTONES = [
+    { n: 10, reward: { dust: 300 }, text: '碎屑 ×300（可合成中品宝石）' },
+    { n: 20, reward: { boxTian: 1 }, text: '天品装备箱 ×1' },
+    { n: 26, reward: { boxXian: 1 }, text: '仙品装备箱 ×1' },
+  ];
+  const MONTH_MAKEUP_COST = 5e5;      // 补签单价（灵石）
+  const MONTH_MAKEUP_MAX = 3;
+
+  // 悬赏令改档：每日 4 单（白/绿/蓝/紫 各一），可刷新 2 次；紫悬赏 5% 掉天品装备
+  const BOUNTY_TIERS = [
+    { key: 'bai', name: '白', color: '#9aa4b2', stones: 1.5e6, dust: 20 },
+    { key: 'lv',  name: '绿', color: '#4ade80', stones: 3e6,  dust: 35 },
+    { key: 'lan', name: '蓝', color: '#60a5fa', stones: 6e6,  dust: 50 },
+    { key: 'zi',  name: '紫', color: '#c084fc', stones: 1.2e7, dust: 80, drop: 0.05 },
+  ];
+  const BOUNTY_SLOT_N = 4;
+  const BOUNTY_REROLL_N = 2;
+  const BOUNTY_REROLL_COST = 5e5;     // 50 万/次
+  const BOUNTY_ALL_CLEAR = { stones: 5e6 };  // 四单全清额外奖励
+
+  // 仙道问答：每日 10 题（按日期定题序），答对 60 万灵石 + 境界缩放修为；
+  // 全对加奖 150 万 + 30 碎屑；连续 7 天全对得天品自选箱
+  const QUIZ_N = 10;
+  const QUIZ_PER_STONES = 6e5;
+  const QUIZ_PER_EXP_K = 150;
+  const QUIZ_ALL_BONUS = { stones: 1.5e6, dust: 30 };
+  const QUIZ_STREAK_N = 7;
+
+  // 异象秘境：每日按日期种子取 2 条词缀合成挑战 boss，每日一次；
+  // 首通 1500 万灵石 + 100 碎屑 + 修为；按余血评级 S/A/B，S 级 5% 掉仙品；
+  // 当月每日皆 S → 月末保底仙品一件
+  const ANOMALY_FIRST = { stones: 1.5e7, dust: 100, expK: 600 };
+  const ANOMALY_S_DROP = 0.05;
+  const ANOMALY_AFFIXES = [
+    { id: 'xueyue', name: '血月', desc: '敌攻 +50% · 灵石 ×1.5', atk: 1.5, stone: 1.5 },
+    { id: 'tiemu',  name: '铁幕', desc: '敌防 +100%', def: 2 },
+    { id: 'juling', name: '巨灵', desc: '敌血 +80%', hp: 1.8 },
+    { id: 'xunying', name: '迅影', desc: '敌攻 +30% · 敌防 +30%', atk: 1.3, def: 1.3 },
+    { id: 'kuling', name: '枯灵', desc: '敌血 +40% · 敌攻 +20%', hp: 1.4, atk: 1.2 },
+    { id: 'tanlang', name: '贪狼', desc: '灵石 ×2 · 敌攻 +70%', atk: 1.7, stone: 2 },
+    { id: 'cangfeng', name: '藏锋', desc: '敌防 +60% · 碎屑 ×2', def: 1.6, dust: 2 },
+    { id: 'tianfa', name: '天罚', desc: '敌全属性 +40% · 修为 ×1.5', hp: 1.4, atk: 1.4, def: 1.4, exp: 1.5 },
+  ];
+
+  // 灵气盈满：页面在线每满 60 分钟聚 1 格灵气，至多 3 格，逐格领取
+  const VIGOR_CELL_MIN = 60;
+  const VIGOR_CELL_N = 3;
+  const VIGOR_REWARD = { stones: 2e6, dust: 15 };
+
+  // 每日占卜：免费一签定当日运势（日期种子，不可重摇）；上上签附当日产出 +5%
+  const FORTUNE_SIGNS = [
+    { name: '上上签', w: 10, stones: 3e6, prod: 0.05, cls: 'g-item',
+      text: '紫气东来，今日百事皆宜，灵机充盈（产出 +5%）。' },
+    { name: '上吉签', w: 20, stones: 1.5e6, cls: 'g-stone',
+      text: '吉人天相，财帛顺遂，宜开箱历练。' },
+    { name: '中平签', w: 40, stones: 1e6, cls: 'g-stone',
+      text: '平顺一日，不进不退，稳字当头。' },
+    { name: '小凶签', w: 30, dust: 20, cls: 'g-dust',
+      text: '诸事不宜，闭关养性——道友赠碎屑以慰惊惶。' },
+  ];
+
+  // 同门互助：每日可向 1 位盟友传功、赠礼各一次，双方受益（服务端记账，奖励客户端发）
+  const AID_SKILL = { stones: 3e6, expK: 300 };  // 传功双方各得
+  const AID_GIFT = { dust: 20 };                 // 赠礼双方各得
+
+  // 仙道问答题库：四选一，idx 为正确项下标（内容取自本作境界 / 品质 / 玩法 / 剧情）
+  const QUIZ_BANK = [
+    { q: '修行十境中，仅次于「仙人」的境界是？', a: ['大乘', '渡劫', '合体', '炼虚'], idx: 1 },
+    { q: '装备品质从低到高，第三档是？', a: ['玄品', '地品', '天品', '灵品'], idx: 0 },
+    { q: '仙品装备最多可有多少条词条？', a: ['1 条', '2 条', '3 条', '5 条'], idx: 2 },
+    { q: '洗练最多可以锁定几条词条？', a: ['1 条', '2 条', '3 条', '不限'], idx: 0 },
+    { q: '秘境探幽一共有多少层？', a: ['100 层', '150 层', '200 层', '365 层'], idx: 2 },
+    { q: '探幽神物「不灭」的效果是？', a: ['攻击翻倍', '战败复活再战一次', '吸血 +50%', '跳过一层'], idx: 1 },
+    { q: '藏宝图需要几片残片合成？', a: ['3 片', '5 片', '8 片', '10 片'], idx: 1 },
+    { q: '钓鱼每日默认可领多少枚鱼饵？', a: ['3 枚', '5 枚', '8 枚', '10 枚'], idx: 1 },
+    { q: '洞府「藏经阁」升级带来的加成是？', a: ['灵石收益', '开箱暴击率', '修为收益', '防御'], idx: 2 },
+    { q: '灵宠「招财貔貅」强化的属性是？', a: ['攻击', '生命', '暴击', '灵石收益'], idx: 3 },
+    { q: '五行的相克关系中，火克？', a: ['金', '木', '土', '水'], idx: 0 },
+    { q: '丹药「聚财丹」的效果是？', a: ['攻击 +15%', '防御 +20%', '灵石收益 +30%', '修为 +30%'], idx: 2 },
+    { q: '本作主角随身的神秘宝匣名为？', a: ['灵匣', '天匣', '仙匣', '玄匣'], idx: 0 },
+    { q: '故事中为「我」留下登阶名额的道侣是？', a: ['苏挽月', '林青璃', '云清瑶', '白芷若'], idx: 0 },
+    { q: '九霄阶的尽头镇守着哪位大能留下的试炼？', a: ['九霄雷帝', '玄天老祖', '幽冥教主', '太虚剑君'], idx: 0 },
+    { q: '苏挽月是在何处被幽冥教伏杀掳走的？', a: ['雷池祭礼', '宗门大比', '秘境深处', '仙盟大典'], idx: 0 },
+    { q: '登顶九霄阶后，最后接待「我」的势力是？', a: ['玄天宗', '幽冥教', '天机阁', '万宝楼'], idx: 0 },
+    { q: '「入仙界」需要消耗灵石并获得什么？', a: ['仙位', '仙器', '仙丹', '仙缘'], idx: 0 },
+    { q: '周常任务「探幽累计通过 12 层」奖励是？', a: ['灵石 + 碎屑', '招募券', '器魂', '洗练券'], idx: 0 },
+    { q: '黑市货单每日几点刷新？', a: ['0 点', '6 点', '12 点', '18 点'], idx: 0 },
+    { q: '工坊洗练花费的货币是？', a: ['灵石', '碎屑', '器魂', '贡献'], idx: 1 },
+    { q: '分解装备主要获得什么？', a: ['灵石', '碎屑', '器魂', '修为'], idx: 1 },
+    { q: '器魂「炼器」定向打造哪个品质的装备？', a: ['地品', '天品', '仙品', '玄品'], idx: 1 },
+    { q: '宝石镶嵌的部位数量随什么变化？', a: ['装备品质', '角色境界', '装备强化等级', '战力'], idx: 0 },
+    { q: '成就「万匣归一」需要累计开箱多少次？', a: ['1000 次', '5000 次', '10000 次', '20000 次'], idx: 2 },
+    { q: '挑战修行「苦行」的禁忌是？', a: ['服用丹药', '开箱', '战斗', '购物'], idx: 0 },
+    { q: '试炼「无息试炼」的通关条件是？', a: ['不靠吸血击败塔层守卫', '5 回合取胜', '承伤不超 30%', '无损取胜'], idx: 0 },
+    { q: '首领连战（BossRush）每日可挑战几次？', a: ['1 次', '3 次', '5 次', '不限'], idx: 0 },
+    { q: '离线挂机收益最多结算几个小时？', a: ['2 小时', '4 小时', '8 小时', '12 小时'], idx: 1 },
+    { q: '天梯（仙盟之外的论剑）按什么匹配对手？', a: ['评分就近', '战力随机', '境界相同', '等级就近'], idx: 0 },
+    { q: '盟主妖王每人每日可出手几场？', a: ['3 场', '5 场', '8 场', '10 场'], idx: 1 },
+    { q: '世界妖王「噬山」等名字属于哪类玩法？', a: ['全服共讨的世界 BOSS', '探幽守将', '试炼守卫', '心魔幻象'], idx: 0 },
+    { q: '心魔劫的触发与什么直接相关？', a: ['修为暴涨', '战力虚高', '灵石负债', '久不签到'], idx: 0 },
+    { q: '「陈列室」陈列的是什么？', a: ['套装装备', '灵宠', '丹药', '功法'], idx: 0 },
+    { q: '秘境图每次进入消耗什么？', a: ['行动力', '灵石', '碎屑', '体力'], idx: 0 },
+    { q: '灵田（灵圃）收获的两种资材是？', a: ['矿石与灵药', '灵石与碎屑', '灵石与修为', '碎屑与器魂'], idx: 0 },
+    { q: '道侣好感度提升的途径不包括？', a: ['赠礼', '同行历练', '闲聊', '切磋击败'], idx: 3 },
+    { q: '兑换码在何处输入？', a: ['天下 · 兑换', '日常 · 签到', '工坊', '洞府'], idx: 0 },
+    { q: '「赌狗签到」最低可能的结果是？', a: ['空手', '倒扣 1~3 倍', '正常奖励', '双倍奖励'], idx: 1 },
+    { q: '本作英文名是？', a: ['Spirit Box Odyssey', 'Xiuxian Legend', 'Ling Box Story', 'Cultivator Tale'], idx: 0 },
+  ];
+
   /* ---------------- 试炼 / 五行 / 丹药 / 功法 / 黑市 / 奇遇 ---------------- */
+
 
   // 五行相克：金克木、木克土、土克水、水克火、火克金
   const ELEMENTS = [
@@ -567,15 +711,15 @@
     { id: 'nols', name: '无息试炼', desc: '不靠吸血击败塔层守卫', enemy: 'tower', noLs: true },
     { id: 'wall', name: '铁壁试炼', desc: '承受不超最大生命 30% 取胜', enemy: 'stage' },
   ];
-  const TRIAL_REWARD = { stones: 8000, dust: 40 };
+  const TRIAL_REWARD = { stones: 8e6, dust: 40 };
 
   const BOSS_RUSH_LEVELS = [];
   for (let lv = 5; lv <= STAGE_MAX; lv += 5) BOSS_RUSH_LEVELS.push(lv);
   const BOSS_RUSH_GRADES = [
-    { max: 4, name: 'S', stones: 20000, dust: 100 },
-    { max: 7, name: 'A', stones: 12000, dust: 60 },
-    { max: 12, name: 'B', stones: 6000, dust: 40 },
-    { max: Infinity, name: 'C', stones: 3000, dust: 20 },
+    { max: 4, name: 'S', stones: 2e7, dust: 100 },
+    { max: 7, name: 'A', stones: 1.2e7, dust: 60 },
+    { max: 12, name: 'B', stones: 6e6, dust: 40 },
+    { max: Infinity, name: 'C', stones: 3e6, dust: 20 },
   ];
 
   const ELIXIRS = [
@@ -635,11 +779,11 @@
 
   const GAMBLE_COST = 2000;
   const GAMBLE_TABLE = [
-    { p: 40, type: 'none', text: '璞玉无瑕，只余石屑' },
-    { p: 33, type: 'dust', min: 20, max: 60, text: '碎石流光' },
-    { p: 15, type: 'stones', min: 3000, max: 6000, text: '玉髓天成' },
-    { p: 10, type: 'dust', min: 150, max: 260, text: '琼英满膛' },
-    { p: 2, type: 'item', text: '璞中藏珍！' },
+    { p: 62, type: 'none', text: '璞玉无瑕，只余石屑' },
+    { p: 18, type: 'dust', min: 20, max: 60, text: '碎石流光' },
+    { p: 10, type: 'stones', min: 3000, max: 6000, text: '玉髓天成' },
+    { p: 9, type: 'dust', min: 150, max: 260, text: '琼英满膛' },
+    { p: 1, type: 'item', text: '璞中藏珍！' },
   ];
 
   /* ---------------- 第七批：云游奇遇 / 藏宝图 / 钓鱼 / 内丹 / 采集 / 天象 ---------------- */
@@ -802,6 +946,8 @@
   const MAP_H = 8;
   const MAP_AP_DAY = 6;
   const MAP_AP_MAX = 12;
+  const MAP_BUY_MAX = 20;        // 每日加购次数上限
+  const MAP_BUY_COST = 10000;    // 加购单价（灵石）
 
   const ORDEALS = [
     { id: 'fanYi', name: '凡衣修行', desc: '不穿戴专属套装装备完成一次飞升', reward: '灵石收益永久 +10%', gain: 0.10 },
@@ -846,24 +992,40 @@
   const shichenNow = () => SHICHEN[Math.floor(((new Date().getHours() + 1) % 24) / 2)];
   const shichenIs = (key) => !!shichenNow()[key];
 
-  const BOUNTY_POOL = [
-    { id: 'el_huo', desc: '击败 20 只火行怪物', target: 20, reward: { stones: 15000, dust: 60 } },
-    { id: 'el_mu', desc: '击败 20 只木行怪物', target: 20, reward: { stones: 15000, dust: 60 } },
-    { id: 'el_shui', desc: '击败 20 只水行怪物', target: 20, reward: { stones: 15000, dust: 60 } },
-    { id: 'el_huo2', desc: '击败 20 只土行怪物', target: 20, reward: { stones: 15000, dust: 60 } },
-    { id: 'rogue', desc: '探幽累计通过 5 层', target: 5, reward: { stones: 20000, dust: 80 } },
-    { id: 'forge', desc: '工坊操作 3 次', target: 3, reward: { stones: 12000, dust: 50 } },
-    { id: 'salvage', desc: '手动分解 15 件装备', target: 15, reward: { stones: 8000, dust: 40 } },
-    { id: 'opens', desc: '开箱 300 次', target: 300, reward: { stones: 20000, dust: 60 } },
-    { id: 'wins', desc: '秘境获胜 30 场', target: 30, reward: { stones: 18000, dust: 70 } },
+  // 悬赏任务模板（2026-10-30 换档改造）：从旧 BOUNTY_POOL 迁移为按 metric 的模板池，
+  // 每日四单（白/绿/蓝/紫 各一）各抽一条模板，目标数按档位倍率缩放，奖励取档位基准
+  const BOUNTY_MISSIONS = [
+    { id: 'el_huo', desc: '击败 {t} 只火行怪物', target: 20 },
+    { id: 'el_mu', desc: '击败 {t} 只木行怪物', target: 20 },
+    { id: 'el_shui', desc: '击败 {t} 只水行怪物', target: 20 },
+    { id: 'el_tu', desc: '击败 {t} 只土行怪物', target: 20 },
+    { id: 'rogue', desc: '探幽累计通过 {t} 层', target: 5 },
+    { id: 'forge', desc: '工坊操作 {t} 次', target: 3 },
+    { id: 'salvage', desc: '手动分解 {t} 件装备', target: 15 },
+    { id: 'opens', desc: '开箱 {t} 次', target: 300 },
+    { id: 'wins', desc: '秘境获胜 {t} 场', target: 30 },
   ];
-  const BOUNTY_REROLL_COST = 2000;
+  // 各档目标倍率：白 1.0 / 绿 1.2 / 蓝 1.5 / 紫 1.8（向上取整）
+  const BOUNTY_TIER_SCALE = { bai: 1, lv: 1.2, lan: 1.5, zi: 1.8 };
 
   const DAO_NPCS = [
     { id: 'qing', name: '青璇', icon: '璇', desc: '结为道侣：灵石收益永久 +8%', lore: '青璇是药园的看守人，指尖总沾着晨露。她说灵石有味道，甜的那一颗要留给你。' },
     { id: 'bai', name: '白芷', icon: '芷', desc: '结为道侣：攻击永久 +5%', lore: '白芷的剑挂在洞府门口，三年来没出过鞘。她说等你打不过的那天，她再出。' },
     { id: 'shi', name: '石坚', icon: '石', desc: '结为道侣：生命永久 +6%', lore: '石坚话少，搬石头的时候更少。他说山是不会说话的道侣，而他愿意做你的。' },
   ];
+  // 道侣行头像：复用人物志 AI 立绘（assets/p-<id>.jpg），加载失败回退文字图标
+  const DAO_PORTRAIT = {
+    qing: 'assets/p-qingxuan.jpg',
+    bai: 'assets/p-baizhi.jpg',
+    shi: 'assets/p-shijian.jpg',
+  };
+  const daoAvatar = (id) => {
+    const img = DAO_PORTRAIT[id];
+    if (!img) return '';
+    const fallback = (DAO_NPCS.find((n) => n.id === id) || {}).icon || '';
+    return '<img class="dao-face" src="' + img + '" alt="" draggable="false" onerror="this.classList.add(\'dao-face-bad\')">' +
+      '<span class="dao-face-text">' + fallback + '</span>';
+  };
   const DAO_GIFTS = [
     { id: 'stones', name: '灵石礼', costLabel: '1000 灵石', aff: 2, stones: 1000 },
     { id: 'dust', name: '碎屑礼', costLabel: '50 碎屑', aff: 5, dust: 50 },
@@ -925,6 +1087,9 @@
     achievements: {},
     signInDays: 0,
     lastSignIn: '',
+    lastSignMode: '',
+    signLog: [],
+    signStats: { plays: 0, big: 0, keep: 0, zero: 0, bust: 0, bestMult: 0, worstCut: 0 },
     daily: { date: '', opens: 0, wins: 0, forge: 0, claimed: [] },
     weekly: { week: '', opens: 0, wins: 0, rogue: 0, claimed: [] },
     dustTotal: 0,
@@ -962,7 +1127,7 @@
     chapters: [],
     story: { cleared: [], met: [] },
     innerDemon: null,
-    bounty: { date: '', slots: [], rerolled: false },
+    bounty: { date: '', slots: [], rerolls: 0, allClaimed: false },
     talismans: 0,
     tribulation: { last: '', done: false },
     daoLv: { aff: {}, married: '' },
@@ -987,7 +1152,8 @@
     featureSeen: [],
     tutorialSeen: false,
     fontScale: 1,
-    theme: 'dark',
+    theme: 'light',
+    themeSet: false,
     bagTokens: 0,
     bagExtra: 0,
     power: 0,
@@ -1000,6 +1166,12 @@
     petCores: {},
     gather: { ore: 0, herb: 0, nodes: { ore: { lv: 0, until: 0 }, herb: { lv: 0, until: 0 } } },
     lastScene: '',
+    tide: { date: '', claimed: [false, false] },
+    month: { key: '', days: [], makeup: 0, claimed: [] },
+    quiz: { date: '', idx: 0, correct: 0, done: false, streak: 0 },
+    anomaly: { date: '', done: false, grade: '', sDays: [], bonusMonth: '' },
+    vigor: { date: '', minutes: 0, claimed: 0, lastMs: 0 },
+    fortune: { date: '', idx: -1, claimed: false },
   });
 
   let state = defaults();
@@ -1051,6 +1223,8 @@
 
   function persist() {
     try {
+      // 登出流程中不再落盘：导航触发 hidden/pagehide 会再走 save()，把刚清掉的档写回去
+      if (authSignedOut) return;
       // 同浏览器多标签：非持有页静默停写（跨设备互踢由服务端单会话保证）
       if (tabLockHeldByOther()) return;
       tabHeartbeat();
@@ -1085,6 +1259,8 @@
   let cloudLastPush = 0;
   let cloudTimer = 0;
   let cloudBusy = false;
+  let cloudWarnAt = 0;         // 上次「云端拒收」提示时间（节流，10 分钟一次）
+  let authSignedOut = false;   // 登出流程中：persist / 关页兜底全部停手（配合登出清本地档）
 
   // 统一带 401 处理的 API 调用：会话失效自动回登录页
   async function api(pathname, opts = {}) {
@@ -1171,6 +1347,19 @@
       if (res.ok) {
         cloudPending = null;
         cloudLastPush = Date.now();
+      } else if (res.status === 400 || res.status === 422) {
+        // 服务端校验拒收（量级/增速 400）：丢弃本份待推档避免 5 秒死循环重试，
+        // 节流提示一次；本地照常可玩，下次 persist 的自然重推即为重新同步。
+        // 429 / 5xx 等临时故障不走这里——保留 pending 由下方 5 秒重试兜底（复审 P2-6）
+        cloudPending = null;
+        let msg = '';
+        try { msg = (await res.json()).error || ''; } catch (e) { /* 忽略非 JSON 响应 */ }
+        if (Date.now() - cloudWarnAt > 600000) {
+          cloudWarnAt = Date.now();
+          const tip = msg || '云端存档被拒';
+          floatText('云端同步：' + tip, '#f87171');
+          pushLog('云端存档被拒：' + tip + '（导入旧档 / 换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
+        }
       }
     } catch (e) { /* 失败保留 pending，由下一次存档或关页兜底重试 */ }
     cloudBusy = false;
@@ -1181,6 +1370,7 @@
 
   // 关页兜底：sendBeacon 尽力推最后一帧（挂了也有 5 秒节流内的常规推送顶着）
   function cloudFlushNow() {
+    if (authSignedOut) return; // 登出后不再推已清档的会话
     if (!cloudOn || !cloudPending) return;
     try {
       if (navigator.sendBeacon) {
@@ -1198,6 +1388,7 @@
       const out = await worldFetch('/api/profile/name', { method: 'POST', body: JSON.stringify({ name }) });
       cloudUser = out.displayName;
       paintUserChip();
+      paintPlayerName(); // 主角名展示点（红尘录简介 / 战斗弹窗）随昵称即时刷新
       pushLog('江湖称呼已改为「' + out.displayName + '」', 'special');
       floatText('显示名已更新', '#facc15');
       input.value = '';
@@ -1207,15 +1398,14 @@
   }
 
   // 页脚版本号 + 服务器时间：来自 /api/version；时间按服务器时区走针（每秒）。
-  // 兼做断服探针：连续 2 次（约 2 分钟）拉取失败即在页顶挂「服务器暂不可用」横幅，
-  // 恢复后自动撤横幅、提示并立即补推待同步的云存档。
+  // 兼做断服探针：连续拉取失败满 2 分钟即强制跳回登录页（?down=1 由登录页挂「维护中」横幅），
+  // 不保留断服本地玩法；期间恢复连接则计时清零，无感续玩。
   (function serverFooter() {
     const verEl = $('gameVersion');
     const timeEl = $('serverTime');
     let offset = null; // 服务器 epoch − 本地 epoch
     let tzOff = 0;     // 服务器时区偏移（getTimezoneOffset 口径，UTC+8 为 -480）
-    let syncFails = 0;
-    let downShown = false;
+    let downSince = 0; // 首次拉取失败的时刻；距此刻满 2 分钟即跳登录页
     const p2 = (n) => String(n).padStart(2, '0');
     function paint() {
       if (!timeEl || offset === null) return;
@@ -1225,22 +1415,11 @@
       timeEl.title = '服务器日期 ' + d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) +
         '，签到 / 日常 / 竞技场等每日重置以此为准';
     }
-    function setDownBanner(down) {
-      if (down === downShown) return;
-      downShown = down;
-      const el = $('serverDownBanner');
-      if (el) el.classList.toggle('hidden', !down);
-      if (!down) {
-        floatText('服务器已恢复连接', '#4ade80');
-        flushCloud(); // 断服期间积压的待推存档立即补推（无积压时为空操作）
-      }
-    }
     async function sync() {
       try {
         const res = await fetch('/api/version', { credentials: 'same-origin' });
         if (!res.ok) throw new Error('bad status ' + res.status);
-        syncFails = 0;
-        setDownBanner(false);
+        downSince = 0;
         const body = await res.json();
         if (verEl && body && body.version) verEl.textContent = '版本 v' + body.version;
         if (body && typeof body.time === 'number') {
@@ -1249,8 +1428,9 @@
           paint();
         }
       } catch (e) {
-        syncFails++;
-        if (syncFails >= 2) setDownBanner(true);
+        const now = Date.now();
+        if (!downSince) downSince = now;
+        else if (now - downSince >= 120000) location.replace('/login.html?down=1');
       }
     }
     sync();
@@ -1350,6 +1530,15 @@
     });
   }
 
+  // 登出清备份（2026-10-31 复审）：备份不清会让下一账号被 recoverSaveIfNeeded 恢复出旧档串号
+  async function opfsClear() {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) return;
+      const dir = await navigator.storage.getDirectory();
+      await dir.removeEntry("save_bak.txt").catch(() => { /* 无备份时忽略 */ });
+    } catch (e) { /* 忽略 */ }
+  }
+
   // 主存档被外部清空 / 被过期云档覆盖时，从 OPFS 备份恢复（以 lastSeen 新者为准）
   function recoverSaveIfNeeded() {
     try {
@@ -1367,9 +1556,16 @@
           bakSeen = data.lastSeen || 0;
         } catch (e) { bootSettled = true; return; }
         if (bakSeen > mainSeen) {
+          const settledTo = Date.now(); // boot 首次离线结算已推进到的时刻（近似）
           localStorage.setItem(SAVE_KEY, bak);
           load();
-          if (Date.now() - (state.lastSeen || 0) > 60000) awardOffline();
+          // 补结算差额而非整段重结：boot 已按主档 lastSeen 结算过一次离线，
+          // 恢复档 lastSeen 更旧，重结会双份入账并被云端增速校验拒收（复审 P2-7）
+          const stale = state.lastSeen || 0;
+          if (settledTo - stale > 60000) {
+            state.lastSeen = stale;
+            awardOffline();
+          }
           render();
           paintBag(true);
           save();
@@ -1410,7 +1606,7 @@
       for (const s of SLOTS) {
         const it = state.equipped[s.key];
         state.equipped[s.key] =
-          (it && it.slot === s.key && isFinite(it.power) && SLOT_MAP[it.slot]) ? it : null;
+          (it && it.slot === s.key && isFinite(it.power) && RARITIES[it.r] && SLOT_MAP[it.slot]) ? it : null;
       }
 
       let seq = typeof state.itemSeq === 'number' && state.itemSeq > 0 ? state.itemSeq : 1;
@@ -1465,6 +1661,32 @@
       if (!isFinite(state.volume)) state.volume = 0.6;
       state.volume = Math.max(0, Math.min(1, Number(state.volume)));
       if (typeof state.lastSignIn !== 'string') state.lastSignIn = '';
+      if (!['', 'normal', 'gamble'].includes(state.lastSignMode)) state.lastSignMode = '';
+      // 签到流水：清非法条目、封顶保最新；x 为赌狗带符号倍率（普通签到无此字段）
+      if (!Array.isArray(state.signLog)) state.signLog = [];
+      state.signLog = state.signLog
+        .filter((e) => e && typeof e === 'object' && !Array.isArray(e) &&
+          typeof e.d === 'string' && (e.m === 'n' || e.m === 'g'))
+        .slice(0, SIGN_LOG_MAX)
+        .map((e) => ({
+          d: e.d.slice(0, 5),
+          m: e.m,
+          x: typeof e.x === 'number' && isFinite(e.x) ? Math.max(-9.9, Math.min(9.9, e.x)) : undefined,
+          s: fixInt(e.s, -1e12, 1e15),
+          u: fixInt(e.u, 0, 1e12),
+        }));
+      if (!state.signStats || typeof state.signStats !== 'object' || Array.isArray(state.signStats)) {
+        state.signStats = { plays: 0, big: 0, keep: 0, zero: 0, bust: 0, bestMult: 0, worstCut: 0 };
+      }
+      state.signStats = {
+        plays: fixInt(state.signStats.plays, 0, 1e9),
+        big: fixInt(state.signStats.big, 0, 1e9),
+        keep: fixInt(state.signStats.keep, 0, 1e9),
+        zero: fixInt(state.signStats.zero, 0, 1e9),
+        bust: fixInt(state.signStats.bust, 0, 1e9),
+        bestMult: fixInt(state.signStats.bestMult, 0, 99),
+        worstCut: fixInt(state.signStats.worstCut, 0, 1e15),
+      };
       if (!state.achievements || typeof state.achievements !== 'object' || Array.isArray(state.achievements)) {
         state.achievements = {};
       }
@@ -1606,8 +1828,10 @@
         state.elixir = { owned: {}, until: 0, id: '', crafting: null };
       }
       const ownedElixir = {};
+      const ownedRaw = (state.elixir.owned && typeof state.elixir.owned === 'object' &&
+        !Array.isArray(state.elixir.owned)) ? state.elixir.owned : {};
       for (const def of ELIXIRS) {
-        const n = fixInt(state.elixir.owned[def.id], 0, 99);
+        const n = fixInt(ownedRaw[def.id], 0, 99);
         if (n > 0) ownedElixir[def.id] = n;
       }
       const elixirMsMax = Math.max(...ELIXIRS.map((e) => e.ms));
@@ -1687,8 +1911,10 @@
       state.opens = fixInt(state.opens, 0, 1e15);
       if (!isFinite(state.totalStones) || state.totalStones < 0) state.totalStones = 0;
       state.totalStones = Math.min(state.totalStones, 1e18); //与服务端校验同口径的量级天花板
-      if (!isFinite(state.stones) || state.stones < 0) state.stones = 0;
-      if (state.stones > state.totalStones) state.stones = state.totalStones; // 现有灵石不可能超过历史总收益
+      if (!isFinite(state.stones)) state.stones = 0;
+      // 赌狗签到可倒扣负债：灵石允许为负（下限 -1e12，与服务端校验同口径），
+      // 但仍不可能超过历史总收益
+      state.stones = Math.max(-1e12, Math.min(state.stones, state.totalStones));
       state.ascensions = fixInt(state.ascensions, 0, 1e6);
       state.exp = fixInt(state.exp, 0, realmCostOf(REALM_COSTS.length - 1) * 10); // 修为只需覆盖最高突破门槛（含轮回系数）
       state.buffUntil = isFinite(state.buffUntil)
@@ -1728,6 +1954,68 @@
           : [],
       };
       state.souls = fixInt(state.souls, 0, 1e9);
+      // —— 第九批（灵潮 / 朝贺 / 问答 / 异象 / 灵气 / 占卜 / 互助）——
+      if (!state.tide || typeof state.tide !== 'object' || Array.isArray(state.tide)) {
+        state.tide = { date: '', claimed: [false, false] };
+      }
+      state.tide = {
+        date: typeof state.tide.date === 'string' ? state.tide.date : '',
+        claimed: Array.isArray(state.tide.claimed)
+          ? [0, 1].map((i) => !!state.tide.claimed[i])
+          : [false, false],
+      };
+      if (!state.month || typeof state.month !== 'object' || Array.isArray(state.month)) {
+        state.month = { key: '', days: [], makeup: 0, claimed: [] };
+      }
+      state.month = {
+        key: typeof state.month.key === 'string' ? state.month.key : '',
+        days: Array.isArray(state.month.days)
+          ? state.month.days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(-40)
+          : [],
+        makeup: fixInt(state.month.makeup, 0, MONTH_MAKEUP_MAX),
+        claimed: Array.isArray(state.month.claimed)
+          ? state.month.claimed.filter((n) => MONTH_MILESTONES.some((m) => m.n === n))
+          : [],
+      };
+      if (!state.quiz || typeof state.quiz !== 'object' || Array.isArray(state.quiz)) {
+        state.quiz = { date: '', idx: 0, correct: 0, done: false, streak: 0 };
+      }
+      state.quiz = {
+        date: typeof state.quiz.date === 'string' ? state.quiz.date : '',
+        idx: fixInt(state.quiz.idx, 0, QUIZ_N),
+        correct: fixInt(state.quiz.correct, 0, QUIZ_N),
+        done: !!state.quiz.done,
+        streak: fixInt(state.quiz.streak, 0, 366),
+      };
+      if (!state.anomaly || typeof state.anomaly !== 'object' || Array.isArray(state.anomaly)) {
+        state.anomaly = { date: '', done: false, grade: '', sDays: [], bonusMonth: '' };
+      }
+      state.anomaly = {
+        date: typeof state.anomaly.date === 'string' ? state.anomaly.date : '',
+        done: !!state.anomaly.done,
+        grade: ['S', 'A', 'B'].includes(state.anomaly.grade) ? state.anomaly.grade : '',
+        sDays: Array.isArray(state.anomaly.sDays)
+          ? state.anomaly.sDays.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(-40)
+          : [],
+        bonusMonth: typeof state.anomaly.bonusMonth === 'string' ? state.anomaly.bonusMonth : '',
+      };
+      if (!state.vigor || typeof state.vigor !== 'object' || Array.isArray(state.vigor)) {
+        state.vigor = { date: '', minutes: 0, claimed: 0, lastMs: 0 };
+      }
+      state.vigor = {
+        date: typeof state.vigor.date === 'string' ? state.vigor.date : '',
+        minutes: fixInt(state.vigor.minutes, 0, VIGOR_CELL_MIN * VIGOR_CELL_N),
+        claimed: fixInt(state.vigor.claimed, 0, VIGOR_CELL_N),
+        lastMs: fixInt(state.vigor.lastMs, 0, Date.now() + 86400000),
+      };
+      if (!state.fortune || typeof state.fortune !== 'object' || Array.isArray(state.fortune)) {
+        state.fortune = { date: '', idx: -1, claimed: false };
+      }
+      state.fortune = {
+        date: typeof state.fortune.date === 'string' ? state.fortune.date : '',
+        idx: state.fortune.idx >= 0 && state.fortune.idx < FORTUNE_SIGNS.length ? state.fortune.idx : -1,
+        claimed: !!state.fortune.claimed,
+      };
       if (!state.mirror || typeof state.mirror !== 'object' || Array.isArray(state.mirror)) {
         state.mirror = { week: '', snap: null, claimed: false };
       }
@@ -1754,7 +2042,9 @@
           py: fixInt(m.py, 0, MAP_H - 1),
           rev: Array.isArray(m.rev) ? m.rev.map((i) => fixInt(i, 0, MAP_W * MAP_H - 1)) : [],
           looted: Array.isArray(m.looted) ? m.looted.map((i) => fixInt(i, 0, MAP_W * MAP_H - 1)) : [],
-          ap: fixInt(m.ap, 0, MAP_AP_MAX),
+          ap: fixInt(m.ap, 0, MAP_AP_MAX + MAP_BUY_MAX),
+          buys: fixInt(m.buys, 0, MAP_BUY_MAX),
+          buyDay: typeof m.buyDay === 'string' ? m.buyDay : '',
           date: typeof m.date === 'string' ? m.date : '',
         };
         state.map.rev = Array.from(new Set(state.map.rev));
@@ -1777,7 +2067,7 @@
       }
       for (const s of SLOTS) {
         const it = state.museum[s.key];
-        state.museum[s.key] = (it && it.slot === s.key && isFinite(it.power)) ? it : null;
+        state.museum[s.key] = (it && it.slot === s.key && isFinite(it.power) && RARITIES[it.r]) ? it : null;
       }
       if (!state.farm || typeof state.farm !== 'object' || Array.isArray(state.farm) ||
         !Array.isArray(state.farm.plots)) {
@@ -1804,15 +2094,23 @@
         };
       }
       if (!state.bounty || typeof state.bounty !== 'object' || Array.isArray(state.bounty)) {
-        state.bounty = { date: '', slots: [], rerolled: false };
+        state.bounty = { date: '', slots: [], rerolls: 0, allClaimed: false };
       }
+      // 悬赏换档（2026-10-30）：slots 带 tier；老档 rerolled 布尔折算为已用 1 次刷新
       state.bounty = {
         date: typeof state.bounty.date === 'string' ? state.bounty.date : '',
-        rerolled: !!state.bounty.rerolled,
+        rerolls: state.bounty.rerolled === true
+          ? Math.max(0, BOUNTY_REROLL_N - 1)
+          : fixInt(state.bounty.rerolls, 0, BOUNTY_REROLL_N),
+        allClaimed: !!state.bounty.allClaimed,
         slots: Array.isArray(state.bounty.slots)
-          ? state.bounty.slots.filter((sl) => sl && BOUNTY_POOL.some((b) => b.id === sl.id))
+          ? state.bounty.slots
+              .filter((sl) => sl && BOUNTY_MISSIONS.some((b) => b.id === sl.id) &&
+                BOUNTY_TIERS.some((t) => t.key === sl.tier))
               .map((sl) => ({
                 id: sl.id,
+                tier: sl.tier,
+                target: fixInt(sl.target, 1, 1e9),
                 prog: fixInt(sl.prog, 0, 1e9),
                 claimed: !!sl.claimed,
               }))
@@ -1841,7 +2139,9 @@
         state.daoLv = { aff: {}, married: '' };
       }
       const aff = {};
-      for (const npc of DAO_NPCS) aff[npc.id] = fixInt(state.daoLv.aff[npc.id], 0, DAO_MARRY_AT);
+      const affRaw = (state.daoLv.aff && typeof state.daoLv.aff === 'object' &&
+        !Array.isArray(state.daoLv.aff)) ? state.daoLv.aff : {};
+      for (const npc of DAO_NPCS) aff[npc.id] = fixInt(affRaw[npc.id], 0, DAO_MARRY_AT);
       state.daoLv = {
         aff,
         married: DAO_NPCS.some((n) => n.id === state.daoLv.married) ? state.daoLv.married : '',
@@ -1872,7 +2172,10 @@
       state.wildZone = fixInt(state.wildZone, 1, WILD_MAX);
 
       state.fontScale = Math.max(0.85, Math.min(1.25, Number(state.fontScale) || 1));
-      state.theme = state.theme === 'light' ? 'light' : 'dark';
+      // 默认亮色（2026-10-31）：themeSet 标记是否主动选过主题——从未选过的老档
+      // 一次性翻到亮色，主动选了「暗」的保留其选择
+      state.themeSet = !!state.themeSet;
+      state.theme = state.themeSet ? (state.theme === 'light' ? 'light' : 'dark') : 'light';
       state.bagTokens = fixInt(state.bagTokens, 0, 99);
       state.bagExtra = fixInt(state.bagExtra, 0, BAG_EXTRA_MAX);
       state.power = Math.max(0, Math.floor(Number(state.power) || 0));
@@ -2155,7 +2458,7 @@
     const g = it.gems[idx];
     if (!g) return null;
     it.gems[idx] = null;
-    state.dust += Math.floor(gemCost(g.k, g.t) * 0.5);
+    addDust(Math.floor(gemCost(g.k, g.t) * 0.5));
     return g;
   }
 
@@ -2200,6 +2503,7 @@
     let name = '';
     let icon = '妖';
     let kicker = '';
+    let affDef = null; // 无尽词缀：分支内取一次，末尾复用（原先重复计算两遍）
 
     if (mode === 'tower') {
       const source = boss
@@ -2218,10 +2522,10 @@
       const source = boss
         ? TOWER_BOSSES[Math.floor((level - 1) / 10) % TOWER_BOSSES.length]
         : TOWER_MONSTERS[(level - 1) % TOWER_MONSTERS.length];
-      const aff = ENCHANTS[(level - 1) % ENCHANTS.length];
-      name = aff.name + '·' + source.name;
+      affDef = ENCHANTS[(level - 1) % ENCHANTS.length];
+      name = affDef.name + '·' + source.name;
       icon = source.icon;
-      kicker = '无尽 · 第 ' + level + ' 层 · ' + aff.name;
+      kicker = '无尽 · 第 ' + level + ' 层 · ' + affDef.name;
     } else {
       const zone = WILD_ZONES[Math.min(WILD_ZONES.length - 1, level - 1)];
       name = zone.monster;
@@ -2229,7 +2533,7 @@
       kicker = zone.name + ' · 危险度 ' + level;
     }
 
-    const aff = mode === 'endless' ? ENCHANTS[(level - 1) % ENCHANTS.length] : null;
+    const aff = affDef;
     return {
       name, base: name, icon, kicker, boss, req,
       el: randEl(),
@@ -2311,7 +2615,7 @@
       desc: '每日三项限制试炼（速杀 / 禁吸血 / 限承伤），全通额外 60 碎屑。' },
     { id: 'bounty', name: '悬赏令', where: '征战 · 试炼', cond: '境界「化神」',
       check: () => featureOpen('bounty'),
-      desc: '每日两张悬赏目标自动计数，0 点换榜，2000 灵石可刷新一次。' },
+      desc: '每日白 / 绿 / 蓝 / 紫四单悬赏自动计数，0 点换榜，可刷新两次，四单全清加奖。' },
     { id: 'pets', name: '灵宠', where: '闲趣', cond: '境界「化神」',
       check: () => featureOpen('pets'),
       desc: '开箱掉招募券，喂养提亲密度，出战给全局加成；兽骨养内丹觉醒特性，双宠位与融合在后方。' },
@@ -2758,8 +3062,8 @@
 
   /* ---------------- 装备 / 背包 ---------------- */
 
-  function makeItem(ri) {
-    const slotDef = SLOTS[Math.floor(Math.random() * SLOTS.length)];
+  function makeItem(ri, slotKey) {
+    const slotDef = slotKey ? SLOT_MAP[slotKey] : SLOTS[Math.floor(Math.random() * SLOTS.length)];
     const pool = ITEM_NAMES[slotDef.key][ri];
     const name = pool[Math.floor(Math.random() * pool.length)];
     const power = Math.max(1, Math.round(BASE_POWER[ri] * (0.8 + Math.random() * 0.4)));
@@ -2950,6 +3254,7 @@
     }
     const ids = new Set(items.map((it) => it.id));
     state.bag = state.bag.filter((it) => !ids.has(it.id));
+    bountyProgress('salvage', items.length); // 批量分解同属手动分解，与单件口径一致
     value = addStones(value);
     dust = addDust(dust);
     state.bagWarned = false;
@@ -2981,6 +3286,7 @@
     dust = addDust(dust);
     addSouls(souls);
     const count = state.bag.length;
+    bountyProgress('salvage', count); // 批量分解同属手动分解，与单件口径一致
     state.bag = [];
     state.bagWarned = false;
     bagDirty = true;
@@ -3000,6 +3306,9 @@
       let best = -1;
       for (let i = 0; i < state.bag.length; i++) {
         if (state.bag[i].slot !== slotDef.key) continue;
+        // 凡衣修行期间自动穿戴不碰专属件：破戒是玩家的显式选择（手动穿仍照常判破戒），
+        // 不能让道童/一键穿戴替玩家默默破戒
+        if (state.ordeal.active === 'fanYi' && state.bag[i].special) continue;
         if (best < 0 || itemScore(state.bag[i]) > itemScore(state.bag[best])) best = i;
       }
       if (best < 0) continue;
@@ -3048,10 +3357,9 @@
     const crit = Math.random() < critChance();
     const ri = rollRarity();
     const item = makeItem(ri);
-    const gain = Math.max(1, Math.floor(baseGain() * (crit ? CRIT_MULT : 1) * buffMult()));
+    let gain = Math.max(1, Math.floor(baseGain() * (crit ? CRIT_MULT : 1) * buffMult() * dayProdMult()));
 
-    state.stones += gain;
-    state.totalStones += gain;
+    gain = addStones(gain); // 统一走 addStones：灵石周/时辰/天象/核心增益对主收益路径生效
     state.exp += (1 + RARITIES[ri].exp) * (1 + 0.8 * state.realm) * (1 + 0.5 * state.ascensions) * expMult();
     state.counts[ri]++;
     if (ri > state.best) state.best = ri;
@@ -3413,7 +3721,7 @@
     if (result.win) {
       rollBagToken('battle');
       const stoneGain = Math.floor(
-        contentReq(mode, level) * modeCfg.stone * bossScale * (first ? 1.5 : 1) * rewardScale * weekendScale
+        contentReq(mode, level) * modeCfg.stone * bossScale * (first ? 1.5 : 1) * rewardScale * weekendScale * dayProdMult()
       );
       const expGain = Math.floor(
         contentReq(mode, level) * modeCfg.exp * bossScale * (first ? 1.5 : 1) * rewardScale * expMult()
@@ -3427,7 +3735,7 @@
       ensureWeekly();
       state.weekly.wins++;
       ensureBounty();
-      state.bounty.slots.forEach((sl) => { if (sl.id === 'wins' && !sl.claimed) sl.prog++; });
+      bountyProgress('wins', 1); // 与其余悬赏同走 bountyProgress（带封顶，字段口径不漂移）
       bountyProgress('el_' + enemy.el, 1);
       state.battleStats.dmg += result.dealt;
       state.battleStats.taken += result.taken;
@@ -3575,6 +3883,7 @@
     const count = AFFIX_COUNT[it.r] || 0;
     const arr = it.affixes || [];
     const affixBox = $('forgeAffixes');
+    const rc = rerollCostNow(it); // 一次算好：下面按钮文案与禁用态共用（原先连算 3 次）
     if (!count) {
       affixBox.innerHTML = '<p class="forge-empty">凡 / 灵 / 玄品装备没有词条，可镶嵌宝石。</p>';
     } else {
@@ -3592,13 +3901,13 @@
           );
         }).join('') +
         '<div class="forge-reroll">' +
-          '<button class="btn" data-act="reroll">洗练 ' + fmt(rerollCostNow(it).cost) + resIcon('stones') +
-            (rerollCostNow(it).coupon ? '（券）' : '') + '</button>' +
+          '<button class="btn" data-act="reroll">洗练 ' + fmt(rc.cost) + resIcon('stones') +
+            (rc.coupon ? '（券）' : '') + '</button>' +
           '<p>锁定 1 条，其余重随机<br>费用每次 ×1.3' +
             (state.rerollCoupon ? '<br>持有半价券 ×' + state.rerollCoupon : '') + '</p>' +
         '</div>';
       const rerollBtn = affixBox.querySelector('button[data-act="reroll"]');
-      if (rerollBtn) rerollBtn.disabled = state.stones < rerollCostNow(it).cost;
+      if (rerollBtn) rerollBtn.disabled = state.stones < rc.cost;
     }
 
     const gems = it.gems || [];
@@ -3923,12 +4232,8 @@
     save();
   }
 
-  // 赌石
-  function doGamble() {
-    if (state.stones < GAMBLE_COST) {
-      floatText('灵石不足', '#f87171');
-      return;
-    }
+  // 赌石：单次掷取（副作用入账/日志/音效都在此），返回结果文本与配色类
+  function gambleOnce() {
     state.stones -= GAMBLE_COST;
     // 善恶果报微调璞玉运势：正果报两次掷取好、负果报两次掷取差——
     // 幅度有界（天品 2% → 4% / 0.04%）且负果报也永远保住天品概率，不再零化
@@ -3975,12 +4280,58 @@
       floatText('璞中藏珍！「' + item.name + '」', '#ffd479');
       chime([659, 784, 1046, 1318]);
     }
+    return { text: resText, cls: resCls };
+  }
+
+  // 弹层再开按钮的次数随上一次操作走（1 = 再开一次 / 10 = 再开十次）
+  let lastGambleTimes = 1;
+
+  function doGamble(times) {
+    const n = times || 1;
+    const cost = GAMBLE_COST * n;
+    if (state.stones < cost) {
+      floatText('灵石不足（需 ' + fmt(cost) + '）', '#f87171');
+      return;
+    }
+    const results = [];
+    for (let i = 0; i < n; i++) results.push(gambleOnce());
+    lastGambleTimes = n;
+
+    // 行内结果条：单开显示原文，连开显示汇总
     const el = $('gambleResult');
     el.hidden = false;
-    el.textContent = resText;
-    el.className = 'gamble-result ' + resCls;
+    if (n === 1) {
+      el.textContent = results[0].text;
+      el.className = 'gamble-result ' + results[0].cls;
+    } else {
+      let sumStones = 0, sumDust = 0, items = 0;
+      for (const r of results) {
+        const m = r.text.match(/\+([\d,]+) 灵石/);
+        if (m) sumStones += Number(m[1].replace(/,/g, ''));
+        if (r.cls === 'g-dust') sumDust += Number(r.text.match(/\+(\d+) 碎屑/)[1]);
+        if (r.cls === 'g-item') items++;
+      }
+      el.textContent = '连开 ' + n + ' 块璞玉：' +
+        (sumStones ? '+' + fmt(sumStones) + ' 灵石 · ' : '') +
+        (sumDust ? '+' + fmt(sumDust) + ' 碎屑 · ' : '') +
+        (items ? '天品装备 ×' + items : '未得天品');
+      el.className = 'gamble-result ' + (items ? 'g-item' : results[results.length - 1].cls);
+    }
     void el.offsetWidth;
     el.classList.add('pop');
+
+    // 结果弹层：逐条明细 + 汇总；再开按钮文案随本次次数
+    $('gambleModalList').innerHTML = results.map((r, i) =>
+      '<p class="gamble-result ' + r.cls + '" style="margin:6px 0 0">' +
+      (n > 1 ? '<b>#' + (i + 1) + '</b> ' : '') + r.text + '</p>'
+    ).join('');
+    $('gambleModalSum').textContent = n > 1
+      ? '共 ' + n + ' 块璞玉 · 消耗 ' + fmt(cost) + ' 灵石'
+      : '消耗 ' + fmt(cost) + ' 灵石';
+    $('gambleModalAgain').textContent = n > 1 ? '再开十次' : '再开一次';
+    $('gambleModalAgain').dataset.times = String(n);
+    $('gambleModal').classList.add('show');
+
     render();
     save();
   }
@@ -4302,13 +4653,14 @@
         '<span class="fish-cursor" id="fishCursor"' + (fishRod ? '' : ' style="display:none"') + '></span></div>' +
       '<button class="btn wide" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + '>' +
         (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
-      '<button class="mini" id="fishBaitBtn"' + (canBuy ? '' : ' disabled') + '>补饵 ' +
-        fmt(FISH_BAIT_COST) + resIcon('stones') + '</button>' +
       (fishMsg
         ? '<p class="gamble-result ' + fishMsg.cls + '">' + fishMsg.text + '</p>'
         : '');
+    // 补饵钮常驻垂钓标题右侧（静态元素），此处只同步文案与可用态
+    const baitBtn = $('fishBaitBtn');
+    baitBtn.innerHTML = '补饵 ' + fmt(FISH_BAIT_COST) + resIcon('stones');
+    baitBtn.disabled = !canBuy;
     $('fishBtn').addEventListener('click', fishRod ? reelRod : castRod);
-    $('fishBaitBtn').addEventListener('click', buyBait);
   }
 
   // —— 灵宠内丹 ——
@@ -4389,8 +4741,11 @@
       const u = nodes[k].until;
       return u > Date.now() ? Math.ceil((u - Date.now()) / 60000) : u;
     }).join(',');
+    // 扩建按钮可用性直接进签名：按 4000 分桶会让按钮长期滞留错误禁用/可点态
     const sig = nodeSig + '|' + nodes.ore.lv + '|' + nodes.herb.lv + '|' +
-      state.gather.ore + '|' + state.gather.herb + '|' + Math.floor(state.stones / 4000);
+      state.gather.ore + '|' + state.gather.herb + '|' +
+      (state.stones >= gatherCost(nodes.ore.lv) ? 1 : 0) + '|' +
+      (state.stones >= gatherCost(nodes.herb.lv) ? 1 : 0);
     if (panelSigs.gather === sig) return;
     panelSigs.gather = sig;
     box.innerHTML = Object.keys(GATHER_NODES).map((key) => {
@@ -4514,14 +4869,34 @@
         rev: [],
         looted: [],
         ap: MAP_AP_DAY,
+        buys: 0,
+        buyDay: '',
         date: todayStr(),
       };
       revealAround();
     }
     if (state.map.date !== todayStr()) {
       state.map.date = todayStr();
+      state.map.buys = 0;                       // 加购计数随每日重置清零
       state.map.ap = Math.min(MAP_AP_MAX, state.map.ap + MAP_AP_DAY);
     }
+  }
+
+  // 秘境图行动力加购：灵石购买，每日至多 20 次（加购点当日有效）
+  function buyMapAp() {
+    ensureMap();
+    const today = todayStr();
+    if (state.map.buyDay !== today) { state.map.buyDay = today; state.map.buys = 0; }
+    if (state.map.buys >= MAP_BUY_MAX) { floatText('今日加购已达上限（20 次）', '#f87171'); return; }
+    if (state.stones < MAP_BUY_COST) { floatText('灵石不足', '#f87171'); return; }
+    state.stones -= MAP_BUY_COST;
+    state.map.buys++;
+    state.map.ap++;
+    pushLog('秘境图加购 1 行动力（-' + fmt(MAP_BUY_COST) + ' 灵石），今日已购 ' + state.map.buys + '/' + MAP_BUY_MAX, 'sys');
+    floatText('行动力 +1', '#4ade80');
+    beep(660, 0.1);
+    save();
+    renderMap();
   }
 
   const tileHash = (idx) => {
@@ -4583,9 +4958,11 @@
       return;
     }
     const info = tileInfo(idx);
-    const from = state.map.py * MAP_W + state.map.px;
+    // 已采光格（UI 渲染为 ∅）只做通路：不再触发战斗/产出，堵住在相邻空格间
+    // 来回走无限重复收割的口子（looted 也因此天然不会重复 push）
+    const already = info.type !== 'empty' && state.map.looted.includes(idx);
 
-    if (info.type === 'monster') {
+    if (info.type === 'monster' && !already) {
       const d = Math.abs(x - Math.floor(MAP_W / 2)) + Math.abs(y - Math.floor(MAP_H / 2));
       const req = Math.max(60, totalPower() * (0.45 + 0.12 * d) * immortalMult());
       const enemy = {
@@ -4620,21 +4997,21 @@
       pushLog('秘境图：斩「' + info.name + '」（' + ELEMENTS.find((e) => e.key === info.el).name + '行' +
         (vein > 1 ? '·灵脉相克 ×1.5' : '') + '），+' + fmt(loot) + ' 灵石', 'special');
       state.map.looted.push(idx);
-    } else if (info.type === 'stones') {
+    } else if (!already && info.type === 'stones') {
       const vein = veinBonus(info.el);
       const gain = Math.max(300, Math.floor(totalPower() * 0.6 * vein));
       addStones(gain);
       state.map.looted.push(idx);
       pushLog('秘境图：采得灵石矿，+' + fmt(gain) + ' 灵石' + (vein > 1 ? '（灵脉相克）' : ''), 'special');
       beep(700, 0.07);
-    } else if (info.type === 'dust') {
+    } else if (!already && info.type === 'dust') {
       const vein = veinBonus(info.el);
       const gain = Math.max(12, Math.min(150, Math.floor(totalPower() / 150 * vein)));
       addDust(gain);
       state.map.looted.push(idx);
       pushLog('秘境图：拾得碎屑堆，+' + gain + ' 碎屑' + (vein > 1 ? '（灵脉相克）' : ''), 'special');
       beep(700, 0.07);
-    } else if (info.type === 'shrine') {
+    } else if (!already && info.type === 'shrine') {
       const vein = veinBonus(info.el);
       const gain = Math.max(1000, Math.floor(totalPower() * 2 * vein));
       addStones(gain);
@@ -4670,10 +5047,6 @@
     render();
     save();
   }
-
-  const ordealDirty = () => {
-    if (state.ordeal.active) state.ordeal.dirty = true;
-  };
 
   // 陈列室
   function museumBonus() {
@@ -4900,41 +5273,57 @@
     save();
   }
 
-  // 悬赏令
+  // 悬赏令（2026-10-30 换档）：每日 4 单（白/绿/蓝/紫 各一），目标按档倍率缩放，
+  // 奖励取档位基准；紫单 5% 掉天品装备；四单全清加发 BOUNTY_ALL_CLEAR
+  function bountyMissionOf(id) {
+    return BOUNTY_MISSIONS.find((b) => b.id === id);
+  }
+
+  function bountyDesc(sl) {
+    const def = bountyMissionOf(sl.id);
+    return def ? def.desc.replace('{t}', sl.target) : '';
+  }
+
+  function rollBountySlot(tier, exclude) {
+    const pool = BOUNTY_MISSIONS.filter((b) => !exclude.includes(b.id));
+    const def = pool[Math.floor(Math.random() * pool.length)] || BOUNTY_MISSIONS[0];
+    return {
+      id: def.id,
+      tier,
+      target: Math.max(1, Math.ceil(def.target * BOUNTY_TIER_SCALE[tier])),
+      prog: 0,
+      claimed: false,
+    };
+  }
+
   function ensureBounty() {
     ensureDaily();
-    if (state.bounty.date === todayStr() && state.bounty.slots.length) return;
+    if (state.bounty.date === todayStr() && state.bounty.slots.length === BOUNTY_SLOT_N) return;
     state.bounty.date = todayStr();
-    state.bounty.rerolled = false;
-    const pool = BOUNTY_POOL.slice();
-    state.bounty.slots = [0, 1].map(() => {
-      const b = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
-      return { id: b.id, prog: 0, claimed: false };
+    state.bounty.rerolls = BOUNTY_REROLL_N;
+    state.bounty.allClaimed = false;
+    const used = [];
+    state.bounty.slots = BOUNTY_TIERS.map((t) => {
+      const sl = rollBountySlot(t.key, used);
+      used.push(sl.id);
+      return sl;
     });
   }
 
   function bountyProgress(metric, n) {
     if (n <= 0) return;
-    let hit = false;
+    ensureBounty();
     for (const sl of state.bounty.slots) {
       if (sl.id === metric && !sl.claimed) {
-        sl.prog += n;
-        hit = true;
-      }
-    }
-    if (hit) {
-      const def = BOUNTY_POOL.find((b) => b.id === metric);
-      if (def && !def.logged) {
-        def.logged = true;
-        pushLog('悬赏推进：「' + def.desc + '」', 'sys');
+        sl.prog = Math.min(1e9, sl.prog + n);
       }
     }
   }
 
   function rerollBounty(idx) {
     ensureBounty();
-    if (state.bounty.rerolled) {
-      floatText('今日已刷新过', '#9aa4b2');
+    if (state.bounty.rerolls <= 0) {
+      floatText('今日刷新次数已用完', '#9aa4b2');
       return;
     }
     if (state.stones < BOUNTY_REROLL_COST) {
@@ -4942,14 +5331,12 @@
       return;
     }
     state.stones -= BOUNTY_REROLL_COST;
-    state.bounty.rerolled = true;
+    state.bounty.rerolls--;
     const used = state.bounty.slots.map((sl) => sl.id);
-    const pool = BOUNTY_POOL.filter((b) => !used.includes(b.id));
-    if (pool.length) {
-      const b = pool[Math.floor(Math.random() * pool.length)];
-      state.bounty.slots[idx] = { id: b.id, prog: 0, claimed: false };
-      pushLog('悬赏已刷新', 'sys');
-    }
+    used.splice(idx, 1);
+    const tier = state.bounty.slots[idx] ? state.bounty.slots[idx].tier : 'bai';
+    state.bounty.slots[idx] = rollBountySlot(tier, used);
+    pushLog('悬赏已刷新（余 ' + state.bounty.rerolls + ' 次）', 'sys');
     renderBounty();
     save();
   }
@@ -4958,14 +5345,423 @@
     ensureBounty();
     const sl = state.bounty.slots[idx];
     if (!sl || sl.claimed) return;
-    const def = BOUNTY_POOL.find((b) => b.id === sl.id);
-    if (!def || sl.prog < def.target) return;
+    if (sl.prog < sl.target) return;
     sl.claimed = true;
-    if (def.reward.stones) addStones(def.reward.stones);
-    if (def.reward.dust) addDust(def.reward.dust);
-    pushLog('悬赏达成「' + def.desc + '」', 'special');
+    const tier = BOUNTY_TIERS.find((t) => t.key === sl.tier) || BOUNTY_TIERS[0];
+    const gained = addStones(tier.stones);
+    addDust(tier.dust);
+    let extra = '';
+    if (tier.drop && Math.random() < tier.drop) {
+      grantEquipBox(4, '紫悬赏掉落');
+      extra = ' · 天品装备掉落！';
+    }
+    pushLog('悬赏达成「' + bountyDesc(sl) + '」（' + tier.name + '单）：+' + fmt(gained) +
+      ' 灵石 · ' + tier.dust + ' 碎屑' + extra, 'special');
     chime([784, 1046]);
+    if (state.bounty.slots.every((x) => x.claimed) && !state.bounty.allClaimed) {
+      state.bounty.allClaimed = true;
+      const allGained = addStones(BOUNTY_ALL_CLEAR.stones);
+      pushLog('四单全清！额外 +' + fmt(allGained) + ' 灵石', 'special');
+      chime([659, 784, 1046, 1318]);
+    }
     renderBounty();
+    save();
+  }
+
+  /* ---------------- 第九批：灵潮 / 朝贺 / 问答 / 异象 / 灵气 / 占卜 ---------------- */
+
+  // 公共：日期种子（FNV-1a）——问答选题 / 占卜抽签 / 异象词缀，跨刷新稳定
+  function daySeed(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  // 公共：境界缩放修为（K × contentReq('wild', 当前最高闯关)，随进度水涨船高）
+  function grantExpK(k, why) {
+    const base = contentReq('wild', Math.max(1, state.stageCleared));
+    const gain = Math.max(1, Math.floor(base * k));
+    state.exp += gain;
+    pushLog(why + '：修为 +' + fmt(gain), 'sys');
+    return gain;
+  }
+
+  // 公共：装备箱发放（makeItem 支持指定槽位；天品自选箱传 slotKey）
+  function grantEquipBox(ri, why, slotKey) {
+    const item = makeItem(ri, slotKey);
+    addItem(item);
+    bagDirty = true;
+    pushLog(why + '：「' + item.name + '」（' + RARITIES[ri].name + '）', 'special');
+    chime([659, 784, 1046, 1318]);
+    floatText(RARITIES[ri].name + '「' + item.name + '」！', '#ffd479');
+    return item;
+  }
+
+  // 公共：今日产出倍率（灵潮窗口 ×2 · 上上签 +5%），挂开箱 / 秘境 / 探幽三处产出
+  const tideOn = () => {
+    const h = new Date().getHours();
+    return TIDE_WINDOWS.some((w) => h >= w.s && h < w.e);
+  };
+  function fortuneProd() {
+    if (state.fortune.date !== todayStr() || !state.fortune.claimed || state.fortune.idx < 0) return 1;
+    const s = FORTUNE_SIGNS[state.fortune.idx];
+    return s && s.prod ? 1 + s.prod : 1;
+  }
+  const dayProdMult = () => (tideOn() ? TIDE_MULT : 1) * fortuneProd();
+
+  // —— 灵潮时段 ——
+  const tideWindowOpen = (i) => {
+    const h = new Date().getHours();
+    return h >= TIDE_WINDOWS[i].s && h < TIDE_WINDOWS[i].e;
+  };
+  function ensureTide() {
+    if (ensureDated(state.tide)) state.tide.claimed = [false, false];
+  }
+  function claimTide(i) {
+    ensureTide();
+    if (!tideWindowOpen(i)) {
+      floatText('未在灵潮时段', '#9aa4b2');
+      return;
+    }
+    if (state.tide.claimed[i]) return;
+    state.tide.claimed[i] = true;
+    const gained = addStones(TIDE_CLAIM);
+    pushLog('灵潮符已领：+' + fmt(gained) + ' 灵石（窗口内开箱与秘境产出 ×2）', 'special');
+    chime([659, 784, 1046]);
+    renderDailyExt();
+    save();
+  }
+
+  // —— 月度朝贺 ——
+  const monthKey = () => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  };
+  const dateOf = (y, m, d) =>
+    y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  function ensureMonth() {
+    if (state.month.key !== monthKey()) {
+      state.month = { key: monthKey(), days: [], makeup: 0, claimed: [] };
+    }
+  }
+  function monthMarkToday() {
+    ensureMonth();
+    const ds = todayStr();
+    if (!state.month.days.includes(ds)) state.month.days.push(ds);
+  }
+  function monthMakeup() {
+    ensureMonth();
+    if (state.month.makeup >= MONTH_MAKEUP_MAX) {
+      floatText('本月补签次数已用完', '#9aa4b2');
+      return;
+    }
+    const y = new Date(Date.now() - 86400000);
+    const ds = dateOf(y.getFullYear(), y.getMonth(), y.getDate());
+    if (state.month.days.includes(ds)) {
+      floatText('昨日已到勤，无需补签', '#9aa4b2');
+      return;
+    }
+    if (state.stones < MONTH_MAKEUP_COST) {
+      floatText('灵石不足', '#f87171');
+      return;
+    }
+    state.stones -= MONTH_MAKEUP_COST;
+    state.month.makeup++;
+    state.month.days.push(ds);
+    pushLog('朝贺补签 ' + ds + '（本月还剩 ' + (MONTH_MAKEUP_MAX - state.month.makeup) + ' 次）', 'sys');
+    renderDailyExt();
+    save();
+  }
+  function claimMonth(n) {
+    ensureMonth();
+    const m = MONTH_MILESTONES.find((x) => x.n === n);
+    if (!m || state.month.claimed.includes(n)) return;
+    if (state.month.days.length < n) {
+      floatText('本月到勤 ' + state.month.days.length + ' 天，未达 ' + n + ' 天', '#9aa4b2');
+      return;
+    }
+    state.month.claimed.push(n);
+    if (m.reward.boxTian) grantEquipBox(4, '朝贺 ' + n + ' 天');
+    if (m.reward.boxXian) grantEquipBox(5, '朝贺 ' + n + ' 天');
+    if (m.reward.dust) {
+      addDust(m.reward.dust);
+      pushLog('朝贺 ' + n + ' 天：+' + m.reward.dust + ' 碎屑', 'special');
+    }
+    chime([659, 784, 1046, 1318]);
+    renderDailyExt();
+    save();
+  }
+
+  // —— 仙道问答 ——
+  function quizPick() {
+    let s = daySeed('quiz-' + todayStr());
+    const rnd = () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+    const idxs = QUIZ_BANK.map((_, i) => i);
+    for (let i = idxs.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = idxs[i];
+      idxs[i] = idxs[j];
+      idxs[j] = t;
+    }
+    return idxs.slice(0, QUIZ_N);
+  }
+  function ensureQuiz() {
+    if (ensureDated(state.quiz)) {
+      state.quiz.idx = 0;
+      state.quiz.correct = 0;
+      state.quiz.done = false;
+    }
+  }
+  function quizAnswer(choice) {
+    ensureQuiz();
+    if (state.quiz.done) return;
+    const ids = quizPick();
+    const def = QUIZ_BANK[ids[state.quiz.idx]];
+    const ok = choice === def.idx;
+    if (ok) {
+      state.quiz.correct++;
+      const gained = addStones(QUIZ_PER_STONES);
+      grantExpK(QUIZ_PER_EXP_K, '答题答对');
+      floatText('答对 +' + fmt(gained) + ' 灵石', '#4ade80');
+    } else {
+      floatText('答错了', '#f87171');
+    }
+    state.quiz.idx++;
+    if (state.quiz.idx >= QUIZ_N) {
+      state.quiz.done = true;
+      if (state.quiz.correct >= QUIZ_N) {
+        state.quiz.streak++;
+        const b = QUIZ_ALL_BONUS;
+        addStones(b.stones);
+        addDust(b.dust);
+        pushLog('问答全对！连对 ' + state.quiz.streak + ' 天：+' + fmt(b.stones) +
+          ' 灵石 · ' + b.dust + ' 碎屑', 'special');
+        chime([659, 784, 1046, 1318]);
+        if (state.quiz.streak >= QUIZ_STREAK_N) {
+          state.quiz.streak = 0;
+          openQuizBoxPick();
+        }
+      } else {
+        if (state.quiz.streak > 0) pushLog('连对中断（' + state.quiz.streak + ' 天）', 'sys');
+        state.quiz.streak = 0;
+      }
+    }
+    renderDailyExt();
+    save();
+  }
+  // 问答连对 7 天：天品自选箱（选槽位直接生成天品装备）
+  function openQuizBoxPick() {
+    ensureQuiz();
+    if ($('quizBoxModal')) {
+      renderQuizBoxPick();
+      $('quizBoxModal').classList.add('show');
+    }
+  }
+  function renderQuizBoxPick() {
+    const box = $('quizBoxSlots');
+    if (!box) return;
+    box.innerHTML = SLOTS.map((s) =>
+      '<button class="btn tiny" data-quizbox="' + s.key + '">' + s.name + '</button>'
+    ).join('');
+  }
+  function takeQuizBox(slotKey) {
+    if (!$('quizBoxModal') || !$('quizBoxModal').classList.contains('show')) return;
+    $('quizBoxModal').classList.remove('show');
+    grantEquipBox(4, '问答连对七日奖励', slotKey);
+    save();
+  }
+
+  // —— 异象秘境 ——
+  function anomalyAffixes() {
+    const seed = daySeed('anomaly-' + todayStr());
+    const i1 = seed % ANOMALY_AFFIXES.length;
+    const i2 = (seed >>> 8) % ANOMALY_AFFIXES.length;
+    return i1 === i2 ? [ANOMALY_AFFIXES[i1]] : [ANOMALY_AFFIXES[i1], ANOMALY_AFFIXES[i2]];
+  }
+  function anomalyEnemy() {
+    const affs = anomalyAffixes();
+    const lv = Math.max(10, state.stageCleared);
+    const req = contentReq('stage', lv) * 1.2;
+    const m = { hp: 1, atk: 1, def: 1 };
+    for (const a of affs) for (const k of ['hp', 'atk', 'def']) if (a[k]) m[k] *= a[k];
+    const names = affs.map((a) => a.name).join('·');
+    return {
+      name: '异象之主·' + names,
+      base: '异象之主',
+      icon: '异',
+      kicker: '异象秘境 · ' + names,
+      boss: true,
+      req,
+      el: randEl(),
+      affix: '',
+      hp: Math.max(1, Math.round(req * 7.5 * 1.45 * m.hp)),
+      atk: Math.max(1, Math.round(req * 0.75 * 1.35 * m.atk)),
+      def: Math.max(0, Math.round(req * 0.22 * 1.15 * m.def)),
+    };
+  }
+  function anomalyGrade(win, player, result) {
+    if (!win) return '';
+    const last = result.events.length ? result.events[result.events.length - 1].playerHp : 0;
+    const ratio = player.hp > 0 ? last / player.hp : 0;
+    return ratio >= 0.6 ? 'S' : ratio >= 0.25 ? 'A' : 'B';
+  }
+  function anomalyFight() {
+    if (state.anomaly.date === todayStr() && state.anomaly.done) {
+      floatText('今日异象已平', '#9aa4b2');
+      return;
+    }
+    if (state.stageCleared < 5) {
+      floatText('通关闯关第 5 关解锁', '#f87171');
+      return;
+    }
+    const enemy = anomalyEnemy();
+    const player = Object.assign({}, playerCombatStats());
+    player.atk *= elementBonus(enemy.el).mult; // 与其余全部战斗入口同口径：计入五行克制
+    const result = simulateBattle(player, enemy);
+    const grade = anomalyGrade(result.win, player, result);
+    showBattlePopup(enemy, result, {
+      title: '异象秘境 · ' + enemy.kicker.split(' · ')[1],
+      closeText: '收下奖励',
+      loseText: '明日再战',
+      rewardText: result.win ? grade + ' 级评定 · 奖励已入账' : undefined,
+    });
+    state.anomaly.date = todayStr();
+    state.anomaly.done = true;
+    state.anomaly.grade = grade;
+    if (result.win) {
+      if (grade === 'S' && !state.anomaly.sDays.includes(todayStr())) {
+        state.anomaly.sDays.push(todayStr());
+        // 月保底只读当月：旧月份条目裁掉，防 sDays 随年无界增长
+        const ym = todayStr().slice(0, 7);
+        state.anomaly.sDays = state.anomaly.sDays.filter((d) => d.slice(0, 7) === ym);
+      }
+      const affs = anomalyAffixes();
+      let stone = ANOMALY_FIRST.stones;
+      let dust = ANOMALY_FIRST.dust;
+      let expK = ANOMALY_FIRST.expK;
+      for (const a of affs) {
+        if (a.stone) stone *= a.stone;
+        if (a.dust) dust *= a.dust;
+        if (a.exp) expK *= a.exp;
+      }
+      const gained = addStones(Math.floor(stone));
+      addDust(Math.floor(dust));
+      grantExpK(expK, '异象平定');
+      let extra = grade + ' 级评定';
+      if (grade === 'S' && Math.random() < ANOMALY_S_DROP) {
+        grantEquipBox(5, '异象 S 级掉落');
+        extra += ' · 仙品掉落！';
+      }
+      pushLog('异象平定（' + extra + '）：+' + fmt(gained) + ' 灵石 · ' +
+        Math.floor(dust) + ' 碎屑', 'special');
+      anomalyMonthBonus();
+    } else {
+      pushLog('异象未平，养精蓄锐明日再战', 'sys');
+    }
+    combatDirty = true;
+    renderTrials();
+    save();
+  }
+  // 异象月保底：当月每日皆 S 且今日为月末 → 保底仙品一件
+  function anomalyMonthBonus() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const mo = now.getMonth();
+    if (now.getDate() !== new Date(y, mo + 1, 0).getDate()) return;
+    const dim = now.getDate();
+    const sSet = new Set(state.anomaly.sDays);
+    let full = true;
+    for (let d = 1; d <= dim; d++) {
+      if (!sSet.has(dateOf(y, mo, d))) { full = false; break; }
+    }
+    if (full && state.anomaly.bonusMonth !== monthKey()) {
+      state.anomaly.bonusMonth = monthKey();
+      grantEquipBox(5, '异象全勤月保底');
+    }
+  }
+
+  // —— 灵气盈满 ——
+  function vigorTick() {
+    if (document.hidden) return;
+    const today = todayStr();
+    if (state.vigor.date !== today) {
+      state.vigor = { date: today, minutes: 0, claimed: 0, lastMs: Date.now() };
+    }
+    const now = Date.now();
+    if (now - (state.vigor.lastMs || 0) >= 60000) {
+      const gain = Math.floor((now - state.vigor.lastMs) / 60000);
+      state.vigor.lastMs = now;
+      const cap = VIGOR_CELL_MIN * VIGOR_CELL_N;
+      if (state.vigor.minutes < cap) {
+        state.vigor.minutes = Math.min(cap, state.vigor.minutes + gain);
+        renderDailyExt();
+      }
+    }
+  }
+  function claimVigor() {
+    const today = todayStr();
+    if (state.vigor.date !== today) return;
+    const cells = Math.min(VIGOR_CELL_N, Math.floor(state.vigor.minutes / VIGOR_CELL_MIN));
+    if (state.vigor.claimed >= cells) {
+      floatText('灵气尚未盈满', '#9aa4b2');
+      return;
+    }
+    state.vigor.claimed++;
+    const gained = addStones(VIGOR_REWARD.stones);
+    addDust(VIGOR_REWARD.dust);
+    pushLog('灵气盈满（' + state.vigor.claimed + ' / ' + VIGOR_CELL_N + ' 格）：+' + fmt(gained) +
+      ' 灵石 · ' + VIGOR_REWARD.dust + ' 碎屑', 'special');
+    chime([659, 988]);
+    renderDailyExt();
+    save();
+  }
+
+  // —— 每日占卜 ——
+  function fortunePick() {
+    const seed = daySeed('fortune-' + todayStr());
+    const total = FORTUNE_SIGNS.reduce((s, x) => s + x.w, 0);
+    let acc = (seed % 100000) / 100000 * total;
+    for (let i = 0; i < FORTUNE_SIGNS.length; i++) {
+      acc -= FORTUNE_SIGNS[i].w;
+      if (acc < 0) return i;
+    }
+    return 0;
+  }
+  function ensureFortune() {
+    if (state.fortune.date !== todayStr()) {
+      state.fortune = { date: todayStr(), idx: -1, claimed: false };
+    }
+  }
+  function drawFortune() {
+    ensureFortune();
+    if (state.fortune.idx >= 0) return;
+    state.fortune.idx = fortunePick();
+    pushLog('今日运势：「' + FORTUNE_SIGNS[state.fortune.idx].name + '」', 'special');
+    chime([523, 659]);
+    renderDailyExt();
+    save();
+  }
+  function claimFortune() {
+    ensureFortune();
+    const s = FORTUNE_SIGNS[state.fortune.idx];
+    if (state.fortune.claimed || !s) return;
+    state.fortune.claimed = true;
+    if (s.stones) {
+      const gained = addStones(s.stones);
+      pushLog('占卜领签：+' + fmt(gained) + ' 灵石', 'special');
+    }
+    if (s.dust) {
+      addDust(s.dust);
+      pushLog('占卜领签：+' + s.dust + ' 碎屑（安慰奖）', 'special');
+    }
+    chime([784, 1046]);
+    renderDailyExt();
     save();
   }
 
@@ -5005,7 +5801,6 @@
     }
     state.dust -= TALISMAN_COST;
     state.talismans++;
-    addDust(0);
     pushLog('炼成护体符 ×1', 'sys');
     beep(700, 0.07);
     renderTrib();
@@ -5051,7 +5846,7 @@
       pushLog('天劫已渡：+' + fmt(tribStones) + ' 灵石 · 300 碎屑 · 2 张招募券', 'special');
       chime([659, 784, 1046, 1318]);
       $('tribTitle').textContent = '天劫已渡';
-      $('tribBody').innerHTML = '<p>九霄神雷散去，云开月明。<b>+' + fmt(stones) + '</b> 灵石 · 300 碎屑 · 2 张招募券已入囊中。三日后再临。</p>' +
+      $('tribBody').innerHTML = '<p>九霄神雷散去，云开月明。<b>+' + fmt(tribStones) + '</b> 灵石 · 300 碎屑 · 2 张招募券已入囊中。三日后再临。</p>' +
         '<button class="btn primary wide" id="tribCloseBtn">收下</button>';
     } else {
       $('tribTitle').textContent = '渡劫未成';
@@ -5112,7 +5907,32 @@
   };
 
 
-  function signIn() {
+  function signIn() { doSignIn('normal'); }
+  function signInGamble() { doSignIn('gamble'); }
+
+  // 赌狗签到单次掷取：返回 { tier, mult }（mult 带符号，狂赚/翻车为小数）；
+  // 档位从差到好排序（bust < zero < keep < big），正果报双掷取优、负果报取劣
+  function rollSignGamble() {
+    const G = SIGN_GAMBLE;
+    const rollTier = () => {
+      const r = Math.random() * 100;
+      if (r < G.pBig) return { tier: 'big', mult: G.bigMin + Math.random() * (G.bigMax - G.bigMin) };
+      if (r < G.pBig + G.pKeep) return { tier: 'keep', mult: 1 };
+      if (r < G.pBig + G.pKeep + G.pZero) return { tier: 'zero', mult: 0 };
+      return { tier: 'bust', mult: -(G.bustMin + Math.random() * (G.bustMax - G.bustMin)) };
+    };
+    const rank = { bust: 0, zero: 1, keep: 2, big: 3 };
+    let out = rollTier();
+    const kv = karma();
+    if (kv !== 0) {
+      const out2 = rollTier();
+      const better = kv > 0 ? rank[out.tier] >= rank[out2.tier] : rank[out.tier] <= rank[out2.tier];
+      out = better ? out : out2;
+    }
+    return out;
+  }
+
+  function doSignIn(mode) {
     ensureDaily();
     if (state.lastSignIn === todayStr()) {
       floatText('今日已签到', '#9aa4b2');
@@ -5121,11 +5941,74 @@
     const reward = SIGN_REWARDS[state.signInDays % SIGN_REWARDS.length];
     state.lastSignIn = todayStr();
     state.signInDays++;
-    if (reward.stones) addStones(reward.stones);
-    if (reward.dust) addDust(reward.dust);
-    pushLog('签到 · 第 ' + ((state.signInDays - 1) % 7 + 1) + ' 天：' + reward.text, 'sys');
-    chime([659, 880]);
-    floatText('签到成功', '#d8b36a');
+    state.lastSignMode = mode;
+    monthMarkToday(); // 月度朝贺记到勤
+    const dayNo = ((state.signInDays - 1) % 7 + 1);
+    let ds = 0;   // 灵石实际增减（正走增益结算，负为倒扣实际值）
+    let du = 0;   // 碎屑实际增减
+    let entry;
+    if (mode === 'gamble') {
+      const g = rollSignGamble();
+      const stakeStones = reward.stones || 0;
+      const stakeDust = reward.dust || 0;
+      let cutS = 0;   // 翻车时的灵石倒扣额（供战绩「最深倒扣」用）
+      if (g.tier === 'big') {
+        ds = stakeStones ? addStones(Math.floor(stakeStones * g.mult)) : 0;
+        du = stakeDust ? addDust(Math.floor(stakeDust * g.mult)) : 0;
+        pushLog('赌狗签到 · 第 ' + dayNo + ' 天：押 ' + reward.text + ' → ×' + g.mult.toFixed(1) +
+          ' 狂赚 ' + (ds ? '+' + fmt(ds) + ' 灵石' : '') + (ds && du ? ' · ' : '') +
+          (du ? '+' + du + ' 碎屑' : ''), 'special');
+        chime([659, 784, 1046, 1318]);
+        floatText('赌狗狂赚 ×' + g.mult.toFixed(1) + '！', '#ffd479');
+      } else if (g.tier === 'keep') {
+        ds = stakeStones ? addStones(stakeStones) : 0;
+        du = stakeDust ? addDust(stakeDust) : 0;
+        pushLog('赌狗签到 · 第 ' + dayNo + ' 天：押 ' + reward.text + ' → ×1.0 原地保本', 'sys');
+        chime([659, 880]);
+        floatText('赌狗保本 ×1.0', '#d8b36a');
+      } else if (g.tier === 'zero') {
+        pushLog('赌狗签到 · 第 ' + dayNo + ' 天：押 ' + reward.text + ' → 空手而归，天台见', 'sys');
+        beep(300, 0.15);
+        floatText('空手而归，天台见', '#9aa4b2');
+      } else {
+        // 翻车：灵石直接减余额（可负债，不吃增益、不动 totalStones）；碎屑以 0 为底
+        cutS = Math.floor(stakeStones * -g.mult);
+        const dustBefore = state.dust;
+        state.stones -= cutS;
+        state.dust = Math.max(0, dustBefore - Math.floor(stakeDust * -g.mult));
+        ds = -cutS;
+        du = state.dust - dustBefore;
+        const parts = [];
+        if (cutS > 0) parts.push(fmt(cutS) + ' 灵石');
+        if (du < 0) parts.push((-du) + ' 碎屑');
+        pushLog('赌狗签到 · 第 ' + dayNo + ' 天：押 ' + reward.text + ' → ×' + g.mult.toFixed(1) +
+          ' 翻车倒扣 ' + (parts.join(' + ') || '0') +
+          (state.stones < 0 ? '，负债 ' + fmt(-state.stones) : '，余额 ' + fmt(state.stones)), 'special');
+        beep(240, 0.18);
+        floatText('翻车 ×' + g.mult.toFixed(1) + (state.stones < 0 ? ' 负债！' : '！'), '#f87171');
+      }
+      const st = state.signStats;
+      st.plays++;
+      if (g.tier === 'big') {
+        st.big++;
+        if (g.mult > st.bestMult) st.bestMult = g.mult;
+      } else if (g.tier === 'keep') st.keep++;
+      else if (g.tier === 'zero') st.zero++;
+      else {
+        st.bust++;
+        if (cutS > st.worstCut) st.worstCut = cutS;
+      }
+      entry = { d: todayStr().slice(5), m: 'g', x: g.mult, s: ds, u: du };
+    } else {
+      ds = reward.stones ? addStones(reward.stones) : 0;
+      du = reward.dust ? addDust(reward.dust) : 0;
+      pushLog('签到 · 第 ' + dayNo + ' 天：' + reward.text, 'sys');
+      chime([659, 880]);
+      floatText('签到成功', '#d8b36a');
+      entry = { d: todayStr().slice(5), m: 'n', s: ds, u: du };
+    }
+    state.signLog.unshift(entry);
+    if (state.signLog.length > SIGN_LOG_MAX) state.signLog.length = SIGN_LOG_MAX;
 
     const milestone = SIGN_MILESTONES[state.signInDays];
     if (milestone && !state.signMilestones.includes(state.signInDays)) {
@@ -5139,6 +6022,28 @@
     }
     render();
     save();
+  }
+
+  // 战绩面板：累计计数一行 + 最近流水（与签到流水合二为一）
+  function signStatsText() {
+    const st = state.signStats;
+    if (!st.plays) return '尚未开赌——普通签到稳，赌狗签到凶，今日敢不敢梭一把？';
+    return '赌狗 ' + st.plays + ' 场 · 狂赚 ' + st.big + ' · 保本 ' + st.keep + ' · 空手 ' + st.zero +
+      ' · 翻车 ' + st.bust + ' · 最佳 ×' + st.bestMult.toFixed(1) +
+      (st.worstCut > 0 ? ' · 最深倒扣 ' + fmt(st.worstCut) + ' 灵石' : '');
+  }
+
+  function signLogHtml() {
+    if (!state.signLog.length) return '<p class="hint">暂无流水，今日签到后开始记录。</p>';
+    return state.signLog.slice(0, SIGN_LOG_SHOW).map((e) => {
+      const parts = [];
+      if (e.s) parts.push((e.s > 0 ? '+' : '-') + fmt(Math.abs(e.s)) + ' 灵石');
+      if (e.u) parts.push((e.u > 0 ? '+' : '-') + fmt(Math.abs(e.u)) + ' 碎屑');
+      const mult = e.m === 'g' ? ' ×' + e.x.toFixed(1) : '';
+      return '<div class="signlog-row' + (e.s < 0 ? ' signlog-debt' : '') + '">' +
+        '<span>' + e.d + ' · ' + (e.m === 'g' ? '赌狗' : '普通') + mult + '</span>' +
+        '<b>' + (parts.length ? parts.join(' · ') : '空手而归') + '</b></div>';
+    }).join('');
   }
 
   function claimTask(id) {
@@ -5435,14 +6340,16 @@
       result = simulateBattle(player, enemy);
       pushLog('「不灭」生效，复活再战！', 'buff');
     }
+    const rogueStones = result.win
+      ? Math.max(800, Math.floor(totalPower() * 2 * (1 + 0.1 * floor) * dayProdMult())) : 0;
     showBattlePopup(enemy, result, {
       title: '秘境探幽 · 第 ' + floor + ' 层', playerHp: player.hp,
       closeText: '收下奖励', loseText: '撤出秘境',
-      rewardText: result.win ? '+' + fmt(Math.max(800, Math.floor(totalPower() * 2 * (1 + 0.1 * floor)))) + ' 灵石' : undefined,
+      rewardText: result.win ? '+' + fmt(rogueStones) + ' 灵石' : undefined,
     });
 
     if (result.win) {
-      const stones = Math.max(800, Math.floor(totalPower() * 2 * (1 + 0.1 * floor)));
+      const stones = rogueStones;
       addStones(stones);
       rollBagToken('rogue');
       addTrophy('tower', 2 + floor);
@@ -6306,15 +7213,17 @@
     const events = b.result.events || [];
 
     $('battleTitle').textContent = b.title || '战斗';
-    $('battleKicker').textContent = b.enemy.kicker + '「' + b.enemy.name + '」';
+    $('battleKicker').textContent = withPlayerName(b.enemy.kicker + '「' + b.enemy.name + '」');
     $('battleRound').textContent = '准备';
+    // 玩家侧名字用主角名（昵称/道号），敌名过 withPlayerName（心魔·林小凡 → 心魔·昵称）
+    $('battlePlayerName').textContent = playerName();
     // 头像：主人公用故事立绘（昨日之我加灰），敌人按立绘映射 / 族系徽记
     $('battlePlayerIcon').innerHTML = playerAvatarHtml();
     armStoryArtGuard($('battlePlayerIcon'));
     $('battlePlayerIcon').classList.toggle('avatar-gray', !!b.playerGray);
     $('battleEnemyIcon').innerHTML = enemyAvatarHtml(b.enemy);
     armStoryArtGuard($('battleEnemyIcon'));
-    $('battleEnemyName').textContent = b.enemy.name;
+    $('battleEnemyName').textContent = withPlayerName(b.enemy.name);
     $('battlePlayer').classList.remove('attack-right', 'attack-left', 'hit');
     $('battleEnemy').classList.remove('attack-right', 'attack-left', 'hit');
     $('battleLog').innerHTML = events.length
@@ -6386,6 +7295,32 @@
     muzhu: 'assets/p-muzhu.jpg',
     tiandao: 'assets/p-tiandao.jpg',
   };
+
+  // 主角名（2026-10-31 用户指定）：所有展示「林小凡/小凡」的地方统一用玩家昵称
+  // （服务端显示名；未改昵称即登录道号）。cloudUser 在 authGate 登录后赋值、
+  // 设置页改名后同步更新；未登录兜底原名（登录门禁下实际到不了，防裸跑）。
+  function playerName() {
+    return (cloudUser && String(cloudUser).trim()) || '林小凡';
+  }
+  // 文本替换主角名：长名在前防「小凡」先替换截断「林小凡」；只用于展示层，
+  // 故事数据原文（STORY 数据、foe.name 等）保持不动
+  function withPlayerName(t) {
+    return String(t).replace(/林小凡|小凡/g, playerName());
+  }
+  // 主角名展示点统一刷新：红尘录面板简介（从原文模板填充——昵称本身可能含「小凡」，
+  // 不能对替换结果二次替换）+ 当前战斗弹窗玩家名（开战时会重设，这里兜底改名即时刷新）
+  function paintPlayerName() {
+    const lead = $('storyLead');
+    if (lead) {
+      lead.textContent = '青石镇的采药少年' + playerName() +
+        '，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。';
+    }
+    const bp = $('battlePlayerName');
+    if (bp) bp.textContent = playerName();
+    // 人物志卡片（主角名/简介含主角名）走 renderStory 的签名缓存，这里清掉强制重绘
+    panelSigs.story = null;
+    renderStory();
+  }
 
   const STORY_CAST = {
     xiaofan: { name: '林小凡', color: '#ffd76b', brief: '青石镇采药少年，捡到一只自鸣的旧灵匣。人人叫他小虾米，后来江湖叫他——刀君。' },
@@ -6862,7 +7797,7 @@
       .replace(/url\(#HR\)/g, 'url(#' + u + 'hr)')
       .replace(/url\(#CL\)/g, 'url(#' + u + 'cl)')
       .replace(/BGTOP/g, c.bg[0]);
-    let s = '<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + (STORY_CAST[id] ? STORY_CAST[id].name : id) + '立绘">';
+    let s = '<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(STORY_CAST[id] ? withPlayerName(STORY_CAST[id].name) : id) + '立绘">';
     s += spDefs(u, c);
     s += '<rect width="200" height="240" fill="url(#' + u + 'bg)"/>';
     s += '<ellipse cx="100" cy="104" rx="66" ry="86" fill="' + c.aura + '" opacity="0.08"/>';
@@ -9091,7 +10026,7 @@
     if (state.story.met.indexOf(sp) >= 0) return;
     state.story.met.push(sp);
     if (!storyFlow || !storyFlow.review) {
-      pushLog('人物志 · 初次结识「' + STORY_CAST[sp].name + '」', 'special');
+      pushLog('人物志 · 初次结识「' + withPlayerName(STORY_CAST[sp].name) + '」', 'special');
       chime([659, 880]);
     }
   }
@@ -9127,7 +10062,7 @@
       storySetSlot($('storySlotR'), 'xiaofan', false);
       $('storyName').textContent = '——';
       $('storyName').style.color = '#d8b36a';
-      $('storyText').textContent = text;
+      $('storyText').textContent = withPlayerName(text);
       $('storyText').classList.add('sys');
     } else {
       storyMeet(speaker);
@@ -9140,7 +10075,7 @@
           storySetSlot($('storySlotL'), speaker, true);
           storySetSlot($('storySlotR'), 'xiaofan', false);
         }
-        $('storyName').textContent = STORY_CAST[speaker].name;
+        $('storyName').textContent = withPlayerName(STORY_CAST[speaker].name);
         $('storyName').style.color = STORY_CAST[speaker].color;
       } else {
         storySetSlot($('storySlotL'), f.partner || null, false);
@@ -9148,7 +10083,7 @@
         $('storyName').textContent = '旁白';
         $('storyName').style.color = '#8b93a7';
       }
-      $('storyText').textContent = text;
+      $('storyText').textContent = withPlayerName(text);
       $('storyText').classList.remove('sys');
     }
     storySyncButtons();
@@ -9299,7 +10234,7 @@
     const dust = (f.st.boss ? 40 : 12) + f.v * 15;
     const exp = Math.floor(req * 0.9 * (f.st.boss ? 1.6 : 1) * expMult());
     addStones(stones);
-    state.dust += dust;
+    addDust(dust);
     state.exp += exp;
     if (state.story.cleared.indexOf(f.gi) < 0) state.story.cleared.push(f.gi);
 
@@ -9310,7 +10245,7 @@
       const vStones = Math.round(req * 10);
       const vDust = 60 + f.v * 30;
       addStones(vStones);
-      state.dust += vDust;
+      addDust(vDust);
       pushLog('红尘录 · ' + f.vol.title + ' 全卷通关！+' + fmt(vStones) + ' 灵石 +' + vDust + ' 碎屑', 'special');
       // 新卷开启预告：下一卷已解锁（跨卷规则=上一卷全通），弹窗告知新内容
       const next = STORY_VOLUMES[f.v + 1];
@@ -9320,7 +10255,7 @@
           kicker: '📖 新卷开启 · 红尘录 ' + (f.v + 2) + ' / ' + STORY_VOLUMES.length + ' 卷',
           title: next.title,
           body:
-            '<p>' + esc(next.intro) + '</p>' +
+            '<p>' + esc(withPlayerName(next.intro)) + '</p>' +
             '<p class="guide-tip">故事 · ' + esc(next.place) + ' · 共 ' + next.stages.length +
             ' 关' + (realmGap ? ' · 需境界「' + REALMS[next.realm] + '」' : ' · 现在即可入卷') + '</p>',
         });
@@ -9404,6 +10339,12 @@
     return STORY_VOLUMES.length - 1;
   }
 
+  // 故事小章节方块图标：剧情=书卷、战斗=交叉剑（currentColor 随 ss-icon 金色）
+  var SS_ICONS = {
+    story: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>',
+    battle: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><g fill="currentColor"><g id="ssSword"><path d="M3 3l3.2.4L14 11.2l-2.8 2.8L3.4 6.2 3 3z"/><path d="M9.6 13.6l4-4 1.9 1.9-4 4-1.9-1.9z"/><path d="M13.8 15.8l1.5-1.5 4.9 4.9-1.5 1.5-4.9-4.9z"/></g><use href="#ssSword" transform="translate(24 0) scale(-1 1)"/></g></svg>'
+  };
+
   function renderStory() {
     if (!storyOpenVols) storyOpenVols = new Set([storyDefaultVol()]);
     const sig = state.realm + '|' + state.story.cleared.join(',') + '|' + state.story.met.join(',') + '|' + [...storyOpenVols].join('.');
@@ -9435,12 +10376,12 @@
             stateText = '<span class="ss-state">🔒 ' + reason + ' · 建议战力 ' + fmt(req) + '</span>';
           }
           rows += '<div class="story-stage-row ' + cls + '">' +
-            '<span class="ss-icon">' + (st.type === 'battle' ? '斗' : '卷') + '</span>' +
+            '<span class="ss-icon">' + (st.type === 'battle' ? SS_ICONS.battle : SS_ICONS.story) + '</span>' +
             '<div class="ss-info"><b>' + (li + 1) + '. ' + esc(st.name) + '</b>' +
-            '<span class="ss-note">' + typeTag + (st.foe ? ' · 敌 ' + esc(st.foe.name) : '') + '</span></div>' +
+            '<span class="ss-note">' + typeTag + (st.foe ? ' · 敌 ' + esc(withPlayerName(st.foe.name)) : '') + '</span></div>' +
             stateText + '</div>';
         });
-        body = '<p class="story-vol-intro">' + esc(vol.intro) + '</p>' +
+        body = '<p class="story-vol-intro">' + esc(withPlayerName(vol.intro)) + '</p>' +
           '<div class="story-stage-list">' + rows + '</div>';
       }
       gi += vol.stages.length;
@@ -9459,10 +10400,10 @@
     const castHtml = STORY_CAST_ORDER.map((id) => {
       const met = state.story.met.indexOf(id) >= 0;
       const c = STORY_CAST[id];
-      return '<div class="cast-card ' + (met ? 'met' : 'unknown') + '" title="' + esc(met ? c.brief : '尚未结识') + '">' +
+      return '<div class="cast-card ' + (met ? 'met' : 'unknown') + '" title="' + esc(met ? withPlayerName(c.brief) : '尚未结识') + '">' +
         '<div class="cast-art">' + (met ? storyPortrait(id, 'cast') : '<span>?</span>') + '</div>' +
-        '<b>' + (met ? esc(c.name) : '？？？') + '</b>' +
-        '<span class="cast-brief">' + (met ? esc(c.brief) : '随剧情结识') + '</span></div>';
+        '<b>' + (met ? esc(withPlayerName(c.name)) : '？？？') + '</b>' +
+        '<span class="cast-brief">' + (met ? esc(withPlayerName(c.brief)) : '随剧情结识') + '</span></div>';
     }).join('');
     $('castGrid').innerHTML = castHtml;
     $('castCount').textContent = state.story.met.length + ' / ' + STORY_CAST_ORDER.length;
@@ -9532,7 +10473,12 @@
       tab.setAttribute('aria-selected', m === mode ? 'true' : 'false');
     });
 
-    $('enemyIcon').textContent = enemy.icon;
+    // 敌方头像 SVG 只随敌人身份重建：同一关卡反复巡猎时免去每战重灌 innerHTML
+    const enemySig = enemy.name + (enemy.boss ? 'B' : '');
+    if (panelSigs.combatEnemy !== enemySig) {
+      panelSigs.combatEnemy = enemySig;
+      $('enemyIcon').innerHTML = monsterAvatarHtml(enemy.name, enemy.icon);
+    }
     $('enemyKicker').textContent = enemy.kicker;
     $('enemyName').textContent = enemy.name;
     $('enemyTag').classList.toggle('hidden', !enemy.boss);
@@ -9559,8 +10505,12 @@
     if (mode === 'wild') {
       const maxZone = wildMaxUnlocked();
       const cur = currentLevel('wild');
-      // 每 20 关一组：标签行 + 当前展开组的关卡行；默认展开当前所在关卡组
-      const openIdx = Math.min(WILD_GROUP_COUNT - 1, wildGroupOpen >= 0
+      // 分区按钮是静态结构：解锁数/所在关/展开组不变就不重建（自动巡猎每战都进来）
+      const zsig = maxZone + '|' + cur + '|' + wildGroupOpen;
+      if (panelSigs.combatZone !== zsig) {
+        panelSigs.combatZone = zsig;
+        // 每 20 关一组：标签行 + 当前展开组的关卡行；默认展开当前所在关卡组
+        const openIdx = Math.min(WILD_GROUP_COUNT - 1, wildGroupOpen >= 0
         ? wildGroupOpen
         : Math.floor((cur - 1) / WILD_GROUP_SIZE));
       let html = '<div class="zone-groups">';
@@ -9584,6 +10534,7 @@
           z + ' · ' + zone.name + '</button>';
       }
       zoneStrip.innerHTML = html + '</div>';
+      }
     }
 
     const autoBtn = $('autoBtn');
@@ -9648,27 +10599,40 @@
       $('combatHint').textContent = '区域越深，怪物属性越高；自动巡猎不弹窗，战后可点「回看战报」。';
     }
 
-    $('trophyList').innerHTML = ['tower', 'stage', 'wild'].map((key) => {
-      const t = TROPHIES[key];
-      return '<li><span>' + t.name + '</span><b>' + fmt(state[t.field] || 0) + resIcon(t.field) + '</b></li>';
-    }).join('');
+    // 战功/修炼列表是低频结构：每战都重建会让按钮悬停态闪烁，改签名门控
+    const tsig = ['tower', 'stage', 'wild'].map((key) => state[TROPHIES[key].field] || 0).join('|');
+    if (panelSigs.combatTrophy !== tsig) {
+      panelSigs.combatTrophy = tsig;
+      $('trophyList').innerHTML = ['tower', 'stage', 'wild'].map((key) => {
+        const t = TROPHIES[key];
+        return '<li><span>' + t.name + '</span><b>' + fmt(state[t.field] || 0) + resIcon(t.field) + '</b></li>';
+      }).join('');
+    }
 
-    $('trainingList').innerHTML = Object.keys(TRAININGS).map((key) => {
+    const trsig = Object.keys(TRAININGS).map((key) => {
       const t = TRAININGS[key];
       const lv = state[t.lvField] || 0;
-      const cost = trainCost(lv);
-      const maxed = lv >= MAX_TRAIN;
-      const can = !maxed && (state[t.currency] || 0) >= cost;
-      const trophy = TROPHIES[key === 'atk' ? 'tower' : key === 'hp' ? 'stage' : 'wild'];
-      return (
-        '<div class="training-row">' +
-          '<span class="training-name">' + t.name + '<em>Lv.' + lv + '</em></span>' +
-          '<button class="mini" data-train="' + key + '"' + (can ? '' : ' disabled') + '>' +
-            (maxed ? '已满' : '升级 ' + cost + resIcon(trophy.field)) + '</button>' +
-          '<p class="training-desc">' + t.desc + '</p>' +
-        '</div>'
-      );
-    }).join('');
+      return lv + ':' + (lv < MAX_TRAIN && (state[t.currency] || 0) >= trainCost(lv) ? 1 : 0);
+    }).join('|');
+    if (panelSigs.combatTrain !== trsig) {
+      panelSigs.combatTrain = trsig;
+      $('trainingList').innerHTML = Object.keys(TRAININGS).map((key) => {
+        const t = TRAININGS[key];
+        const lv = state[t.lvField] || 0;
+        const cost = trainCost(lv);
+        const maxed = lv >= MAX_TRAIN;
+        const can = !maxed && (state[t.currency] || 0) >= cost;
+        const trophy = TROPHIES[key === 'atk' ? 'tower' : key === 'hp' ? 'stage' : 'wild'];
+        return (
+          '<div class="training-row">' +
+            '<span class="training-name">' + t.name + '<em>Lv.' + lv + '</em></span>' +
+            '<button class="mini" data-train="' + key + '"' + (can ? '' : ' disabled') + '>' +
+              (maxed ? '已满' : '升级 ' + cost + resIcon(trophy.field)) + '</button>' +
+            '<p class="training-desc">' + t.desc + '</p>' +
+          '</div>'
+        );
+      }).join('');
+    }
 
     const report = $('battleReport');
     const b = lastBattles[mode];
@@ -9713,7 +10677,7 @@
       return;
     }
     const cost = upgradeCost(key);
-    btn.innerHTML = fmt(cost) + resIcon('stones');
+    btn.innerHTML = '升级 ' + fmt(cost) + resIcon('stones');
     btn.disabled = state.stones < cost;
   }
 
@@ -9976,6 +10940,7 @@
     renderTrials();
     renderMarket();
     renderDaily();
+    renderDailyExt();
     renderWeekly();
     renderAchv();
     renderResonance();
@@ -10051,6 +11016,7 @@
 
   // 角色状态总览：人物 / 资源 / 进度 / 装备四组，内容不变不重绘；仙盟名复用天下页缓存，未加载时异步拉一次
   let statusGuildAsked = false;
+  let achvEls = new Map();   // 成就 id → { prog, btn, row }，壳重建时重建，补丁循环免查全文档
   function renderStatus() {
     const el = $('statusGrid');
     if (!el) return;
@@ -10060,62 +11026,84 @@
         WORLD.guild = out;
         panelSigs.status = '';
         renderStatus();
-      }).catch(() => {});
+      }).catch(() => { statusGuildAsked = false; }); // 失败允许重试，勿永久卡「查询中」
     }
     const g = WORLD.guild && WORLD.guild.guild;
     const eq = state.equipped || {};
-    const eqRow = SLOTS.map((s) => {
-      const it = eq[s.key];
-      const rn = it ? ((RARITIES[it.r] || RARITIES[0]).name) : '';
-      return '<div><dt>' + slotIcon(s.key) + s.name + '</dt><dd>' + (it
-        ? esc(it.name) + '<br><span class="muted">' + rn +
-          ' +' + (it.lv || 0) + (it.star ? ' · ★' + it.star : '') + '</span>'
-        : '<span class="muted">空缺</span>') + '</dd></div>';
-    }).join('');
     const vol = STORY_VOLUMES[storyDefaultVol()];
     const volName = (vol.title.split(' · ')[1] || vol.title);
     const asc = Math.max(0, state.ascensions | 0);
-    const sig = [cloudUser || '', asc, state.realm, state.immortal, state.exp, realPower(), state.title,
+    // 结构签名只含低频字段：exp/realPower/stones/dust/opens 等挂机时每跳都变，
+    // 进签名会把整个面板打到渲染上限全量重建（~30 行 innerHTML，最高 10Hz）；
+    // 这些高频数值改走下方 data-st 文本补丁，DOM 结构不动
+    const eqKey = SLOTS.map((s) => {
+      const it = eq[s.key];
+      return it ? it.name + ',' + (it.r || 0) + ',' + (it.lv || 0) + ',' + (it.star || 0) : '-';
+    }).join(';');
+    const sig = [cloudUser || '', asc, state.realm, state.immortal, state.title,
       g ? g.name + '|' + g.level : (WORLD.guild ? 'none' : 'loading'),
-      state.stones, state.dust, state.souls, state.petTickets, state.rerollCoupon, state.talismans,
       state.story.cleared.length, state.towerCleared, state.stageCleared, state.wildCleared.length,
-      state.endlessBest, (state.rogue && state.rogue.best) || 0, state.opens, state.totalStones, eqRow].join('|');
-    if (panelSigs.status === sig) return;
-    panelSigs.status = sig;
-
-    const name = (cloudUser || '—') + (asc > 0 ? '+' + asc : '');
-    // 每组（标题+数据）独立成格：网格自动排布时标题紧贴自己的数据，不留跨列空白
-    const group = (t, rows) => '<div class="status-group"><p class="side-title">' + t + '</p><dl class="stats">' + rows + '</dl></div>';
-    const row = (k, v) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>';
-    el.innerHTML =
-      group('人物', [
-        row('名称', esc(name)),
-        row('境界', REALMS[state.realm] + (state.immortal > 0 ? ' · 仙位 ' + state.immortal : '')),
-        row('飞升', asc + ' 次'),
-        row('修为', fmt(state.exp)),
-        row('战力', fmt(realPower())),
-        row('称号', state.title ? '「' + esc(state.title) + '」' : '<span class="muted">无</span>'),
-        row('仙盟', g ? esc(g.name) + ' · Lv.' + g.level : '<span class="muted">' + (WORLD.guild ? '未加入' : '查询中') + '</span>'),
-      ].join('')) +
-      group('资源', [
-        row(resIcon('stones') + ' 灵石', fmt(state.stones)),
-        row(resIcon('dust') + ' 碎屑', fmt(state.dust)),
-        row(resIcon('souls') + ' 器魂', fmt(state.souls)),
-        row(resIcon('petTickets') + ' 招募券', fmt(state.petTickets)),
-        row(resIcon('rerollCoupon') + ' 洗练券', fmt(state.rerollCoupon)),
-        row(resIcon('talismans') + ' 护体符', fmt(state.talismans)),
-      ].join('')) +
-      group('进度', [
-        row('故事', esc(volName) + ' · ' + state.story.cleared.length + '/' + STORY_TOTAL + ' 章'),
-        row('爬塔', state.towerCleared + ' / ' + TOWER_MAX + ' 层'),
-        row('闯关', state.stageCleared + ' / ' + STAGE_MAX + ' 关'),
-        row('野外', state.wildCleared.length + ' / ' + WILD_MAX + ' 片'),
-        row('无尽', state.endlessBest + ' 层'),
-        row('探幽', ((state.rogue && state.rogue.best) || 0) + ' 层'),
-        row('累计开箱', fmt(state.opens) + ' 次'),
-        row('累计灵石', fmt(state.totalStones)),
-      ].join('')) +
-      group('装备', eqRow);
+      state.endlessBest, (state.rogue && state.rogue.best) || 0, eqKey].join('|');
+    if (panelSigs.status !== sig) {
+      panelSigs.status = sig;
+      const eqRow = SLOTS.map((s) => {
+        const it = eq[s.key];
+        const rn = it ? ((RARITIES[it.r] || RARITIES[0]).name) : '';
+        return '<div><dt>' + slotIcon(s.key) + s.name + '</dt><dd>' + (it
+          ? esc(it.name) + '<br><span class="muted">' + rn +
+            ' +' + (it.lv || 0) + (it.star ? ' · ★' + it.star : '') + '</span>'
+          : '<span class="muted">空缺</span>') + '</dd></div>';
+      }).join('');
+      const name = (cloudUser || '—') + (asc > 0 ? '+' + asc : '');
+      // 每组（标题+数据）独立成格：网格自动排布时标题紧贴自己的数据，不留跨列空白
+      const group = (t, rows) => '<div class="status-group"><p class="side-title">' + t + '</p><dl class="stats">' + rows + '</dl></div>';
+      // 带 key 的行走 <dd data-st="...">，供高频补丁定位
+      const row = (k, v, key) => '<div><dt>' + k + '</dt><dd' + (key ? ' data-st="' + key + '"' : '') + '>' + v + '</dd></div>';
+      el.innerHTML =
+        group('人物', [
+          row('名称', esc(name)),
+          row('境界', REALMS[state.realm] + (state.immortal > 0 ? ' · 仙位 ' + state.immortal : '')),
+          row('飞升', asc + ' 次'),
+          row('修为', '', 'exp'),
+          row('战力', '', 'power'),
+          row('称号', state.title ? '「' + esc(state.title) + '」' : '<span class="muted">无</span>'),
+          row('仙盟', g ? esc(g.name) + ' · Lv.' + g.level : '<span class="muted">' + (WORLD.guild ? '未加入' : '查询中') + '</span>'),
+        ].join('')) +
+        group('资源', [
+          row(resIcon('stones') + ' 灵石', '', 'stones'),
+          row(resIcon('dust') + ' 碎屑', '', 'dust'),
+          row(resIcon('souls') + ' 器魂', '', 'souls'),
+          row(resIcon('petTickets') + ' 招募券', '', 'petTickets'),
+          row(resIcon('rerollCoupon') + ' 洗练券', '', 'rerollCoupon'),
+          row(resIcon('talismans') + ' 护体符', '', 'talismans'),
+        ].join('')) +
+        group('进度', [
+          row('故事', esc(volName) + ' · ' + state.story.cleared.length + '/' + STORY_TOTAL + ' 章'),
+          row('爬塔', state.towerCleared + ' / ' + TOWER_MAX + ' 层'),
+          row('闯关', state.stageCleared + ' / ' + STAGE_MAX + ' 关'),
+          row('野外', state.wildCleared.length + ' / ' + WILD_MAX + ' 片'),
+          row('无尽', state.endlessBest + ' 层'),
+          row('探幽', ((state.rogue && state.rogue.best) || 0) + ' 层'),
+          row('累计开箱', '', 'opens'),
+          row('累计灵石', '', 'totalStones'),
+        ].join('')) +
+        group('装备', eqRow);
+    }
+    // 高频数值补丁：每次渲染只做十来次 textContent，重建零开销
+    const patch = (key, v) => {
+      const n = el.querySelector('[data-st="' + key + '"]');
+      if (n) n.textContent = v;
+    };
+    patch('exp', fmt(state.exp));
+    patch('power', fmt(realPower()));
+    patch('stones', fmt(state.stones));
+    patch('dust', fmt(state.dust));
+    patch('souls', fmt(state.souls));
+    patch('petTickets', fmt(state.petTickets));
+    patch('rerollCoupon', fmt(state.rerollCoupon));
+    patch('talismans', fmt(state.talismans));
+    patch('opens', fmt(state.opens) + ' 次');
+    patch('totalStones', fmt(state.totalStones));
   }
 
   function renderLog() {
@@ -10194,7 +11182,7 @@
       if (lv === undefined) {
         return (
           '<div class="pet-row locked">' +
-            '<span class="pet-icon">' + p.icon + '</span>' +
+            '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
             '<div class="pet-main"><span class="pet-name">？？？</span>' +
             '<p class="pet-desc">' + p.desc + '加成 · 招募需 ' + p.cost + resIcon('petTickets') + '</p></div>' +
             '<button class="mini" data-pet="recruit" data-id="' + p.id + '"' +
@@ -10214,7 +11202,7 @@
         (coreLv ? ' · 内丹 ' + coreLv + ' 级' + (traits ? '（' + traits + '）' : '') : '');
       return (
         '<div class="pet-row' + (active ? ' active' : '') + '">' +
-          '<span class="pet-icon">' + p.icon + '</span>' +
+          '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
           '<div class="pet-main"><span class="pet-name">' + p.name + (active ? ' <em>出战中</em>' : '') + '</span>' +
           '<p class="pet-desc">' + p.desc + ' +' + bonusText + ' · 亲密度 ' + lv + ' / ' + PET_MAX_LV +
             ' · 信物 ' + tokenLv + ' / ' + TOKEN_MAX + ' · 内丹 ' + coreLv + ' / ' + CORE_MAX + '</p></div>' +
@@ -10252,7 +11240,7 @@
         : '';
       return (
         '<div class="cave-row">' +
-          '<span class="cave-icon">' + def.icon + '</span>' +
+          '<span class="cave-icon" aria-hidden="true">' + (CAVE_ICONS[key] || def.icon) + '</span>' +
           '<div class="cave-main"><span class="cave-name">' + def.name + ' <em>Lv.' + lv + '</em></span>' +
           '<p class="cave-desc">' + def.desc + (curText ? '（当前 ' + curText + '）' : '') + '</p></div>' +
           '<button class="mini" data-cave="' + key + '"' + (maxed || state.stones < cost ? ' disabled' : '') + '>' +
@@ -10265,119 +11253,171 @@
   function renderDaily() {
     ensureDaily();
     const signed = state.lastSignIn === todayStr();
-    const tasksSig = DAILY_TASKS.map((t) =>
-      t.id + ':' + Math.min(state.daily[t.id] || 0, t.target) + ':' +
-      state.daily.claimed.includes(t.id)).join('|');
     const wb = weekBuff();
-    const sig = signed + '|' + state.signInDays + '|' + tasksSig + '|' + wb.id + (isWeekend() ? '|we' : '');
-    if (panelSigs.daily === sig) return;
-    panelSigs.daily = sig;
-    $('weekBuffLine').textContent = '本周气运：' + wb.name + '（' + wb.desc + '）' +
-      (isWeekend() ? ' · 周末秘境灵石 ×2 进行中' : '');
-
-    const nextReward = SIGN_REWARDS[state.signInDays % SIGN_REWARDS.length];
-    $('signInBox').innerHTML =
-      '<div class="signin-row">' +
-        '<span>累计签到 <b>' + state.signInDays + '</b> 天 · 本日可领 ' + nextReward.text + '</span>' +
-        '<button class="mini" id="signInBtn"' + (signed ? ' disabled' : '') + '>' +
-          (signed ? '今日已签' : '签到') + '</button>' +
-      '</div>';
-
-    $('dailyList').innerHTML = DAILY_TASKS.map((t) => {
+    const claimedSet = state.daily.claimed.join(',');
+    // 壳签名：仅结构相关（日期/签到/领取集合/气运）——不含每跳变的进度值，
+    // 自动开箱高频渲染时只走下方动态补丁，按钮 DOM 稳定不重建（防悬停闪烁与点击落空）
+    const sig = signed + '|' + state.signInDays + '|' + claimedSet + '|' + wb.id +
+      (isWeekend() ? '|we' : '') + '|' + (state.lastSignMode || '');
+    if (panelSigs.dailyShell !== sig) {
+      panelSigs.dailyShell = sig;
+      const nextReward = SIGN_REWARDS[state.signInDays % SIGN_REWARDS.length];
+      $('weekBuffLine').textContent = '本周气运：' + wb.name + '（' + wb.desc + '）' +
+        (isWeekend() ? ' · 周末秘境灵石 ×2 进行中' : '');
+      $('signInBox').innerHTML =
+        '<div class="signin-row">' +
+          '<span>累计签到 <b>' + state.signInDays + '</b> 天 · 本日可领 ' + nextReward.text + '</span>' +
+          (signed
+            ? '<span class="mini signin-done">今日已签（' + (state.lastSignMode === 'gamble' ? '赌狗' : '普通') + '）</span>'
+            : '<span class="signin-actions">' +
+              '<button class="mini" id="signInBtn">普通签到</button>' +
+              '<button class="mini" id="signGambleBtn">赌狗签到</button>' +
+              '</span>') +
+        '</div>' +
+        (signed ? '' :
+          '<p class="hint signin-odds">赌狗 · 49% ×2~5 倍 · 10% ×1 · 20% 空手 · ' +
+          '21% 倒扣 1~3 倍（灵石可负债）</p>');
+      $('signStatsLine').textContent = signStatsText();
+      $('signLogList').innerHTML = signLogHtml();
+      $('dailyList').innerHTML = DAILY_TASKS.map((t) => {
+        const rewardText = (t.reward.stones ? fmt(t.reward.stones) + ' 灵石' : '') +
+          (t.reward.dust ? (t.reward.stones ? ' · ' : '') + t.reward.dust + ' 碎屑' : '');
+        return (
+          '<div class="daily-row" data-drow="' + t.id + '">' +
+            '<div class="pet-main"><span class="pet-name">' + t.name + '</span>' +
+            '<p class="pet-desc"><span data-dprog="' + t.id + '"></span> · 奖励 ' + rewardText + '</p></div>' +
+            '<button class="mini" data-daily="' + t.id + '" data-dbtn="' + t.id + '"></button>' +
+          '</div>'
+        );
+      }).join('');
+    }
+    // 动态补丁：进度文本 + 按钮状态
+    for (const t of DAILY_TASKS) {
       const cur = Math.min(state.daily[t.id] || 0, t.target);
       const done = cur >= t.target;
       const claimed = state.daily.claimed.includes(t.id);
-      const rewardText = (t.reward.stones ? fmt(t.reward.stones) + ' 灵石' : '') +
-        (t.reward.dust ? (t.reward.stones ? ' · ' : '') + t.reward.dust + ' 碎屑' : '');
-      return (
-        '<div class="daily-row' + (claimed ? ' claimed' : '') + '">' +
-          '<div class="pet-main"><span class="pet-name">' + t.name + '</span>' +
-          '<p class="pet-desc">' + cur + ' / ' + t.target + ' · 奖励 ' + rewardText + '</p></div>' +
-          '<button class="mini" data-daily="' + t.id + '"' + (done && !claimed ? '' : ' disabled') + '>' +
-            (claimed ? '已领取' : done ? '领取' : '未完成') + '</button>' +
-        '</div>'
-      );
-    }).join('');
+      const prog = document.querySelector('[data-dprog="' + t.id + '"]');
+      if (prog) prog.textContent = cur + ' / ' + t.target;
+      const btn = document.querySelector('[data-dbtn="' + t.id + '"]');
+      if (btn) {
+        btn.textContent = claimed ? '已领取' : done ? '领取' : '未完成';
+        btn.disabled = !(done && !claimed);
+      }
+      const rowEl = document.querySelector('[data-drow="' + t.id + '"]');
+      if (rowEl) rowEl.classList.toggle('claimed', claimed);
+    }
   }
 
   function renderWeekly() {
     ensureWeekly();
-    const tasksSig = WEEKLY_TASKS.map((t) =>
-      t.id + ':' + Math.min(state.weekly[t.id] || 0, t.target) + ':' +
-      state.weekly.claimed.includes(t.id)).join('|');
-    const sig = state.weekly.week + '|' + tasksSig;
-    if (panelSigs.weekly === sig) return;
-    panelSigs.weekly = sig;
-    $('weeklyList').innerHTML = WEEKLY_TASKS.map((t) => {
+    const claimedSet = state.weekly.claimed.join(',');
+    // 壳签名：周标识 + 领取集合（不含每跳进度），动态部分走补丁
+    const sig = state.weekly.week + '|' + claimedSet;
+    if (panelSigs.weeklyShell !== sig) {
+      panelSigs.weeklyShell = sig;
+      $('weeklyList').innerHTML = WEEKLY_TASKS.map((t) => {
+        const rewardText = (t.reward.stones ? fmt(t.reward.stones) + ' 灵石' : '') +
+          (t.reward.dust ? (t.reward.stones ? ' · ' : '') + t.reward.dust + ' 碎屑' : '');
+        return (
+          '<div class="daily-row" data-wrow="' + t.id + '">' +
+            '<div class="pet-main"><span class="pet-name">' + t.name + '</span>' +
+            '<p class="pet-desc"><span data-wprog="' + t.id + '"></span> · 奖励 ' + rewardText + '</p></div>' +
+            '<button class="mini" data-weekly="' + t.id + '" data-wbtn="' + t.id + '"></button>' +
+          '</div>'
+        );
+      }).join('');
+    }
+    for (const t of WEEKLY_TASKS) {
       const cur = Math.min(state.weekly[t.id] || 0, t.target);
       const done = cur >= t.target;
       const claimed = state.weekly.claimed.includes(t.id);
-      const rewardText = (t.reward.stones ? fmt(t.reward.stones) + ' 灵石' : '') +
-        (t.reward.dust ? (t.reward.stones ? ' · ' : '') + t.reward.dust + ' 碎屑' : '');
-      return (
-        '<div class="daily-row' + (claimed ? ' claimed' : '') + '">' +
-          '<div class="pet-main"><span class="pet-name">' + t.name + '</span>' +
-          '<p class="pet-desc">' + fmt(cur) + ' / ' + fmt(t.target) + ' · 奖励 ' + rewardText + '</p></div>' +
-          '<button class="mini" data-weekly="' + t.id + '"' + (done && !claimed ? '' : ' disabled') + '>' +
-            (claimed ? '已领取' : done ? '领取' : '进行中') + '</button>' +
-        '</div>'
-      );
-    }).join('');
+      const prog = document.querySelector('[data-wprog="' + t.id + '"]');
+      if (prog) prog.textContent = fmt(cur) + ' / ' + fmt(t.target);
+      const btn = document.querySelector('[data-wbtn="' + t.id + '"]');
+      if (btn) {
+        btn.textContent = claimed ? '已领取' : done ? '领取' : '进行中';
+        btn.disabled = !(done && !claimed);
+      }
+      const rowEl = document.querySelector('[data-wrow="' + t.id + '"]');
+      if (rowEl) rowEl.classList.toggle('claimed', claimed);
+    }
   }
 
   function renderAchv() {
-    let ready = 0;
-    let claimedN = 0;
-    const rows = ACHIEVEMENTS.map((a) => {
+    const states = ACHIEVEMENTS.map((a) => {
       const claimed = !!state.achievements[a.id];
-      if (claimed) claimedN++;
       const cur = Math.min(a.cur(state), a.target);
       const isReady = !claimed && cur >= a.target;
-      if (isReady) ready++;
       return { a, cur, claimed, isReady };
     });
-    const sig = claimedN + '|' + ready + '|' + rows.map((r) => r.cur).join(',') + '|' +
-      state.title + '|' + achvFilter;
-    if (panelSigs.achv === sig) return;
-    panelSigs.achv = sig;
+    const claimedN = states.filter((s2) => s2.claimed).length;
+    const ready = states.filter((s2) => s2.isReady).length;
+    const nTodo = states.length - ready - claimedN;
+    const claimedIds = states.filter((s2) => s2.claimed).map((s2) => s2.a.id).join(',');
+    // 壳签名：筛选 + 领取集合 + 已佩称号（不含每跳进度——进度走下方补丁，
+    // 自动开箱高频渲染时按钮 DOM 稳定，防悬停闪烁与点击落空）
+    const sig = achvFilter + '|' + claimedIds + '|' + state.title;
+    if (panelSigs.achvShell !== sig) {
+      panelSigs.achvShell = sig;
+      const shown = states.filter((s2) =>
+        achvFilter === 'ready' ? s2.isReady
+          : achvFilter === 'done' ? s2.claimed
+          : achvFilter === 'todo' ? !s2.claimed && !s2.isReady
+          : true);
+      $('achvList').innerHTML = shown.length
+        ? shown.map(({ a }) =>
+            '<div class="achv-row" data-arow="' + a.id + '">' +
+              '<div class="pet-main"><span class="pet-name">' + a.name +
+                (a.title ? ' <em>称号·' + a.title + '</em>' : '') + '</span>' +
+              '<p class="pet-desc">' + a.desc + ' · <span data-aprog="' + a.id + '"></span></p></div>' +
+              '<button class="mini" data-achv="' + a.id + '" data-abtn="' + a.id + '"></button>' +
+            '</div>'
+          ).join('')
+        : '<p class="hint">该分类下暂无成就。</p>';
+      const countMapShell = { all: states.length, ready, done: claimedN, todo: nTodo };
+      const filterDefs = [
+        ['all', '全部'], ['ready', '未领取'], ['done', '已完成'], ['todo', '未完成'],
+      ];
+      $('achvFilterRow').innerHTML = filterDefs.map(([key, label]) =>
+        '<button class="bag-chip' + (achvFilter === key ? ' active' : '') + '" data-achv-filter="' + key + '">' +
+          label + ' (<span data-count="' + key + '">' + countMapShell[key] + '</span>)</button>').join('');
+      const titles = states.filter((s2) => s2.claimed && s2.a.title).map((s2) => s2.a.title);
+      $('titleRow').innerHTML = titles.length
+        ? '<span class="title-label">称号</span>' + titles.map((t) =>
+            '<button class="bag-chip' + (state.title === t ? ' active' : '') + '" data-title="' + t + '">' + t + '</button>'
+          ).join('')
+        : '<span class="title-label">称号</span><span class="title-empty">达成标杆成就解锁称号</span>';
+      // 一次性收集本壳的行元素引用：补丁循环每帧 61×3 次全文档 querySelector 太贵
+      achvEls = new Map();
+      $('achvList').querySelectorAll('[data-arow]').forEach((rowEl) => {
+        achvEls.set(rowEl.dataset.arow, {
+          prog: rowEl.querySelector('[data-aprog]'),
+          btn: rowEl.querySelector('[data-abtn]'),
+          row: rowEl,
+        });
+      });
+    }
+    // 动态补丁：计数、每行进度、按钮状态
     $('achvCount').textContent = claimedN + ' / ' + ACHIEVEMENTS.length;
-    const titles = rows.filter((r) => r.claimed && r.a.title).map((r) => r.a.title);
-    $('titleRow').innerHTML = titles.length
-      ? '<span class="title-label">称号</span>' + titles.map((t) =>
-          '<button class="bag-chip' + (state.title === t ? ' active' : '') + '" data-title="' + t + '">' + t + '</button>'
-        ).join('')
-      : '<span class="title-label">称号</span><span class="title-empty">达成标杆成就解锁称号</span>';
-    $('titleRow').classList.toggle('hidden', !titles.length && !claimedN);
-    $('titleRow').classList.remove('hidden');
+    const countMap = { all: states.length, ready, done: claimedN, todo: nTodo };
+    document.querySelectorAll('#achvFilterRow [data-count]').forEach((chip) => {
+      chip.textContent = String(countMap[chip.dataset.count]);
+    });
     $('titleBadge').classList.toggle('hidden', !state.title);
     $('titleBadge').textContent = '「' + state.title + '」';
-    // 筛选 chips：全部 / 未领取（达成未领）/ 已完成（已领）/ 未完成（未达成）
-    const nTodo = rows.length - ready - claimedN;
-    const filterDefs = [
-      ['all', '全部', rows.length],
-      ['ready', '未领取', ready],
-      ['done', '已完成', claimedN],
-      ['todo', '未完成', nTodo],
-    ];
-    $('achvFilterRow').innerHTML = filterDefs.map(([key, label, n]) =>
-      '<button class="bag-chip' + (achvFilter === key ? ' active' : '') + '" data-achv-filter="' + key + '">' +
-        label + ' ' + n + '</button>').join('');
-    const shown = rows.filter((r) =>
-      achvFilter === 'ready' ? r.isReady
-        : achvFilter === 'done' ? r.claimed
-        : achvFilter === 'todo' ? !r.claimed && !r.isReady
-        : true);
-    $('achvList').innerHTML = shown.length
-      ? shown.map(({ a, cur, claimed, isReady }) =>
-          '<div class="achv-row' + (claimed ? ' claimed' : isReady ? ' ready' : '') + '">' +
-            '<div class="pet-main"><span class="pet-name">' + a.name +
-              (a.title ? ' <em>称号·' + a.title + '</em>' : '') + '</span>' +
-            '<p class="pet-desc">' + a.desc + ' · ' + fmt(cur) + ' / ' + fmt(a.target) + '</p></div>' +
-            '<button class="mini" data-achv="' + a.id + '"' + (isReady ? '' : ' disabled') + '>' +
-              (claimed ? '已达成' : '领 ' + fmt(a.stones) + ' 灵石') + '</button>' +
-          '</div>'
-        ).join('')
-      : '<p class="hint">该分类下暂无成就。</p>';
+    for (const { a, cur, claimed, isReady } of states) {
+      const els = achvEls.get(a.id);
+      if (!els) continue;
+      if (els.prog) els.prog.textContent = fmt(cur) + ' / ' + fmt(a.target);
+      if (els.btn) {
+        els.btn.textContent = claimed ? '已达成' : '领 ' + fmt(a.stones) + ' 灵石';
+        els.btn.disabled = !isReady;
+      }
+      if (els.row) {
+        els.row.classList.toggle('claimed', claimed);
+        els.row.classList.toggle('ready', isReady && !claimed);
+      }
+    }
   }
 
   function renderGongfa() {
@@ -10443,7 +11483,7 @@
       }
       return (
         '<div class="cave-row">' +
-          '<span class="cave-icon">' + def.icon + '</span>' +
+          '<span class="cave-icon" aria-hidden="true">' + (ELIXIR_ICONS[def.id] || def.icon) + '</span>' +
           '<div class="cave-main"><span class="cave-name">' + def.name +
             (owned ? ' <em>存 ' + owned + '</em>' : '') + (active ? ' <em>生效中 ' + fmtDuration(activeBucket) + '</em>' : '') + '</span>' +
           '<p class="cave-desc">' + def.desc + '</p></div>' +
@@ -10459,8 +11499,9 @@
     const run = state.rogue.run;
     const bossDone = state.bossRush.date === todayStr() && state.bossRush.grade;
     const trialsDone = state.trials.date === todayStr() ? state.trials.done : [];
+    const anomalyDone = state.anomaly.date === todayStr() && state.anomaly.done;
     const sig = JSON.stringify(run) + '|' + state.rogue.best + '|' + bossDone + '|' +
-      trialsDone.join('+') + '|' + state.stageCleared;
+      trialsDone.join('+') + '|' + state.stageCleared + '|' + anomalyDone + '|' + state.anomaly.grade;
     if (panelSigs.trials === sig) return;
     panelSigs.trials = sig;
     $('rogueBest').textContent = '最远 ' + state.rogue.best + ' / ' + ROGUE_FLOORS + ' 层';
@@ -10499,7 +11540,26 @@
             (done ? '已达成' : !unlocked ? '未解锁' : '挑战') + '</button>' +
         '</div>'
       );
-    }).join('');
+    }).join('') +
+    // 异象秘境：日期种子词缀每日一换，S 级 5% 掉仙品、月全勤 S 保底仙品
+    (() => {
+      const affs = anomalyAffixes().map((a) => a.name + '（' + a.desc + '）').join(' + ');
+      const anomBtn = $('anomalyBtn');
+      if (anomBtn) {
+        anomBtn.disabled = anomalyDone || state.stageCleared < 5;
+        anomBtn.textContent = anomalyDone
+          ? (state.anomaly.grade ? '今日已平 · ' + state.anomaly.grade + ' 级' : '今日异象未平')
+          : state.stageCleared < 5 ? '通关闯关第 5 关解锁' : '平定异象';
+      }
+      const note = $('anomalyNote');
+      if (note) {
+        note.textContent = state.stageCleared < 5
+          ? '每日词缀挑战，按余血评级发奖。'
+          : '今日词缀：' + affs + ' · 首通 +' + fmt(ANOMALY_FIRST.stones) + ' 灵石 · S 级 ' +
+            Math.round(ANOMALY_S_DROP * 100) + '% 掉仙品';
+      }
+      return '';
+    })();
   }
 
   function renderMarket() {
@@ -10562,7 +11622,7 @@
 
   function renderSteward() {
     const st = state.steward;
-    const sig = JSON.stringify(st) + '|' + state.stones;
+    const sig = JSON.stringify(st); // 四组 chip 不展示灵石，stones 进签名只会白重建（开箱即闪）
     if (panelSigs.steward === sig) return;
     panelSigs.steward = sig;
     const chip = (group, val, label, on) =>
@@ -10626,7 +11686,13 @@
       m.ap + '|' + state.treasure.at + '|' + state.treasure.frags + '|' + state.treasure.maps;
     if (panelSigs.map === sig) return;
     panelSigs.map = sig;
-    $('mapAp').textContent = '行动力 ' + m.ap + ' / ' + MAP_AP_MAX + '（每日 +6）';
+    const buyBtn = document.getElementById('mapBuyBtn');
+    if (buyBtn) {
+      const maxed = m.buys >= MAP_BUY_MAX;
+      buyBtn.textContent = maxed ? '今日加购已满' : '加购 1 行动力（1 万灵石）';
+      buyBtn.disabled = maxed || state.stones < MAP_BUY_COST;
+    }
+    $('mapAp').textContent = '行动力 ' + m.ap + ' / ' + (MAP_AP_MAX + m.buys) + '（每日 +6 · 已购 ' + m.buys + '/' + MAP_BUY_MAX + '）';
     const canMove = (idx) => {
       const x = idx % MAP_W;
       const y = Math.floor(idx / MAP_W);
@@ -10688,7 +11754,7 @@
       const it = state.museum[s.key];
       return (
         '<div class="pet-row' + (it ? ' active' : '') + '">' +
-          '<span class="pet-icon">' + s.icon + '</span>' +
+          '<span class="pet-icon" aria-hidden="true">' + slotIcon(s.key) + '</span>' +
           '<div class="pet-main"><span class="pet-name">' + (it ? esc(it.name) : s.name + '展位') + '</span>' +
           '<p class="pet-desc">' + (it
             ? '战力 ' + fmt(itemPower(it)) + ' · 收益加成 ' + ((it.special || it.r >= 5) ? 2 : 1) + '%'
@@ -10720,7 +11786,7 @@
       } else {
         html += '<div class="cave-row"><div class="cave-main"><span class="cave-name">空田</span>' +
           '<p class="cave-desc">选一种灵籽播种</p></div>' +
-          '<div class="pet-actions">' + FARM_SEEDS.map((sd) =>
+          '<div class="pet-actions seed-actions">' + FARM_SEEDS.map((sd) =>
             '<button class="mini" data-plant="' + i + '" data-seed="' + sd.id + '" title="' + sd.text + '"' +
               (state.stones < sd.cost ? ' disabled' : '') + '>' + sd.name + ' ' + fmt(sd.cost) + resIcon('stones') + '</button>'
           ).join('') + '</div></div>';
@@ -10783,29 +11849,144 @@
   function renderBounty() {
     ensureBounty();
     const sig = state.bounty.date + '|' + state.bounty.slots.map((sl) =>
-      sl.id + ':' + sl.prog + ':' + sl.claimed).join('|') + '|' + state.bounty.rerolled;
+      sl.id + ':' + sl.tier + ':' + sl.prog + ':' + sl.claimed).join('|') + '|' +
+      state.bounty.rerolls + '|' + state.bounty.allClaimed + '|' +
+      (state.stones >= BOUNTY_REROLL_COST ? 1 : 0);
     if (panelSigs.bounty === sig) return;
     panelSigs.bounty = sig;
+    const allDone = state.bounty.allClaimed;
     $('bountyList').innerHTML = state.bounty.slots.map((sl, i) => {
-      const def = BOUNTY_POOL.find((b) => b.id === sl.id);
-      const done = sl.prog >= def.target;
-      const rewardText = (def.reward.stones ? fmt(def.reward.stones) + ' 灵石' : '') +
-        (def.reward.dust ? (def.reward.stones ? ' · ' : '') + def.reward.dust + ' 碎屑' : '');
+      const tier = BOUNTY_TIERS.find((t) => t.key === sl.tier) || BOUNTY_TIERS[0];
+      const done = sl.prog >= sl.target;
+      const rewardText = fmt(tier.stones) + ' 灵石 · ' + tier.dust + ' 碎屑' +
+        (tier.drop ? ' · ' + Math.round(tier.drop * 100) + '% 掉天品' : '');
       return (
         '<div class="pet-row' + (sl.claimed ? ' claimed' : '') + '">' +
-          '<div class="pet-main"><span class="pet-name">' + def.desc + '</span>' +
-          '<p class="pet-desc">' + fmt(Math.min(sl.prog, def.target)) + ' / ' + fmt(def.target) +
+          '<div class="pet-main"><span class="pet-name">' +
+            '<i style="color:' + tier.color + '">【' + tier.name + '】</i> ' + bountyDesc(sl) + '</span>' +
+          '<p class="pet-desc">' + fmt(Math.min(sl.prog, sl.target)) + ' / ' + fmt(sl.target) +
             ' · ' + rewardText + '</p></div>' +
           '<div class="pet-actions">' +
             '<button class="mini" data-bounty-reroll="' + i + '"' +
-              (state.bounty.rerolled || state.stones < BOUNTY_REROLL_COST ? ' disabled' : '') + '>刷新 ' + BOUNTY_REROLL_COST + resIcon('stones') + '</button>' +
+              (state.bounty.rerolls <= 0 || state.stones < BOUNTY_REROLL_COST ? ' disabled' : '') +
+              '>刷新 ' + fmt(BOUNTY_REROLL_COST) + resIcon('stones') + '</button>' +
             '<button class="mini" data-bounty-claim="' + i + '"' +
               (done && !sl.claimed ? '' : ' disabled') + '>' +
               (sl.claimed ? '已领' : done ? '领取' : '悬赏中') + '</button>' +
           '</div>' +
         '</div>'
       );
+    }).join('') +
+    '<p class="hint">四单全清额外 +' + fmt(BOUNTY_ALL_CLEAR.stones) + ' 灵石' +
+    (allDone ? '（已达成）' : '') + ' · 今日余刷新 ' + state.bounty.rerolls + ' 次</p>';
+  }
+
+  /* ---------------- 日常扩容渲染（灵潮 / 占卜 / 灵气 / 问答 / 朝贺） ---------------- */
+
+  function renderDailyExt() {
+    // 灵潮
+    ensureTide();
+    ensureFortune();
+    const box = $('dailyExt');
+    if (!box) return;
+    const h = new Date().getHours();
+    const inWindow = tideOn();
+    const tideHtml = TIDE_WINDOWS.map((w, i) => {
+      const open = h >= w.s && h < w.e;
+      const claimed = state.tide.claimed[i];
+      const nextWin = open ? '进行中' : (h < w.s ? '今日 ' + w.s + ':00 开启' : '已结束');
+      return (
+        '<div class="pet-row' + (claimed ? ' claimed' : '') + '">' +
+          '<div class="pet-main"><span class="pet-name">灵潮 · ' + w.s + ':00 – ' + w.e + ':00</span>' +
+          '<p class="pet-desc">' + nextWin + ' · 领符 +' + fmt(TIDE_CLAIM) + ' 灵石 · 窗口内产出 ×' + TIDE_MULT + '</p></div>' +
+          '<button class="mini" data-tide="' + i + '"' +
+            (!open || claimed ? ' disabled' : '') + '>' + (claimed ? '已领' : '领符') + '</button>' +
+        '</div>'
+      );
     }).join('');
+    // 占卜
+    const fIdx = state.fortune.idx;
+    const fSign = fIdx >= 0 ? FORTUNE_SIGNS[fIdx] : null;
+    const fortuneHtml =
+      '<div class="pet-row' + (state.fortune.claimed ? ' claimed' : '') + '">' +
+        '<div class="pet-main"><span class="pet-name">每日占卜' +
+          (fSign ? ' · 「' + fSign.name + '」' : '') + '</span>' +
+          '<p class="pet-desc">' + (fSign ? esc(fSign.text) : '免费一签，定今日运势（上上签产出 +5%）') + '</p></div>' +
+        (!fSign
+          ? '<button class="mini" id="fortuneDrawBtn">摇签</button>'
+          : '<button class="mini" id="fortuneClaimBtn"' + (state.fortune.claimed ? ' disabled' : '') + '>' +
+            (state.fortune.claimed ? '已领' : '领签') + '</button>') +
+      '</div>';
+    // 灵气盈满
+    const vigorCells = Math.min(VIGOR_CELL_N, Math.floor(state.vigor.minutes / VIGOR_CELL_MIN));
+    const vigorHtml =
+      '<div class="pet-row' + (state.vigor.claimed >= vigorCells ? ' claimed' : '') + '">' +
+        '<div class="pet-main"><span class="pet-name">灵气盈满 · ' + state.vigor.claimed + ' / ' + vigorCells + ' 格</span>' +
+        '<p class="pet-desc">在线每 ' + VIGOR_CELL_MIN + ' 分钟聚 1 格（至多 ' + VIGOR_CELL_N + ' 格）· 每格 +' +
+        fmt(VIGOR_REWARD.stones) + ' 灵石 +' + VIGOR_REWARD.dust + ' 碎屑' +
+        (vigorCells < VIGOR_CELL_N ? ' · 下一格还需 ' + (VIGOR_CELL_MIN - state.vigor.minutes % VIGOR_CELL_MIN) + ' 分钟' : '') + '</p></div>' +
+        '<button class="mini" id="vigorClaimBtn"' + (state.vigor.claimed >= vigorCells ? ' disabled' : '') + '>领取</button>' +
+      '</div>';
+    // 仙道问答
+    ensureQuiz();
+    const quizDone = state.quiz.done;
+    const quizIds = quizPick();
+    const quizDef = quizDone ? null : QUIZ_BANK[quizIds[state.quiz.idx]];
+    const quizHtml =
+      '<div class="pet-row' + (quizDone ? ' claimed' : '') + '">' +
+        '<div class="pet-main"><span class="pet-name">仙道问答 · ' +
+          (quizDone ? '今日已毕 ' + state.quiz.correct + ' / ' + QUIZ_N : '第 ' + (state.quiz.idx + 1) + ' / ' + QUIZ_N + ' 题') +
+          ' · 连对 ' + state.quiz.streak + ' 天</span>' +
+          '<p class="pet-desc">' + (quizDone
+            ? (state.quiz.correct >= QUIZ_N
+              ? '全对！连对 ' + state.quiz.streak + ' 天' + (state.quiz.streak === 0 ? '（七日连对已得天品自选箱）' : '，满 ' + QUIZ_STREAK_N + ' 天得「天品自选箱」') + ' · 明日再来'
+              : '答对 ' + state.quiz.correct + ' 题 · 连对中断，明日再来')
+            : esc(quizDef.q)) + '</p>' +
+          (quizDone ? '' :
+            '<div class="quiz-opts">' + quizDef.a.map((opt, oi) =>
+              '<button class="mini" data-quiz="' + oi + '">' + esc(opt) + '</button>').join('') + '</div>') +
+        '</div>' +
+      '</div>';
+    // 月度朝贺
+    ensureMonth();
+    const signedToday = state.lastSignIn === todayStr();
+    const monthHtml = MONTH_MILESTONES.map((m) => {
+      const claimed = state.month.claimed.includes(m.n);
+      const reach = state.month.days.length >= m.n;
+      return (
+        '<div class="pet-row' + (claimed ? ' claimed' : '') + '">' +
+          '<div class="pet-main"><span class="pet-name">朝贺 ' + m.n + ' 天</span>' +
+          '<p class="pet-desc">' + m.text + ' · 本月到勤 ' + state.month.days.length + ' / ' + m.n + ' 天</p></div>' +
+          '<button class="mini" data-month="' + m.n + '"' + (claimed || !reach ? ' disabled' : '') + '>' +
+            (claimed ? '已领' : reach ? '领取' : '未达成') + '</button>' +
+        '</div>'
+      );
+    }).join('') +
+      '<p class="hint">本月补签 ' + state.month.makeup + ' / ' + MONTH_MAKEUP_MAX +
+      ' 次' + (signedToday ? '' : ' · 今日尚未签到，先去签到') +
+      ' <button class="mini" id="monthMakeupBtn"' +
+      (state.month.makeup >= MONTH_MAKEUP_MAX || signedToday || state.stones < MONTH_MAKEUP_COST ? ' disabled' : '') +
+      '>补签昨日 ' + fmt(MONTH_MAKEUP_COST) + resIcon('stones') + '</button></p>';
+    // 壳签名：只有结构变化才重建（灵气分钟数跳变走局部补丁）
+    const sig = state.tide.date + '|' + state.tide.claimed.join(',') + '|' + inWindow + '|' + h +
+      '|' + state.fortune.date + '|' + state.fortune.idx + '|' + state.fortune.claimed +
+      '|' + state.vigor.claimed + '|' + vigorCells +
+      '|' + state.quiz.date + '|' + state.quiz.idx + '|' + state.quiz.correct + '|' + state.quiz.done + '|' + state.quiz.streak +
+      '|' + state.month.key + '|' + state.month.days.length + '|' + state.month.claimed.join(',') + '|' +
+      state.month.makeup + '|' + signedToday + '|' + (state.stones >= MONTH_MAKEUP_COST ? 1 : 0);
+    if (panelSigs.dailyExt === sig) return;
+    panelSigs.dailyExt = sig;
+    box.innerHTML =
+      '<p class="side-title">灵潮时段 <span class="count">产出 ×' + dayProdMult() + '</span></p>' +
+      tideHtml +
+      '<p class="side-title">每日占卜</p>' +
+      fortuneHtml +
+      '<p class="side-title">灵气盈满</p>' +
+      vigorHtml +
+      '<p class="side-title">仙道问答 <span class="count">每日 ' + QUIZ_N + ' 题</span></p>' +
+      quizHtml +
+      '<p class="side-title">月度朝贺 <span class="count">' + monthKey() + '</span></p>' +
+      monthHtml;
   }
 
   function renderDao() {
@@ -10817,7 +11998,7 @@
       const married = state.daoLv.married === npc.id;
       return (
         '<div class="pet-row' + (married ? ' active' : '') + '">' +
-          '<span class="pet-icon">' + npc.icon + '</span>' +
+          '<span class="pet-icon dao-avatar-box">' + daoAvatar(npc.id) + '</span>' +
           '<div class="pet-main"><span class="pet-name">' + npc.name +
             (married ? ' <em>道侣</em>' : '') + '</span>' +
           '<p class="pet-desc">情谊 ' + aff + ' / ' + DAO_MARRY_AT + ' · ' + npc.desc + '</p></div>' +
@@ -10860,6 +12041,8 @@
 
   function loop() {
     if (document.hidden) return;
+
+    vigorTick(); // 灵气盈满：页面在线时长累计
 
     const now = performance.now();
     let dt = (now - last) / 1000;
@@ -10952,7 +12135,19 @@
   const realmName = (n) => REALMS[Math.max(0, Math.min(REALMS.length - 1, Number(n) | 0))];
 
   async function worldFetch(pathname, opts) {
-    const res = await api(pathname, opts);
+    // 15s 超时中止：请求悬挂时调用方的 busy 锁（arenaBusy/bossBusy 等）会一直占着，
+    // 对应功能永久卡死；超时后走 catch 解锁并给出可读错误
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    let res;
+    try {
+      res = await api(pathname, Object.assign({}, opts, { signal: ctrl.signal }));
+    } catch (e) {
+      clearTimeout(timer);
+      if (e && e.name === 'AbortError') throw new Error('网络超时，请稍后再试');
+      throw e;
+    }
+    clearTimeout(timer);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) throw new Error((body && body.error) || ('请求失败 ' + res.status));
@@ -11033,8 +12228,10 @@
     try {
       WORLD.pvp = await worldFetch('/api/pvp');
       renderArena();
+      return true;
     } catch (e) {
       $('arenaInfo').textContent = '加载失败：' + e.message;
+      return false;
     }
   }
 
@@ -11057,6 +12254,19 @@
       '<button class="btn tiny" data-act="arena" data-id="' + o.id + '"' +
       (p.used >= p.cap ? ' disabled' : '') + '>切磋</button></div>'
     ).join('') || '<p class="hint">暂时没有对手：等其他修士把战力立起来再来看。</p>';
+  }
+
+  // 竞技场刷新对手：重拉 /api/pvp，服务端每次随机洗牌即换一批名单
+  async function arenaRefresh() {
+    if (WORLD.arenaBusy.refresh) return;
+    WORLD.arenaBusy.refresh = true;
+    const btn = $('arenaRefresh');
+    if (btn) btn.disabled = true;
+    // pvpLoad 内部自带 try/catch 不再抛错，按返回值区分成败
+    const ok = await pvpLoad();
+    floatText(ok ? '对手已刷新' : '刷新失败，请稍后再试', ok ? '#4ade80' : '#f87171');
+    if (btn) btn.disabled = false;
+    WORLD.arenaBusy.refresh = false;
   }
 
   // 竞技场加购：服务端记权益（users.pvp_buys，日切清零），灵石在此扣（货币归存档管）
@@ -11105,10 +12315,12 @@
         method: 'POST', body: JSON.stringify({ targetId: id, win: sim.win }),
       });
       Object.assign(WORLD.pvp, { rating: out.rating, wins: out.wins, losses: out.losses, used: out.used });
+      // 胜负以服务端复算为准（2026-10-31 起服务端不采信上报的 win）；本地 sim 只做战斗动画
+      const win = out.win !== undefined ? out.win : sim.win;
       const delta = (out.delta >= 0 ? '+' : '') + out.delta;
-      pushLog('竞技场对「' + opp.name + '」' + (sim.win ? '得胜' : '落败') + '（' + sim.rounds + ' 回合），天梯分 ' + delta + ' → ' + out.rating, sim.win ? 'special' : 'sys');
-      floatText(sim.win ? '胜！天梯分 ' + delta : '负 · 天梯分 ' + delta, sim.win ? '#facc15' : '#f87171');
-      chime(sim.win ? [660, 880, 1174] : [392, 262]);
+      pushLog('竞技场对「' + opp.name + '」' + (win ? '得胜' : '落败') + '（' + sim.rounds + ' 回合），天梯分 ' + delta + ' → ' + out.rating, win ? 'special' : 'sys');
+      floatText(win ? '胜！天梯分 ' + delta : '负 · 天梯分 ' + delta, win ? '#facc15' : '#f87171');
+      chime(win ? [660, 880, 1174] : [392, 262]);
       renderArena();
       ladderLoad(); // 天梯榜名次随本场刷新
     } catch (e) {
@@ -11210,8 +12422,8 @@
       stones *= 2;
       extra = '（致命一击加倍）';
     }
-    state.stones += stones;
-    state.dust += dust;
+    stones = addStones(stones);
+    dust = addDust(dust);
     state.boss.claimed = b.day;
     pushLog('讨平「' + b.name + '」！+' + fmt(stones) + ' 灵石 · +' + fmt(dust) + ' 碎屑' + extra, 'special');
     persist();
@@ -11257,6 +12469,18 @@
     const boss = g.boss;
     const pct = boss.maxHp > 0 ? Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100)) : 0;
     const fmtReward = (r) => fmt(r.stones) + ' 灵石 +' + r.contribution + ' 贡献';
+    // 同门互助状态块（传功 / 赠礼权益在服务端，领取按钮走 guildAidCollect）
+    const aid = g.aid || { skillGiven: false, giftGiven: false, from: null };
+    const aidBlock =
+      '<div class="guild-row"><span class="nm">传功：双方 +' + fmt(AID_SKILL.stones) +
+      ' 灵石 + 修为 · 赠礼：双方 +' + AID_GIFT.dust + ' 碎屑</span>' +
+      '<span class="pw">' + (aid.skillGiven ? '已传功' : '未传功') + ' · ' +
+        (aid.giftGiven ? '已赠礼' : '未赠礼') + '</span></div>' +
+      (aid.from
+        ? '<div class="guild-row"><span class="nm">' +
+            (aid.from.type === 'skill' ? '「' + esc(aid.from.name) + '」向你传功' : '「' + esc(aid.from.name) + '」向你赠礼') +
+          '</span><span class="pw"><button class="btn tiny" data-act="guildAidCollect">领取</button></span></div>'
+        : '');
     $('guildBox').innerHTML =
       '<div class="guild-head"><b>' + esc(g.name) + '</b><span>Lv.' + g.level + ' · 基金 ' + fmt(g.fund) +
       ' · ' + g.members.length + '/' + g.memberCap + ' 员 · 我的贡献 ' + fmt(g.myContribution) + '</span></div>' +
@@ -11290,11 +12514,19 @@
       '<p class="side-title">捐献 <span class="count">每日上限 ' + fmt(100000) + ' 灵石 · 每 2000 得 1 贡献</span></p>' +
       '<div class="guild-row-input"><input id="guildDonate" placeholder="灵石数额" autocomplete="off">' +
       '<button class="btn primary" data-act="guildDonate">捐献</button></div>' +
+      '<p class="side-title">同门互助 <span class="count">传功 / 赠礼 · 每日各一次</span></p>' +
+      aidBlock +
       '<p class="side-title">同门</p>' +
-      g.members.map((m) =>
+      g.members.filter((m) => !m.me).map((m) =>
         '<div class="guild-row"><span class="nm">' + esc(m.name) +
         (m.role === 'leader' ? ' <i class="gd">盟主</i>' : '') + '</span>' +
         '<span class="pw">战力 ' + fmt(m.power) + ' · 贡献 ' + fmt(m.contribution) + '</span>' +
+        '<span class="pw">' +
+          '<button class="btn tiny" data-act="guildAid" data-aid-type="skill" data-id="' + m.id + '"' +
+            (g.aid && g.aid.skillGiven ? ' disabled' : '') + '>传功</button> ' +
+          '<button class="btn tiny" data-act="guildAid" data-aid-type="gift" data-id="' + m.id + '"' +
+            (g.aid && g.aid.giftGiven ? ' disabled' : '') + '>赠礼</button>' +
+        '</span>' +
         (leader && m.role !== 'leader'
           ? '<button class="btn tiny ghost" data-act="guildKick" data-id="' + m.id + '">移出</button>'
           : '') +
@@ -11474,8 +12706,8 @@
       stones *= 2;
       extra = '（致命一击加倍）';
     }
-    state.stones += stones;
-    state.dust += dust;
+    stones = addStones(stones);
+    dust = addDust(dust);
     state.guildBoss.claimed = b.day;
     pushLog('盟讨平「' + b.name + '」！+' + fmt(stones) + ' 灵石 · +' + fmt(dust) + ' 碎屑' + extra, 'special');
     persist();
@@ -11491,7 +12723,7 @@
       const out = await worldFetch('/api/guild/task/claim', {
         method: 'POST', body: JSON.stringify({ taskId }),
       });
-      state.stones += out.stones;
+      addStones(out.stones);
       if (g) {
         g.myContribution = out.contribution;
         if (task) task.claimed = true;
@@ -11510,14 +12742,58 @@
     stones: '灵石', dust: '碎屑', coupon: '洗练券', talisman: '护体符', tickets: '招募券',
   };
 
+  // 同门互助：传功（双方各 300 万灵石 + 境界缩放修为）/ 赠礼（双方各 20 碎屑），每日各一次
+  async function guildAid(type, targetId) {
+    try {
+      const out = await worldFetch('/api/guild/aid', {
+        method: 'POST', body: JSON.stringify({ type, targetId }),
+      });
+      if (WORLD.guild) WORLD.guild.guild = out.guild;
+      if (type === 'skill') {
+        const gained = addStones(AID_SKILL.stones);
+        grantExpK(AID_SKILL.expK, '传功同道');
+        pushLog('已向同门传功：+' + fmt(gained) + ' 灵石（对方同样受益）', 'special');
+        chime([659, 988]);
+      } else {
+        addDust(AID_GIFT.dust);
+        pushLog('已向同门赠礼：+' + AID_GIFT.dust + ' 碎屑（对方同样受益）', 'special');
+        chime([523, 659]);
+      }
+      persist();
+      renderGuild();
+    } catch (e) {
+      floatText(e.message, '#f87171');
+    }
+  }
+
+  async function guildAidCollect() {
+    try {
+      const out = await worldFetch('/api/guild/aid/collect', { method: 'POST', body: '{}' });
+      if (out.type === 'skill') {
+        const gained = addStones(AID_SKILL.stones);
+        grantExpK(AID_SKILL.expK, '受同门传功');
+        pushLog('受「' + out.name + '」传功：+' + fmt(gained) + ' 灵石', 'special');
+        chime([659, 988]);
+      } else {
+        addDust(AID_GIFT.dust);
+        pushLog('收「' + out.name + '」赠礼：+' + AID_GIFT.dust + ' 碎屑', 'special');
+        chime([523, 659]);
+      }
+      persist();
+      renderGuild();
+    } catch (e) {
+      floatText(e.message, '#f87171');
+    }
+  }
+
   async function guildShopBuy(itemId) {
     try {
       const out = await worldFetch('/api/guild/shop/buy', {
         method: 'POST', body: JSON.stringify({ itemId }),
       });
       const r = out.reward;
-      if (r.stones) state.stones += r.stones;
-      if (r.dust) state.dust += r.dust;
+      if (r.stones) addStones(r.stones);
+      if (r.dust) addDust(r.dust);
       if (r.petTickets) state.petTickets += r.petTickets;
       if (r.rerollCoupon) state.rerollCoupon += r.rerollCoupon;
       if (r.talismans) state.talismans += r.talismans;
@@ -11606,6 +12882,14 @@
 
   function applyTheme() {
     document.body.classList.toggle('theme-light', state.theme === 'light');
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', state.theme === 'light' ? '#f2e9d5' : '#07090f');
+    const sun = $('themeIconSun'), moon = $('themeIconMoon');
+    if (sun && moon) {
+      const light = state.theme === 'light';
+      sun.style.display = light ? 'none' : '';
+      moon.style.display = light ? '' : 'none';
+    }
     const dark = $('themeDark'), light = $('themeLight');
     if (dark && light) {
       dark.classList.toggle('primary', state.theme !== 'light');
@@ -11615,6 +12899,7 @@
 
   function setTheme(theme) {
     state.theme = theme === 'light' ? 'light' : 'dark';
+    state.themeSet = true;   // 主动选过，此后不再参与「默认亮色」迁移
     applyTheme();
     floatText(state.theme === 'light' ? '明色主题' : '暗色主题', '#f0d9a8');
     save();
@@ -11756,7 +13041,7 @@
       if (!confirm("导入将覆盖当前全部进度（不可撤销）；之后游戏同步时，云端存档也会被这份导入覆盖。确定导入？")) return;
       try { sessionStorage.setItem('lx_force_push', '1'); } catch (e) { /* 导入档以 lastSeen 竞争也能胜出，标记只是加速 */ }
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-      opfsWrite(JSON.stringify(data)); // 同步更新防清除备份
+      await opfsWrite(JSON.stringify(data)); // 先落防清除备份再刷新，避免 reload 打断写入
       location.reload();
     };
     reader.readAsText(file);
@@ -11790,18 +13075,28 @@
     $('helpModal').addEventListener('click', (e) => {
       if (e.target === $('helpModal')) $('helpModal').classList.remove('show');
     });
+    // 顶栏明暗切换：点按在亮/暗之间来回
+    $('themeToggleBtn').addEventListener('click', () => {
+      state.theme = state.theme === 'light' ? 'dark' : 'light';
+      state.themeSet = true;   // 主动选过，此后不再参与「默认亮色」迁移
+      applyTheme();
+      save();
+    });
     // 设置弹层：顶栏齿轮开，✕/遮罩关
     $('setOpenBtn').addEventListener('click', () => $('setModal').classList.add('show'));
     $('setCloseBtn').addEventListener('click', () => $('setModal').classList.remove('show'));
     $('setModal').addEventListener('click', (e) => {
       if (e.target === $('setModal')) $('setModal').classList.remove('show');
     });
+    $('mapBuyBtn').addEventListener('click', buyMapAp);
     $('wanderGo').addEventListener('click', () => {
       setTopTab('xian');
       const panel = document.querySelector('.panel.wander');
       if (panel) panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
     $('arenaBuy').addEventListener('click', arenaBuy);
+    $('arenaRefresh').addEventListener('click', arenaRefresh);
+    $('fishBaitBtn').addEventListener('click', buyBait);
     $('arenaOpps').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act="arena"]');
       if (btn) arenaFight(Number(btn.dataset.id));
@@ -11821,6 +13116,8 @@
       else if (act === 'guildBossAttack') guildBossAttack();
       else if (act === 'guildTask') guildTaskClaim(btn.dataset.id);
       else if (act === 'guildShop') guildShopBuy(btn.dataset.id);
+      else if (act === 'guildAid') guildAid(btn.dataset.aidType, id);
+      else if (act === 'guildAidCollect') guildAidCollect();
     });
     $('bagExpandBtn').addEventListener('click', useBagToken);
     $('displayNameBtn').addEventListener('click', setDisplayName);
@@ -11887,7 +13184,7 @@
       else if (btn.dataset.act === 'seal') sealItem(id);
     });
 
-    $('autoEquip').addEventListener('click', autoEquip);
+    $('autoEquip').addEventListener('click', () => autoEquip(false)); // 直传会把 MouseEvent 当 silent
     $('salvageLow').addEventListener('click', salvageLow);
     $('salvageAll').addEventListener('click', salvageAll);
 
@@ -12003,10 +13300,38 @@
     });
 
     $('bossRushBtn').addEventListener('click', runBossRush);
+    $('anomalyBtn').addEventListener('click', anomalyFight);
     $('trialList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-trial]');
       if (!btn || btn.disabled) return;
       runTrial(btn.dataset.trial);
+    });
+
+    // 日常扩容（灵潮 / 占卜 / 灵气 / 问答 / 朝贺）事件委托
+    $('dailyExt').addEventListener('click', (e) => {
+      const tide = e.target.closest('button[data-tide]');
+      if (tide) {
+        if (!tide.disabled) claimTide(Number(tide.dataset.tide));
+        return;
+      }
+      if (e.target.closest('#fortuneDrawBtn')) { drawFortune(); return; }
+      if (e.target.closest('#fortuneClaimBtn')) { claimFortune(); return; }
+      if (e.target.closest('#vigorClaimBtn')) { claimVigor(); return; }
+      if (e.target.closest('#monthMakeupBtn')) { monthMakeup(); return; }
+      const quiz = e.target.closest('button[data-quiz]');
+      if (quiz) {
+        quizAnswer(Number(quiz.dataset.quiz));
+        return;
+      }
+      const month = e.target.closest('button[data-month]');
+      if (month) {
+        if (!month.disabled) claimMonth(Number(month.dataset.month));
+      }
+    });
+    $('quizBoxSlots').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-quizbox]');
+      if (!btn) return;
+      takeQuizBox(btn.dataset.quizbox);
     });
 
     $('marketList').addEventListener('click', (e) => {
@@ -12059,7 +13384,10 @@
       craftItem(btn.dataset.craft);
     });
 
-    $('gambleBtn').addEventListener('click', doGamble);
+    $('gambleBtn').addEventListener('click', () => doGamble(1));
+    $('gamble10Btn').addEventListener('click', () => doGamble(10));
+    $('gambleModalClose').addEventListener('click', () => $('gambleModal').classList.remove('show'));
+    $('gambleModalAgain').addEventListener('click', (e) => doGamble(Number(e.target.dataset.times) || 1));
 
     $('wanderList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-wander]');
@@ -12150,6 +13478,7 @@
 
     $('signInBox').addEventListener('click', (e) => {
       if (e.target.closest('#signInBtn')) signIn();
+      if (e.target.closest('#signGambleBtn')) signInGamble();
     });
 
     $('dailyList').addEventListener('click', (e) => {
@@ -12180,10 +13509,13 @@
     const volSlider = $('volumeSlider');
     volSlider.value = Math.round((isFinite(state.volume) ? state.volume : 0.6) * 100);
     volSlider.addEventListener('input', () => {
+      // 拖动只改内存值（input 事件每秒可达数十次，全量落盘会高频序列化整档）
       state.volume = Number(volSlider.value) / 100;
-      save();
     });
-    volSlider.addEventListener('change', () => beep(660, 0.08));
+    volSlider.addEventListener('change', () => {
+      save();
+      beep(660, 0.08);
+    });
     $('battleSpeed').addEventListener('click', () => {
       const order = [1, 2, 4];
       state.battleSpeed = order[(order.indexOf(state.battleSpeed || 1) + 1) % order.length];
@@ -12260,6 +13592,7 @@
     window.addEventListener('pagehide', () => { save(); cloudFlushNow(); });
 
     $('logoutBtn').addEventListener('click', async () => {
+      authSignedOut = true; // 先停 persist/关页兜底，防导航期间把清掉的档写回
       try {
         await fetch('/api/auth/logout', {
           method: 'POST',
@@ -12267,6 +13600,14 @@
           headers: { 'X-Requested-With': 'fetch' },
         });
       } catch (e) { /* 即使请求失败也回登录页 */ }
+      // 清本地档再走（2026-10-31 复审）：登出不清档会让同浏览器下一个账号继承本账号
+      // 存档，云端按增速账本拒收、双向脱钩（冒烟实测复现）。云端是正本，重新登录即恢复。
+      try {
+        localStorage.removeItem(SAVE_KEY);
+        localStorage.removeItem(TAB_LOCK_KEY);
+        sessionStorage.clear();
+      } catch (e) { /* 忽略 */ }
+      opfsClear();
       location.replace('/login.html');
     });
   }
@@ -12307,6 +13648,7 @@
       state.tutorialSeen = true;
     }
     paintUserChip();
+    paintPlayerName(); // 主角名展示点（红尘录简介 / 战斗弹窗玩家名）按昵称填充
     updateMute();
     applyFontScale();
     applyTheme();

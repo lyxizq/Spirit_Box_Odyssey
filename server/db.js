@@ -171,6 +171,29 @@ CREATE TABLE IF NOT EXISTS redeem_log (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (code, user_id)
 );
+-- 存档增速账本（2026-10-31）：上次入库存档的关键计数器快照。
+-- saves.js 每次收档做单调性 + 增速校验（economy.js），social.js 借它做灵石余额校验。
+-- 无该行的账号首次上传存档时以当档种入基线（存量玩家平滑迁移，不做回溯追溯）。
+-- 大数值列一律 REAL：node:sqlite 读 INTEGER 列 > 2^53 会抛 RangeError 砖号（实测），
+-- REAL 读回 1e18 精确表示（5^18<2^53），误差只往宽松方向，不破坏单调/增速判定。
+CREATE TABLE IF NOT EXISTS save_ledger (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  stones       REAL    NOT NULL DEFAULT 0,   -- 当前灵石余额（可负债）
+  total_stones REAL    NOT NULL DEFAULT 0,   -- 历史累计灵石收益
+  dust_total   REAL    NOT NULL DEFAULT 0,   -- 历史累计碎屑收益
+  opens        REAL    NOT NULL DEFAULT 0,   -- 历史累计开箱次数
+  exp          REAL    NOT NULL DEFAULT 0,   -- 当前修为（突破/飞升会消耗，不做单调校验）
+  pet_tickets  INTEGER NOT NULL DEFAULT 0,   -- 招募券余额
+  ascensions   INTEGER NOT NULL DEFAULT 0,   -- 轮回次数（放大战力天花板，增速限死）
+  immortal     INTEGER NOT NULL DEFAULT 0,   -- 仙位（放大战力天花板，增速限死）
+  power        REAL    NOT NULL DEFAULT 0,   -- 穿戴六件重算的装备战力（收益包络基准）
+  tower_cleared INTEGER NOT NULL DEFAULT 0,  -- 爬塔/闯关/无尽/野外最深进度（只进不退，单调校验）
+  stage_cleared INTEGER NOT NULL DEFAULT 0,
+  endless_best INTEGER NOT NULL DEFAULT 0,
+  wild_max     INTEGER NOT NULL DEFAULT 0,
+  grants       INTEGER NOT NULL DEFAULT 1,   -- 离线补结豁免次数（种子=1，用掉即清；防调钟每窗刷离线额度）
+  updated_at   INTEGER NOT NULL
+);
 `;
 
 // 老库补列：SCHEMA 里的 CREATE IF NOT EXISTS 不会给已存在的表加新列，这里按需 ALTER。
@@ -196,6 +219,45 @@ const USER_COLUMNS = [
   ['last_pvp_at',  'INTEGER NOT NULL DEFAULT 0'],
 ];
 
+// 账本表迁移（2026-10-31 复审）：早版把 stones 等建成 INTEGER，node:sqlite 读 >2^53 的
+// 行直接 RangeError（砖掉云存档与消费接口）。检测到旧列型就在 SQL 引擎内 CAST 成 REAL
+// 重建（CAST 不经过 JS 读取，不会触发 RangeError）；账本本身可由存档重种，重建零风险。
+function migrateLedger(db) {
+  const cols = db.prepare("PRAGMA table_info('save_ledger')").all();
+  if (!cols.length) return; // 表还不存在，交给 SCHEMA 新建
+  const stones = cols.find((c) => c.name === 'stones');
+  if (!stones || stones.type.toUpperCase() === 'REAL') return;
+  db.exec('ALTER TABLE save_ledger RENAME TO save_ledger_old;');
+  db.exec(`CREATE TABLE save_ledger (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    stones       REAL    NOT NULL DEFAULT 0,
+    total_stones REAL    NOT NULL DEFAULT 0,
+    dust_total   REAL    NOT NULL DEFAULT 0,
+    opens        REAL    NOT NULL DEFAULT 0,
+    exp          REAL    NOT NULL DEFAULT 0,
+    pet_tickets  INTEGER NOT NULL DEFAULT 0,
+    ascensions   INTEGER NOT NULL DEFAULT 0,
+    immortal     INTEGER NOT NULL DEFAULT 0,
+    power        REAL    NOT NULL DEFAULT 0,
+    tower_cleared INTEGER NOT NULL DEFAULT 0,
+    stage_cleared INTEGER NOT NULL DEFAULT 0,
+    endless_best INTEGER NOT NULL DEFAULT 0,
+    wild_max     INTEGER NOT NULL DEFAULT 0,
+    grants       INTEGER NOT NULL DEFAULT 1,
+    updated_at   INTEGER NOT NULL
+  );`);
+  db.exec(`INSERT INTO save_ledger (user_id, stones, total_stones, dust_total, opens, exp,
+      pet_tickets, ascensions, immortal, power, tower_cleared, stage_cleared, endless_best,
+      wild_max, grants, updated_at)
+    SELECT user_id, CAST(stones AS REAL), CAST(total_stones AS REAL), CAST(dust_total AS REAL),
+      CAST(opens AS REAL), CAST(exp AS REAL), pet_tickets, ascensions, immortal,
+      CAST(power AS REAL), tower_cleared, stage_cleared, endless_best, wild_max,
+      1, updated_at
+    FROM save_ledger_old
+    WHERE user_id IN (SELECT id FROM users);`); // 孤儿行（无对应用户）直接丢弃，防外键约束炸启动
+  db.exec('DROP TABLE save_ledger_old;');
+}
+
 // journal 模式可调：默认 WAL（读写并发好）；但 WAL 依赖 -wal/-shm 共享内存 mmap，
 // 在老内核（CentOS 7 的 3.10）、SELinux 或特殊挂载上会报 disk I/O error（778 FSTAT），
 // 此时设 DB_JOURNAL=delete 退回回滚日志。本服务单进程单连接，牺牲并发无实际影响。
@@ -211,9 +273,17 @@ export function openDb(dbPath) {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA synchronous = NORMAL;');
   db.exec(SCHEMA);
+  migrateLedger(db); // 必须在 SCHEMA 之后：账本表外键引用 users，users 先建好迁移才不炸
   for (const [col, ddl] of USER_COLUMNS) ensureColumn(db, 'users', col, ddl);
   ensureColumn(db, 'guilds', 'fund', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'guild_members', 'contribution', 'INTEGER NOT NULL DEFAULT 0');
+  // 同门互助（2026-10-31）：传功 / 赠礼记账——发起方记日期，受赠方记来源（领取后清除）
+  ensureColumn(db, 'guild_members', 'aid_day',        "TEXT    NOT NULL DEFAULT ''");
+  ensureColumn(db, 'guild_members', 'aid_skill_to',   'INTEGER');
+  ensureColumn(db, 'guild_members', 'aid_gift_to',    'INTEGER');
+  ensureColumn(db, 'guild_members', 'aid_from_type',  "TEXT    NOT NULL DEFAULT ''");
+  ensureColumn(db, 'guild_members', 'aid_from_name',  "TEXT    NOT NULL DEFAULT ''");
+  ensureColumn(db, 'guild_members', 'aid_from_day',   "TEXT    NOT NULL DEFAULT ''");
   // 显示名唯一（可空）；老账号回填 display_name = username，只跑一次由 NULL 判定自然幂等
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display ON users(display_name) WHERE display_name IS NOT NULL');
   db.prepare("UPDATE users SET display_name = username WHERE display_name IS NULL").run();

@@ -257,7 +257,8 @@
       $("sExp").textContent = fmt(s.exp || 0);
       $("sPower").textContent = fmt(s.power || 0);
       $("rQuench").textContent = "淬炼 Lv." + (s.speedLv || 0) + "/" + (s.gainLv || 0) + "/" + (s.luckLv || 0) + " · 速度与收益";
-      $("rSign").textContent = "上次签到 " + (s.lastSignIn || "尚未签到");
+      $("rSign").textContent = "上次签到 " + (s.lastSignIn || "尚未签到") + " · 累计 " + (s.signInDays || 0) + " 天" +
+        (s.lastSignIn ? "（" + (s.lastSignMode === "gamble" ? "赌狗" : "普通") + "）" : "");
       $("rWar").textContent = "闯关 " + (s.stageCleared || 0) + " · 爬塔 " + (s.towerCleared || 0) + " · 无尽 " + (s.endlessBest || 0);
     })();
   </script>

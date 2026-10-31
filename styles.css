@@ -73,22 +73,6 @@ body::before {
 main,
 .foot { position: relative; z-index: 1; }
 
-/* ---------- 断服横幅（/api/version 探针连续失败后显示，常规文档流不遮内容） ---------- */
-
-.server-down-banner {
-  position: relative;
-  z-index: 40;
-  margin: -26px -20px 16px;
-  padding: 9px 16px;
-  text-align: center;
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
-  color: #fca5a5;
-  background: rgba(58, 13, 13, 0.94);
-  border-bottom: 1px solid rgba(248, 113, 113, 0.4);
-  animation: bannerIn 0.25s ease;
-}
-
 @keyframes bannerIn {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: none; }
@@ -118,16 +102,6 @@ body.theme-light .event-banner {
   color: #6b4a0f;
   background: rgba(248, 236, 205, 0.96);
   border-bottom-color: rgba(107, 74, 15, 0.35);
-}
-
-@media (max-width: 540px) {
-  .server-down-banner { margin: -18px -12px 12px; }
-}
-
-body.theme-light .server-down-banner {
-  color: #8a1f1f;
-  background: rgba(248, 220, 214, 0.96);
-  border-bottom-color: rgba(138, 31, 31, 0.35);
 }
 
 /* ---------- header ---------- */
@@ -458,8 +432,8 @@ h2::before {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* 修炼页数据卡（2026-10-30）：2×2 标签+大数字简洁卡；只作用于开箱面板，
-   角色状态面板的 .stats 行式布局不受影响 */
+/* 修炼页数据卡（最终版）：2×2 透明淡线卡，标签+大数字；只作用于开箱面板，
+   角色状态面板的 .stats 行式布局不受影响。历史叠加规则已合并清理 */
 .panel.stage .stats {
   margin: 16px 0 0;
   padding: 0;
@@ -473,74 +447,23 @@ h2::before {
   text-align: left;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: transparent;
 }
 
-.panel.stage .stats dt { font-size: 10.5px; letter-spacing: 0.06em; }
+.panel.stage .stats dt { font-size: 10.5px; letter-spacing: 0.06em; color: var(--muted); }
 
 .panel.stage .stats dd {
   margin: 1px 0 0;
   font-size: 20px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
-body.theme-light .panel.stage .stats div { background: rgba(255, 255, 255, 0.55); }
+.panel.stage .stats dd.gold { color: var(--gold); }
 
+body.theme-light .panel.stage .stats div { border-color: rgba(43, 52, 64, 0.14); }
 
-.panel.stage .stats {
-  margin: 16px 0 0;
-  padding: 0;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  border-top: 0;
-}
-
-.panel.stage .stats div {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  text-align: left;
-  border: 1px solid rgba(43, 52, 64, 0.1);
-  border-radius: 16px;
-  background: #fff;
-  color: #2b3440;
-  box-shadow: 0 6px 18px rgba(43, 52, 64, 0.07);
-}
-
-.panel.stage .stats .stat-ic {
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: var(--green, #3d5a4c);
-  color: #eaf1ec;
-}
-
-.panel.stage .stats .stat-ic svg { width: 20px; height: 20px; }
-
-.panel.stage .stats .stat-tx { display: block; min-width: 0; flex: 1; }
-.panel.stage .stats dt { margin: 0; }
-.panel.stage .stats dd { margin: 1px 0 0; }
-.panel.stage .stats .stat-sub { margin: 0; }
-.panel.stage .stats dt { color: #6b7280; font-size: 11.5px; letter-spacing: 0.05em; }
-
-.panel.stage .stats dd {
-  margin: 1px 0 0;
-  font-size: 21px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: #232b36;
-}
-
-.panel.stage .stats dd.gold { color: var(--gold-deep, #8a6a2f); }
-
-.panel.stage .stats .stat-sub { display: block; margin-top: 1px; color: var(--muted); font-size: 10.5px; }
-
-body.theme-light .panel.stage .stats div { background: rgba(255, 255, 255, 0.92); }
 
 
 .stats div { text-align: center; }
@@ -2079,12 +2002,14 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
 
 .battle-actions {
   display: flex;
-  align-items: center;
+  align-items: stretch; /* 倍速 / 跳过与主按钮（离开）自动等高 */
   gap: 8px;
   margin-top: 12px;
 }
 
 .battle-actions .btn.wide { flex: 1; margin-top: 0; }
+/* tiny 按钮加高到与 .btn 主按钮一致（10px 上下 padding，min-height 兜底） */
+.battle-actions .btn.tiny { padding: 10px 14px; min-height: 40px; }
 
 @keyframes lungeRight {
   0%, 100% { transform: translateX(0); }
@@ -2763,6 +2688,8 @@ h2 { font-size: 15px; }
     min-width: 96px;
     padding: 8px 10px;
   }
+  /* 成就领取钮文字加大（基础 9px 太小） */
+  .achv-row .mini { font-size: 12px; }
 
   /* 状态卡与词条行更透气 */
   .stats dd { font-size: 19px; }
@@ -2771,9 +2698,9 @@ h2 { font-size: 15px; }
   .affix-row { padding: 9px 11px; }
   .rogue-box { padding: 12px 11px; }
 
-  /* 战斗弹窗按钮好按 */
+  /* 战斗弹窗按钮好按（倍速 / 跳过与主按钮同高，stretch 已对齐，min-height 兜底） */
   .battle-actions { gap: 6px; }
-  .battle-actions .btn.tiny { padding: 9px 12px; min-height: 38px; }
+  .battle-actions .btn.tiny { padding: 10px 12px; min-height: 48px; }
 
   /* 图鉴与页脚 */
   .bestiary-list { max-height: none; }
@@ -2815,6 +2742,7 @@ h2 { font-size: 15px; }
 .map-grid {
   display: grid;
   gap: 3px;
+  margin-top: 10px;   /* 与上方加购行动力钮留缝 */
   margin-bottom: 10px;
 }
 
@@ -3488,6 +3416,19 @@ h2 { font-size: 15px; }
 }
 
 .auth-sub { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: 2px; }
+/* 维护横幅（2026-10-30）：断服满 2 分钟游戏页强制跳回登录页时展示（?down=1） */
+.auth-maint {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--red);
+  font-size: 12.5px;
+  line-height: 1.7;
+  text-align: center;
+  animation: bannerIn 0.25s ease;
+}
 /* 公测公告（2026-10-30）：数值调整期会有删档，登录卡内的常驻提示 */
 .auth-notice {
   margin: 14px 0 0;
@@ -3579,21 +3520,20 @@ h2 { font-size: 15px; }
   line-height: 1.6;
 }
 
+/* 登录页固定亮色（2026-10-31，body.theme-light）：auth 区这些硬编码暗色块转纸底可读配色 */
+body.theme-light .auth-tabs { background: rgba(138, 106, 47, 0.08); }
+body.theme-light .auth-field input {
+  background: rgba(255, 253, 246, 0.9);
+  color: var(--text);
+}
+body.theme-light .auth-field input::placeholder { color: rgba(133, 119, 95, 0.55); }
+body.theme-light .auth-notice { color: var(--gold-dim); }
+body.theme-light .auth-error { color: #b91c1c; }
+body.theme-light .auth-card { box-shadow: 0 24px 60px rgba(138, 106, 47, 0.18); }
+
 .hidden { display: none !important; }
 
 /* ---------- 页脚账号条 ---------- */
-
-.user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--gold-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 12px;
-  background: rgba(216, 179, 106, 0.08);
-}
 
 /* ---------------- 天下（排行 / 竞技场 / 妖王 / 仙盟） ---------------- */
 
@@ -3951,3 +3891,14 @@ body.theme-light .res-ic { filter: saturate(0.92); }
   vertical-align: middle;
   margin-right: 0;
 }
+
+/* 征战页敌人头像：怪物图库立绘圆形裁切铺满（无图自动回退徽章 SVG） */
+.enemy-icon .story-art,
+.enemy-icon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  overflow: hidden;
+}
+.enemy-icon .story-art.art-svg svg { width: 70%; height: 70%; }

@@ -2,7 +2,6 @@
 .git
 .gitignore
 data
-cocos
 docs
 docker
 node_modules

@@ -1,5 +1,8 @@
-// 云存档服务：游戏进度 JSON 的读取与入库，带体积与频次限制
+// 云存档服务：游戏进度 JSON 的读取与入库，带体积与频次限制。
+// 2026-10-31 起入库前追加增速账本校验（economy.js）：单调性 + 增速包络，
+// 违规整档 400 拒收——绕过前台按钮/改档刷出的收益在服务端落不了库。
 import { sendJSON, SlidingWindow } from './http-util.js';
+import { checkVelocity, ledgerOf, equipPowerOf } from './economy.js';
 
 const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
 const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
@@ -13,7 +16,36 @@ export function createSaveService(db) {
        ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, size = excluded.size, updated_at = excluded.updated_at`),
     setPower: db.prepare('UPDATE users SET power_score = ? WHERE id = ?'),
     setProfile: db.prepare('UPDATE users SET power_score = ?, realm = ?, pvp_snapshot = ? WHERE id = ?'),
+    // 增速账本：上次入库计数器快照 + 窗口内兑换码授权收益
+    getLedger: db.prepare('SELECT * FROM save_ledger WHERE user_id = ?'),
+    upsertLedger: db.prepare(
+      `INSERT INTO save_ledger (user_id, stones, total_stones, dust_total, opens, exp, pet_tickets,
+         ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET stones = excluded.stones, total_stones = excluded.total_stones,
+         dust_total = excluded.dust_total, opens = excluded.opens, exp = excluded.exp,
+         pet_tickets = excluded.pet_tickets, ascensions = excluded.ascensions, immortal = excluded.immortal,
+         power = excluded.power, tower_cleared = excluded.tower_cleared, stage_cleared = excluded.stage_cleared,
+         endless_best = excluded.endless_best, wild_max = excluded.wild_max, grants = excluded.grants,
+         updated_at = excluded.updated_at`),
+    redeemSince: db.prepare(
+      `SELECT c.reward AS reward FROM redeem_log l LEFT JOIN redeem_codes c ON c.code = l.code
+       WHERE l.user_id = ? AND l.created_at > ?`),
   };
+
+  // 窗口内兑换码授权收益（精确计入增速包络；奖励面在兑换时已钳制）
+  function sanctionedSince(userId, since) {
+    const out = { stones: 0, dust: 0, tickets: 0 };
+    for (const row of stmts.redeemSince.all(userId, since)) {
+      try {
+        const r = JSON.parse(row.reward);
+        out.stones += Math.max(0, Math.floor(Number(r.stones) || 0));
+        out.dust += Math.max(0, Math.floor(Number(r.dust) || 0));
+        out.tickets += Math.max(0, Math.floor(Number(r.tickets) || 0));
+      } catch (e) { /* 脏奖励数据跳过 */ }
+    }
+    return out;
+  }
 
   function get(req, res, ctx) {
     const row = stmts.getSave.get(ctx.user.id);
@@ -25,12 +57,13 @@ export function createSaveService(db) {
   // 非数字（含数字字符串）或超出量级天花板的一律拒绝。上限与客户端 load() 钳制同口径。
   // 只锁「量级」不锁「增速」：放置游戏数值随时长无界增长，静态上限取远超正常游玩的防火墙值。
   const SAVE_NUM_FIELDS = [
-    ['stones', 0, 1e18],
+    // 灵石下限 -1e12：赌狗签到可倒扣负债（客户端 load() 软钳同口径），仍不得超历史总收益
+    ['stones', -1e12, 1e18],
     ['totalStones', 0, 1e18],
     ['dust', 0, 1e15],
     ['dustTotal', 0, 1e15],
     ['opens', 0, 1e15],
-    ['exp', 0, 1e12],
+    ['exp', 0, 1e15],
   ];
 
   function validateSave(text) {
@@ -279,18 +312,74 @@ export function createSaveService(db) {
       return sendJSON(res, 400, { error: '存档校验失败' });
     }
     const now = Date.now();
-    stmts.upsert.run(ctx.user.id, ctx.rawBody, ctx.rawBody.length, now);
-    syncPowerScore(ctx.user.id, data);
+    // —— 增速账本校验：无账本行以当档种入基线；有则做单调性 + 增速校验 ——
+    const prevRow = stmts.getLedger.get(ctx.user.id);
+    if (prevRow) {
+      const prev = {
+        stones: prevRow.stones,
+        totalStones: prevRow.total_stones,
+        dustTotal: prevRow.dust_total,
+        opens: prevRow.opens,
+        exp: prevRow.exp,
+        petTickets: prevRow.pet_tickets,
+        ascensions: prevRow.ascensions,
+        immortal: prevRow.immortal,
+        power: prevRow.power,
+        towerCleared: prevRow.tower_cleared,
+        stageCleared: prevRow.stage_cleared,
+        endlessBest: prevRow.endless_best,
+        wildMax: prevRow.wild_max,
+        grants: prevRow.grants,
+      };
+      const fail = checkVelocity(prev, data, now - prevRow.updated_at, sanctionedSince(ctx.user.id, prevRow.updated_at));
+      if (fail) {
+        console.error('[saves] 增速校验拒收 user=' + ctx.user.id + '：' + fail);
+        return sendJSON(res, 400, { error: '存档增速异常，已保留上次云端进度' });
+      }
+    } else if (ctx.user.createdAt && now - ctx.user.createdAt < 3600 * 1000) {
+      // —— 新号首推种子校验（复审补）：注册 1 小时内的首推不许带超纲进度。
+      // 堵两条线：① 手写 localStorage / 直调 API 一次推满档（种基线零校验 = 全部防线失效）；
+      // ② 登出不清本地档，同浏览器新号继承旧大号存档。老号迁移（created_at 早）不受影响。
+      const seedFails = [];
+      if (Number(data.totalStones) > 5e7) seedFails.push('累计灵石超新号上限');
+      if (Number(data.opens) > 2e5) seedFails.push('开箱次数超新号上限');
+      if (Number(data.dustTotal) > 2e6) seedFails.push('累计碎屑超新号上限');
+      if (Number(data.petTickets) > 1000) seedFails.push('招募券超新号上限');
+      if (Number(data.immortal) > 0 || Number(data.ascensions) > 0) seedFails.push('仙位/轮回超新号上限');
+      if (equipPowerOf(data) > 2e5) seedFails.push('装备战力超新号上限');
+      if (seedFails.length) {
+        console.error('[saves] 新号种子校验拒收 user=' + ctx.user.id + '：' + seedFails[0]);
+        return sendJSON(res, 400, { error: '新账号存档异常，请从零开始修行' });
+      }
+    }
+    db.exec('BEGIN');
+    try {
+      stmts.upsert.run(ctx.user.id, ctx.rawBody, ctx.rawBody.length, now);
+      syncPowerScore(ctx.user.id, data);
+      const led = ledgerOf(data, now);
+      stmts.upsertLedger.run(
+        ctx.user.id, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
+        led.petTickets, led.ascensions, led.immortal, led.power,
+        led.towerCleared, led.stageCleared, led.endlessBest, led.wildMax,
+        prevRow ? 0 : 1, now);   // 校验通过即清离线豁免；种基线发 1 次
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     return sendJSON(res, 200, { ok: true, updatedAt: now });
   }
 
   // 存档同步顺带落战力档案：power / realm / PvP 快照（客户端 persist 时打包）。
   // 快照做边界钳制，防存档被改出天际数值直接进天梯与排行。
+  // 注意：客户端 persist() 打包的字段名是 pvpSnap（2026-10-31 实测发现服务端一直读的
+  // data.pvp 对不上号，真客户端快照从未入库——两处字段名都接受，修存量口径漂移）。
   function syncPowerScore(userId, data) {
     const power = Number(data && data.power);
     const realm = Number(data && data.realm);
     if (!Number.isFinite(power) || power < 0) return;
-    const snap = sanitizeSnapshot(data.pvp, power);
+    const snap = sanitizeSnapshot((data.pvpSnap && typeof data.pvpSnap === 'object')
+      ? data.pvpSnap : data.pvp, power);
     // 榜单战力天花板与深度校验的自报战力上界同口径（深度校验已拒越界档，此处兜底），
     // 9e15 封顶保证入库值始终在 JS 安全整数内（见 safeCap 注释）
     const cap = safeCap(
