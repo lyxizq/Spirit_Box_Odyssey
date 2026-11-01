@@ -43,6 +43,7 @@ export function createSaveService(db) {
          stones = 0, total_stones = 0, dust_total = 0, opens = 0, exp = 0,
          pet_tickets = 0, ascensions = 0, immortal = 0, power = 0,
          tower_cleared = 0, stage_cleared = 0, endless_best = 0, wild_max = 0,
+         cli_sync = NULL,
          grants = 1, clicks = 0, click_ban_until = 0, updated_at = excluded.updated_at`),
     clearProfile: db.prepare("UPDATE users SET power_score = 0, realm = '', pvp_snapshot = NULL WHERE id = ?"),
     // 增速账本：上次入库计数器快照 + 窗口内兑换码授权收益
@@ -50,14 +51,15 @@ export function createSaveService(db) {
     upsertLedger: db.prepare(
       `INSERT INTO save_ledger (user_id, stones, total_stones, dust_total, opens, exp, pet_tickets,
          ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants,
-         clicks, click_ban_until, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         clicks, click_ban_until, cli_sync, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET stones = excluded.stones, total_stones = excluded.total_stones,
          dust_total = excluded.dust_total, opens = excluded.opens, exp = excluded.exp,
          pet_tickets = excluded.pet_tickets, ascensions = excluded.ascensions, immortal = excluded.immortal,
          power = excluded.power, tower_cleared = excluded.tower_cleared, stage_cleared = excluded.stage_cleared,
          endless_best = excluded.endless_best, wild_max = excluded.wild_max, grants = excluded.grants,
          clicks = excluded.clicks, click_ban_until = excluded.click_ban_until,
+         cli_sync = excluded.cli_sync,
          updated_at = excluded.updated_at`),
     redeemSince: db.prepare(
       `SELECT c.reward AS reward FROM redeem_log l LEFT JOIN redeem_codes c ON c.code = l.code
@@ -413,20 +415,29 @@ export function createSaveService(db) {
     // —— 增速账本校验：无账本行以当档种入基线；有则做单调性 + 增速校验 ——
     const prevRow = stmts.getLedger.get(ctx.user.id);
     if (prevRow) {
+      // 单调性基线取「客户端已确认值」（cli_sync，2026-11-01 防砖修复）：combat/social
+      // 服务端结算只加主计数列而不改存档体，客户端若没吸收（结算后刷新/多开/断线），
+      // 对主列比单调性会判「回退」并把账号永久拒收（线上实测踩过：零增量回推都 400）。
+      // cli_sync = 最近一次成功推送的计数快照，天然代表客户端自己的历史最高；NULL（旧行）
+      // 回退主列保持旧口径。余额/收益包络同口径用 cli 基线（量的是客户端自身增速）。
+      let cli = null;
+      try { cli = prevRow.cli_sync ? JSON.parse(prevRow.cli_sync) : null; } catch (e) { cli = null; }
+      if (!cli || typeof cli !== 'object') cli = {};
+      const numOr = (v, fb) => (Number.isFinite(Number(v)) ? Number(v) : fb);
       const prev = {
-        stones: prevRow.stones,
-        totalStones: prevRow.total_stones,
-        dustTotal: prevRow.dust_total,
-        opens: prevRow.opens,
+        stones: numOr(cli.stones, prevRow.stones),
+        totalStones: numOr(cli.totalStones, prevRow.total_stones),
+        dustTotal: numOr(cli.dustTotal, prevRow.dust_total),
+        opens: numOr(cli.opens, prevRow.opens),
         exp: prevRow.exp,
-        petTickets: prevRow.pet_tickets,
+        petTickets: numOr(cli.petTickets, prevRow.pet_tickets),
         ascensions: prevRow.ascensions,
         immortal: prevRow.immortal,
         power: prevRow.power,
-        towerCleared: prevRow.tower_cleared,
-        stageCleared: prevRow.stage_cleared,
-        endlessBest: prevRow.endless_best,
-        wildMax: prevRow.wild_max,
+        towerCleared: numOr(cli.towerCleared, prevRow.tower_cleared),
+        stageCleared: numOr(cli.stageCleared, prevRow.stage_cleared),
+        endlessBest: numOr(cli.endlessBest, prevRow.endless_best),
+        wildMax: numOr(cli.wildMax, prevRow.wild_max),
         grants: prevRow.grants,
       };
       const fail = checkVelocity(prev, data, now - prevRow.updated_at, sanctionedSince(ctx.user.id, prevRow.updated_at));
@@ -488,7 +499,13 @@ export function createSaveService(db) {
         ctx.user.id, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
         led.petTickets, led.ascensions, led.immortal, led.power,
         led.towerCleared, led.stageCleared, led.endlessBest, led.wildMax,
-        prevRow ? 0 : 1, led.clicks, clickBanUntil, now);   // 校验通过即清离线豁免；种基线发 1 次
+        prevRow ? 0 : 1, led.clicks, clickBanUntil,
+        // cli_sync：客户端已确认基线快照（单调性对比用，见上方 prev 构建处注释）
+        JSON.stringify({
+          stones: led.stones, totalStones: led.totalStones, dustTotal: led.dustTotal,
+          opens: led.opens, petTickets: led.petTickets, towerCleared: led.towerCleared,
+          stageCleared: led.stageCleared, endlessBest: led.endlessBest, wildMax: led.wildMax,
+        }), now);   // 校验通过即清离线豁免；种基线发 1 次
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');

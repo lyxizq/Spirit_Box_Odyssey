@@ -15,7 +15,9 @@
   const OFFLINE_EFF = 0.5;           // 离线效率 50%
   const CRIT_CHANCE = 0.05;          // 暴击率
   const CRIT_MULT = 10;              // 暴击倍率
-  const EQUIP_CHANCE = 0.25;         // 每次开箱掉装备的概率（2026-11-01 用户指定 20-30% 档取 25%，原 1%；品质在掉落内按权重另掷）
+  const EQUIP_CHANCE = [0.05, 0.1];  // 每次开箱掉装备的概率区间：逐箱独立掷（2026-11-01 用户指定，原固定 25%；期望 7.5%，品质在掉落内按权重另掷）
+  const equipChance = () => EQUIP_CHANCE[0] + Math.random() * (EQUIP_CHANCE[1] - EQUIP_CHANCE[0]);
+  const EQUIP_CHANCE_MEAN = 0.075;   // 掉率期望（离线/预期结算用，与 server/battle.js EQUIP_CHANCE 同源）
   const DUST_CHANCE = 0.1;           // 开箱未掉装备时掉碎屑的概率（1~3 枚，补偿空开）
   const BUFF_CHANCE = 0.008;         // 每次开箱掉丹药的概率（未生效时）
   const BUFF_MS = 30000;             // 丹药持续时间
@@ -269,7 +271,7 @@
     { name: '玄品', color: '#60a5fa', weight: 100, stone: 10, exp: 3 },
     { name: '地品', color: '#2dd4bf', weight: 25, stone: 35, exp: 8 },
     { name: '天品', color: '#fbbf24', weight: 2, stone: 150, exp: 20 },
-    { name: '仙品', color: '#f87171', weight: 0.6, stone: 800, exp: 50 }, // 权重 2026-11-01 用户指定 0.4→0.6：25% 掉率下约 1 万箱/件
+    { name: '仙品', color: '#f87171', weight: 0.6, stone: 800, exp: 50 }, // 权重 2026-11-01 用户指定 0.4→0.6；掉率改 5%~10% 后约 3.3 万箱/件
   ];
 
   const SLOTS = [
@@ -2565,7 +2567,7 @@
       exp += w[i] * (1 + RARITIES[i].exp);
     }
     // 修为期望按开箱掉装备概率折算：未掉落只有基础 1 份
-    return { stone: baseGain(), exp: (1 - EQUIP_CHANCE) + EQUIP_CHANCE * exp / total };
+    return { stone: baseGain(), exp: (1 - EQUIP_CHANCE_MEAN) + EQUIP_CHANCE_MEAN * exp / total };
   }
 
   const upgradeCost = (key) => Math.floor(UPGRADES[key].base * Math.pow(UPGRADES[key].growth, state[key + 'Lv']));
@@ -3712,7 +3714,7 @@
 
     const crit = Math.random() < critChance();
     // 装备改为概率掉落：1% 掉装备，品质在掉落内按权重另掷；未掉落只有灵石/修为基础收益
-    const drop = Math.random() < EQUIP_CHANCE;
+    const drop = Math.random() < equipChance();
     const ri = drop ? rollRarity() : -1;
     const item = drop ? makeItem(ri) : null;
     let gain = Math.max(1, Math.floor(baseGain() * (crit ? CRIT_MULT : 1) * buffMult() * dayProdMult()));

@@ -324,6 +324,11 @@ export function openDb(dbPath) {
   // 权威进度/计数列（2026-11-01 全量服务端校验迁移）：必须排在 migrateLedger 之后
   // ——旧 INTEGER 表重建后新列才不会丢
   for (const [col, ddl] of LEDGER_COLUMNS) ensureColumn(db, 'save_ledger', col, ddl);
+  // 客户端已确认基线（2026-11-01 防砖修复）：combat/social 服务端结算只加主计数列而
+  // 不改存档体，客户端没吸收（结算后刷新/多开/断线）时单调性对比主列会判「回退」，
+  // 把账号永久拒收（线上实测：零增量回推都 400）。cli_sync 存最近一次成功推送的
+  // 计数快照（JSON），单调性对比它；NULL 回退主列（旧行兼容），reset 时一并清空
+  ensureColumn(db, 'save_ledger', 'cli_sync', 'TEXT');
   ensureColumn(db, 'guild_members', 'contribution', 'INTEGER NOT NULL DEFAULT 0');
   // 同门互助（2026-10-31）：传功 / 赠礼记账——发起方记日期，受赠方记来源（领取后清除）
   ensureColumn(db, 'guild_members', 'aid_day',        "TEXT    NOT NULL DEFAULT ''");

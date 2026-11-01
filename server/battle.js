@@ -602,9 +602,9 @@ export function elementBonusOf(data, enemyEl) {
 
 // —— 离线结算（game.js expected()/baseGain 同源；data = 存档镜像） ——
 
-const RARITY_WEIGHTS = [1000, 350, 100, 25, 2, 0.4];
+const RARITY_WEIGHTS = [1000, 350, 100, 25, 2, 0.6]; // 与 game.js RARITIES 权重同源（仙品 0.4→0.6 为 2026-11-01 用户指定，此处补同步）
 const RARITY_EXP = [0, 1, 3, 8, 20, 50];
-const EQUIP_CHANCE = 0.25; // 2026-11-01 用户指定 20-30% 档取 25%（原 1%），与 game.js 同源
+const EQUIP_CHANCE = 0.075; // 2026-11-01 用户指定：掉率改逐箱随机 5%~10%（game.js equipChance），期望口径取均值 7.5%
 
 function weightsOf(data) {
   const m = 1 + 0.02 * (data.luckLv || 0);

@@ -163,7 +163,7 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned) {
     ['野外探区', wildMaxOf(next), prev.wildMax],
   ];
   for (const [name, cur, old] of mono) {
-    if (cur < old) return name + '出现回退';
+    if (cur < old) return name + '出现回退（账内 ' + old + ' / 推送 ' + cur + '）';
   }
 
   const dOpens = num(next.opens) - prev.opens;
