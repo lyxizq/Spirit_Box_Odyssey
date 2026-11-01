@@ -150,8 +150,10 @@ export function createSaveService(db) {
     ENHANCE_MAX: 200, STAR_MAX: 5, PROGRESS_MAX: 200,
     GEM_SLOTS_MAX: 6,                  // 部位宝石孔上限（2 + 飞升数，封顶 6）
     BAG_MAX: 300, PETS_MAX: 64,
-    SPECIAL_POWER_BASE: 1e9,           // 套装件战力基准（合法顶配 ~1e8 量级 ×10 余量）
+    SPECIAL_POWER_BASE: 1e9,           // 套装件战力基准（合法顶配 ~1e8 量级 ×10 余量；套装件不入装备等级体系）
     POWER_BASE: 4e14,                  // 自报总战力基准（六件 theoretical ~3.3e14 ×余量）
+    EQUIP_LV_MAX: 10,                  // 装备等级上限（未飞升仙人 = 境界下标+1；飞升后归 0 重爬；仅普通件）
+    EQUIP_LV_STEP_MAX: 2.78,           // 装备等级每级战力复利上界（客户端掷 [2.62,2.78]，Lv.1 基线共 lv-1 步）
     IMMORTAL_STEP: 1.25,               // 仙位倍率：1.25^immortal
     POWER_GROWTH_ALLOWANCE: 25,        // 实际战力成长余量：装备分 × 实战乘区（词条/宝石/灵宠/套装等综合放大）
   };
@@ -183,19 +185,23 @@ export function createSaveService(db) {
     } else if (it.setKey !== undefined && !DEEP.SET_KEYS.has(it.setKey)) {
       return bad(where + ' setKey 非法');
     }
-    // 战力上界：普通件=品质基准×1.3（客户端 fixItem 同款）；套装件随仙位放宽
+    // 装备等级（2026-11-01，仅普通件；套装件维持现状不带 lv）：掉落时随境界定死
+    //（未飞升 = 境界下标+1，飞升后归 0），0..10 白名单；缺失按迁移基线 1 计
+    const elv = it.lv === undefined ? 1 : it.lv;
+    if (!isInt(elv, 0, DEEP.EQUIP_LV_MAX)) return bad(where + ' 装备等级越界');
+    // 战力上界：普通件=品质基准×1.2×2.78^(lv-1)（客户端 fixItem 同款，Lv.1 基线 ×1，
+    // 仙品 Lv.10 理论上界 ≈ 1.07e7）；套装件不入等级体系，仍按 1e9 基准 × 仙位放宽
     const powerCap = special
       ? safeCap(DEEP.SPECIAL_POWER_BASE * immortalMult({ immortal }))
-      : Math.round(DEEP.BASE_POWER[it.r] * 1.3);
+      : Math.round(DEEP.BASE_POWER[it.r] * 1.2 *
+        Math.pow(DEEP.EQUIP_LV_STEP_MAX, Math.max(0, elv - 1)));
     if (typeof it.power !== 'number' || !Number.isFinite(it.power) || it.power < 1 || it.power > powerCap) {
       return bad(where + ' 战力越界（上限 ' + powerCap + '）');
     }
     // 词条：数量 ≤ 品质条数，键白名单，值 0..0.6，不重复
     // 可选字段缺失按客户端语义放行（it.star || 0、空数组）——新获得的装备在
     // 当前会话内可能没有 star / gems 字段，JSON 序列化时会被丢弃
-    const lv = it.lv === undefined ? 0 : it.lv;
     const star = it.star === undefined ? 0 : it.star;
-    if (!isInt(lv, 0, DEEP.ENHANCE_MAX)) return bad(where + ' 强化越界');
     if (!isInt(star, 0, DEEP.STAR_MAX)) return bad(where + ' 升星越界');
     const count = DEEP.AFFIX_COUNT[it.r];
     if (it.affixes !== undefined && !Array.isArray(it.affixes)) return bad(where + ' 词条类型非法');

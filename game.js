@@ -345,6 +345,13 @@
 
   const BASE_POWER = [3, 10, 30, 90, 280, 900];
 
+  // 装备等级（2026-11-01 用户指定）：掉落时随境界定死——未飞升 = 境界下标+1（炼气 1 起，
+  // 仙人 10 封顶），飞升后归 0 再随境界重爬。Lv.1 为基线（×1，与存量迁移件同口径），
+  // 此后每 +1 级战力独立掷 [2.62,2.78] 复利一步（Lv.10 共 9 步），
+  // 区间按「仙人级（Lv.10）仙品 ≈ 500~800 万」反向锚定：期望 2.7^9≈7640 步进 → 典型 ≈690 万
+  const EQUIP_LV_MAX = 10;
+  const EQUIP_LV_STEP = [2.62, 2.78];
+
   /* ---------------- 词条 / 洗练 / 宝石 ---------------- */
 
   // 词条池：atk/hp/def 为属性百分比；crit/ls/pierce 直加战斗数值
@@ -741,6 +748,8 @@
     { q: '器魂「炼器」定向打造哪个品质的装备？', a: ['地品', '天品', '仙品', '玄品'], idx: 1 },
     // 题目对齐实际机制：孔数 = 2 + 仙位（slotSocketCount，封顶 6），与品质/境界/强化/战力均无关
     { q: '宝石镶嵌的部位数量随什么变化？', a: ['装备品质', '仙位（飞升）', '装备强化等级', '战力'], idx: 1 },
+    // 题目对齐实际机制：装备等级掉落时随境界定死（未飞升 = 境界+1），飞升后归 0 重爬
+    { q: '装备的等级由什么决定？', a: ['品质越高等级越高', '掉落时境界（飞升后归 0）', '强化等级', '战力'], idx: 1 },
     { q: '成就「万匣归一」需要累计开箱多少次？', a: ['1000 次', '5000 次', '10000 次', '20000 次'], idx: 2 },
     { q: '挑战修行「苦行」的禁忌是？', a: ['服用丹药', '开箱', '战斗', '购物'], idx: 0 },
     { q: '试炼「无息试炼」的通关条件是？', a: ['不靠吸血击败塔层守卫', '5 回合取胜', '承伤不超 30%', '无损取胜'], idx: 0 },
@@ -1697,9 +1706,11 @@
         }
         if (it.special) it.r = 5;
         if (!ELEMENT_BEATS[it.el]) it.el = randEl();
-        // 反作弊：普通装备战力上界（仙品基准 ×1.3）
+        // 反作弊：普通装备战力上界（品质基准 ×1.2 × 每级复利上限，Lv.1 基线共 lv-1 步）
+        // 注意此处不改写 it.lv——旧档（部位化迁移前）的 lv 还是强化等级，由迁移逻辑消费
         if (!it.special) {
-          const cap = Math.round(BASE_POWER[it.r] * 1.3);
+          const elv = Math.max(0, Math.min(EQUIP_LV_MAX, Math.floor(it.lv === undefined ? 1 : it.lv) || 0));
+          const cap = Math.round(BASE_POWER[it.r] * 1.2 * Math.pow(EQUIP_LV_STEP[1], Math.max(0, elv - 1)));
           if (it.power > cap) it.power = Math.max(1, cap);
         }
         it.star = fixInt(it.star, 0, 5);
@@ -2038,7 +2049,9 @@
             (overflowGems ? '，' + overflowGems + ' 颗放不下折算 ' + refundDust + ' 碎屑' : ''), 'sys');
         }
       }
-      // 所有档统一：装备剥离 lv / gems（部位化后装备不再携带）
+      // 所有档统一：装备剥离 lv / gems（部位化后强化等级不再在装备上）；
+      // 随后重发装备等级（2026-11-01）：旧档此处 lv 已被剥离，存量件统一按基线 Lv.1 入册
+      //（战力不动），新掉落才按当前境界定级吃复利乘区
       const stripSlotFields = (it) => {
         delete it.lv;
         delete it.gems;
@@ -2047,6 +2060,17 @@
       for (const s of SLOTS) {
         if (state.equipped[s.key]) stripSlotFields(state.equipped[s.key]);
         if (state.museum && state.museum[s.key]) stripSlotFields(state.museum[s.key]);
+      }
+      const stampEquipLv = (it) => {
+        if (!it) return;
+        if (it.special) { delete it.lv; return; } // 套装件不入等级体系
+        it.lv = (it.lv === undefined) ? 1
+          : Math.max(0, Math.min(EQUIP_LV_MAX, Math.floor(it.lv) || 0));
+      };
+      for (const it of state.bag) stampEquipLv(it);
+      for (const s of SLOTS) {
+        stampEquipLv(state.equipped[s.key]);
+        if (state.museum && state.museum[s.key]) stampEquipLv(state.museum[s.key]);
       }
       for (const s of SLOTS) {
         state.enh[s.key] = Math.max(0, Math.min(MAX_ENHANCE, Math.floor(state.enh[s.key]) || 0));
@@ -3089,6 +3113,7 @@
     const set = SETS[mode];
     // 兜底命名：套装件名必须为字符串（服务端 validateItem 拒收非字符串名，整档 400）
     const pieceName = set.pieces[slotDef.key] || (set.name + '·' + slotDef.name);
+    // 套装件不参与装备等级体系（2026-11-01 用户指定：套装维持现有，战力只随内容深度/仙位走）
     return {
       id: state.itemSeq++,
       r: 5,
@@ -3274,16 +3299,32 @@
 
   /* ---------------- 装备 / 背包 ---------------- */
 
+  // 装备等级：掉落瞬间按当前境界定死（未飞升 = 境界下标+1，飞升后 = 境界下标——炼气归 0）
+  function equipDropLv() {
+    return state.ascensions > 0 ? state.realm : state.realm + 1;
+  }
+
+  // 等级战力复利：Lv.1 基线 ×1，此后每级独立掷 [2.62,2.78]（负等级/越界按基线兜底）
+  function rollLvGrowth(lv) {
+    let m = 1;
+    for (let i = 1; i < Math.max(1, Math.min(EQUIP_LV_MAX, lv | 0)); i++) {
+      m *= EQUIP_LV_STEP[0] + Math.random() * (EQUIP_LV_STEP[1] - EQUIP_LV_STEP[0]);
+    }
+    return m;
+  }
+
   function makeItem(ri, slotKey) {
     const slotDef = slotKey ? SLOT_MAP[slotKey] : SLOTS[Math.floor(Math.random() * SLOTS.length)];
     const pool = ITEM_NAMES[slotDef.key][ri];
     const name = pool[Math.floor(Math.random() * pool.length)];
-    const power = Math.max(1, Math.round(BASE_POWER[ri] * (0.8 + Math.random() * 0.4)));
+    const lv = equipDropLv();
+    const power = Math.max(1, Math.round(BASE_POWER[ri] * (0.8 + Math.random() * 0.4) * rollLvGrowth(lv)));
     return {
       id: state.itemSeq++,
       r: ri,
       slot: slotDef.key,
       name,
+      lv,
       power,
       el: randEl(),
       affixes: rollAffixes(ri),
@@ -3675,7 +3716,7 @@
     if (drop) {
       if (!silent || ri >= 2) {
         pushLog(
-          item.name + '（' + RARITIES[ri].name + '） 战力 +' + fmt(itemPower(item)) +
+          item.name + '（' + RARITIES[ri].name + ' · Lv.' + item.lv + '） 战力 +' + fmt(itemPower(item)) +
           (crit ? ' · 暴击×10' : '') + ' · +' + fmt(gain) + ' 灵石',
           'r' + ri
         );
@@ -4358,7 +4399,7 @@
 
     $('forgeDust').textContent = fmt(state.dust);
     $('forgeKicker').textContent =
-      it.name + ' · ' + RARITIES[it.r].name +
+      it.name + (it.special ? '' : ' · Lv.' + (it.lv || 0)) + ' · ' + RARITIES[it.r].name +
       ' · 已洗练 ' + (it.rerolls || 0) + ' 次';
 
     const count = AFFIX_COUNT[it.r] || 0;
@@ -4682,12 +4723,14 @@
     state.stones -= CRAFT_COST.stones;
     const slotDef = SLOT_MAP[slotKey];
     const pool = ITEM_NAMES[slotKey][4];
+    const lv = equipDropLv();
     const item = {
       id: state.itemSeq++,
       r: 4,
       slot: slotKey,
       name: pool[Math.floor(Math.random() * pool.length)] + '（器）',
-      power: Math.max(1, Math.round(BASE_POWER[4] * (0.9 + Math.random() * 0.3))),
+      lv,
+      power: Math.max(1, Math.round(BASE_POWER[4] * (0.9 + Math.random() * 0.3) * rollLvGrowth(lv))),
       el: randEl(),
       affixes: rollAffixes(4),
     };
@@ -11687,7 +11730,7 @@
               '<span class="bi-name">' + esc(item.name) + '</span>' +
               '<span class="bi-power">' + cmpHtml + fmt(itemPower(item)) + '</span>' +
             '</div>' +
-            '<span class="bi-meta">' + elHtml + meta + ' · ' + SLOT_MAP[item.slot].name + '</span>' +
+            '<span class="bi-meta">' + (item.special ? '' : 'Lv.' + (item.lv || 0) + ' · ') + elHtml + meta + ' · ' + SLOT_MAP[item.slot].name + '</span>' +
             (extra.length ? '<span class="bi-affix">' + extra.join(' · ') + '</span>' : '') +
           '</div>' +
           '<div class="bi-actions">' +
@@ -13215,7 +13258,7 @@
             '<span class="inspect-power">战力 ' + fmt(it.power) + '</span>' +
           '</div>' +
           '<div class="inspect-sub">' +
-            '<span class="inspect-meta">' + rar.name + setName +
+            '<span class="inspect-meta">' + (it.special ? '' : 'Lv.' + (it.lv || 0) + ' · ') + rar.name + setName +
             (elName ? ' · ' + elName.name : '') + ' · ' + s.name + '</span>' +
             (affixes ? '<span class="pw">' + esc(affixes) + '</span>' : '') +
           '</div>' +
