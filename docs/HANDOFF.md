@@ -13,7 +13,7 @@
   | 文件 | 内容 |
   |---|---|
   | `index.html` | 全部 DOM：主面板、背包、图鉴、秘境面板、战斗弹窗、离线弹窗 |
-  | `styles.css` | 样式 + 战斗动画 + 响应式（约 1690 行） |
+  | `styles.css` | 全站正式样式：明暗双主题 token + 组件样式（2026-10-31 由旧样式与 newui.css 换肤层合并转正）+ 战斗动画 + 响应式（约 4700 行） |
   | `game.js` | 全部玩法逻辑与数值（约 2000 行，单个 IIFE，`'use strict'`） |
   | `README.md` | 面向玩家的说明（运行、玩法、部署） |
   | `docs/HANDOFF.md` | 本文档（`docs/` 另含 DEPLOY.md 部署手册） |
@@ -61,7 +61,7 @@
 - 成就：`ACHIEVEMENTS` 20 条里程碑（开箱 / 灵石 / 品质 / 境界 / 秘境 / 套装图鉴 / 强化 / 飞升 / 无尽），达成后手动领灵石（部分带碎屑），`state.achievements` 记已领。
 - 日常：`ensureDaily()` 按本地自然日重置 `state.daily`（opens/wins/forge 计数 + claimed）；签到 `SIGN_REWARDS` 7 日循环（`signInDays % 7`），三项任务全领另有 `DAILY_ALL_BONUS`。任务计数挂点：openBox→opens、doBattle 胜→wins、工坊洗练/镶嵌→forge。
 - 套装图鉴：`state.setCollection` 按「曾获得」收录（grantSpecial 写入 + load() 追溯扫描身上/包内专属件，分解也算）；收集加成 `collectionBonus()`：2 件收益 +10%、4 件攻血 +8%、6 件收益再 +25%，与战斗内套装效果独立成乘区。
-- 离线巡猎：awardOffline() 里若 `autoHunt` 开且野外已解锁，按 3 秒/场 ×50% 估算 hunts，胜率按战力比（≥1.3→95%、≥1→80%、≥0.75→50%、否则 20%），发灵石/修为/兽骨并推进 `wildKills`（每 12 杀保底离线也结算，掉落上限到背包满）；不出首通里程碑。
+- 离线巡猎：awardOffline() 里若 `autoHunt` 开且野外已解锁，按 1 场/分钟（`HUNT_INTERVAL_S`，2026-11-01 用户指定与在线自动战斗间隔同口径）×50% 估算 hunts，胜率按战力比（≥1.3→95%、≥1→80%、≥0.75→50%、否则 20%），发灵石/修为/兽骨并推进 `wildKills`（每 12 杀保底离线也结算，掉落上限到背包满）；不出首通里程碑。
 - 音效：`beep()` 吃 `state.volume`（0–1，页脚滑条）；`chime([freqs])` 琶音用于套装掉落 / 首领击败 / 领奖 / 签到。
 
 **灵宠与洞府**（2026-10-27 完成）：
@@ -525,7 +525,7 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 - 接口：`POST /api/auth/register|login|logout`、`GET /api/auth/me`、`GET/POST /api/save`、`POST /api/save/beacon`（关页兜底，允许任意 Content-Type）。
 - 表：`users`（含 `power_score`、`guild_id` 预留列 + 战力索引）、`sessions`（token 只存 sha256）、`login_attempts`（登录流水，IP/账号限流数据源）、`game_saves`（每用户一行 JSON 正本）；预留空表 `guilds`、`guild_members`、`pvp_seasons`、`pvp_battles`。
 - 防爆破 / 防刷：连错 5 次锁号（15 分钟起步指数退避，封顶 24h，存 DB 重启不失效）；登录每 IP 20 次/10 分钟（内存滑窗）、同账号全网失败 30 次/15 分钟（查 `login_attempts`）；注册每 IP 5 个/小时（内存）+ 10 个/24 小时（查库）；存档每用户 30 次/分钟、单份 ≤ 512KB（服务端校验 stones/realm 同客户端导入口径）；登录 / 注册固定随机延迟 + 无用户也跑假 scrypt（防计时枚举）；写接口校验 Origin + JSON Content-Type；会话 Cookie HttpOnly / SameSite=Lax / HTTPS 下 Secure，7 天滑动续期。
-- 前端接入点（game.js，都在「云存档」小节）：`authGate()`（启动门禁，未登录 / 无后端拦下）→ `cloudRestore()`（按 `lastSeen` 取本地 / 云端较新；`sessionStorage.lx_force_push` 标记导入档强制覆盖云端）→ `persist()` 尾部 `queueCloud()`（5 秒节流推送）→ `cloudFlushNow()`（pagehide 兜底）。玩法代码零改动。
+- 前端接入点（game.js，都在「云存档」小节）：`authGate()`（启动门禁，未登录 / 无后端拦下）→ `cloudRestore()`（2026-10-31 起云端唯一持久层：云端档直接入 state，无档 = 全新开局；拉取失败/档损坏 blockStart 拦下启动）→ `persist()` 尾部 `queueCloud()`（5 秒节流推送）→ `cloudFlushNow()`（pagehide 兜底）。玩法代码零改动。
 - 多人玩法开工时的约定：战斗与掉落结算迁到服务端（`game_saves` 只当结果），战力快照写 `users.power_score`（服务端 `syncPowerScore` 已备好钩子，存档 JSON 带 `power` 字段即生效），排行直接查 `idx_users_power` 索引。
 
 ### 天下玩法现状（2026-10-28 接入，TODO 66–70）
@@ -589,7 +589,48 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 - **登出清本地档**：登出置 `authSignedOut` 标志停掉 persist / 关页兜底（导航触发 hidden 会把清掉的档写回——实测踩过），清 SAVE_KEY / TAB 锁 / OPFS 备份，堵同浏览器换账号串号。OPFS 恢复分支改「补结算差额」防同一次冷启动双份离线收益。
 - **杂项**：flushCloud 对 429/5xx 保留 pending 重试（只有校验类 400/422 丢弃）、空错误体也给通用提示；`redeemSince` 改 LEFT JOIN（删码后已兑奖励仍计入授权）；store 三步写包事务；立绘 aria-label 补 esc（昵称白名单本就挡死注入，消灭 latent）；导出文案改 .lxsave。
 
+### 征战体力（2026-11-01 用户指令：计算与消耗全部服务端验证）
+
+- **口径**：闯关/爬塔/野外/无尽（`doBattle` 四模式，含扫荡/复战/自动巡猎）**一场 1 点**；**每日 300 点**（服务端本地日首次触碰时回满）；**每 5 分钟恢复 1 点**；**上限即 300**。战败也扣（战斗发生了就扣）。
+- **服务端权威**：`server/stamina.js`（新建）+ users 表三列（`stamina`/`stamina_ts`/`stamina_day`，db.js `USER_COLUMNS` 自动迁移，存量玩家首触回满 300）。数值唯一权威在服务端，客户端只持最近一次同步的展示快照。路由：`GET /api/stamina`（折算+落库+返回 `stamina/cap/nextAt`）、`POST /api/stamina/spend {n}`（事务内折算→足额检查→原子扣点 `WHERE stamina >= n`；不足 429 带当前库存；n 钳 1..300；120 次/分钟限速）。恢复基线在 `stamina_ts`（跨日回满重置为 now；**满池扣点时也重置为 now**——否则旧 ts 会让下一点瞬间回上，冒烟实测后修）。
+- **客户端闸门**：`doBattle` 改 async，在野外语量检查之后、开战之前 `await spendStamina(1)`——扣点失败不开战（`empty`=体力不足：自动巡猎自动关闭+日志；`net`=网络故障：仅手动挑战提示，自动巡猎静默重试；`busy`=上次扣点在途：静默，心跳自然重试）。野外 50 次/日挑战计数移到扣点成功之后（扣不动不白占额度）。`sweepBattle` 随之 async（先战后付次数不变，体力照扣）。
+- **离线巡猎**：胜场先经 `spendStaminaClamped(wins)`（GET 库存→钳 min(wins,库存)→扣点），**离线积累多少体力就巡多少场**，超出部分不结算并在离线弹层注明；防离线绕过体力。开箱离线收益不受体力影响。
+- **展示**：征战页玩家条新增「体力 v/300（mm:ss）」，`STAMINA` 快照 + 本地 5 分钟/点插值（loop 10Hz 文本变化才写 DOM），每次同步矫正；启动/切回前台刷新。
+- **验收**（临时 DB curl 全过）：GET 300/300 → spend 1 → 299（nextAt=now+5min）→ 非法 n 400 ×3 → 库存 2 扣 3 → 429 带库存 → 扣 2 → 0 → 再扣 429 → ts 回拨 10 分钟 → GET +2 → day 改昨日 → 回满 300 → 一次扣 300 → 再扣 429。`node --check` 全绿 + `npm run build:deploy` 通过。
+- **设计影响（明示）**：每日战斗总量封顶 ≈300+恢复；自动战斗（2026-11-01 用户指定）每场间隔 1 分钟（`HUNT_INTERVAL_S`，开启即战首场），打满当日额度约需 5 小时；试炼/探幽/首领突袭/妖王等非 doBattle 玩法不耗体力；服务端经济包络不受影响（只降不涨）。
+
+### 全量服务端校验迁移 · P0+P1（2026-11-01 用户指令「所有校验、规则均改为服务端校验」）
+
+架构从「客户端权威 + 整档推送 + 包络兜底」向「服务端权威 + 动作意图」迁移，分四期（P0 基础层 → P1 征战战斗 → P2 付费扣费 → P3 概率玩法 → P4 开箱批结算+存档降级），**P0+P1 已落地**：
+
+- **P0 基础层**：`server/items.js`（装备/套装件生成，钳制与 validateItem 同界）；`server/battle.js` 扩展（MODES/contentReq 分段曲线/enemyFor 怪物生成/playerCombatStats 全量面板聚合/elementBonus/settleGain 结算/addStones 增益链 `applyStoneBuffsOf`/离线期望 expectedOf）；db.js 新表 `action_log`（服务端动作授权日志）+ save_ledger 权威列（wild_cleared/wild_kills JSON、野外语/扫荡每日计数、offline_at）；`stamina.js` 重构（`computeStamina` 纯函数供 combat 事务复用）。
+- **P1 征战战斗全服务端**：`POST /api/combat/fight {mode, level?, sweepLevel?, buy?}`——单事务内完成 体力扣点（内嵌）→ 门槛/关卡语义/扫荡加购/野外语额度裁定 → 从存档镜像算面板 → simulateBattle → 奖励入账（ledger+action_log）→ 进度推进（账本权威）→ 套装件/残片掉落；`POST /api/combat/offline` 离线收益服务端按 `offline_at` 复算（调钟彻底失效；首户不追溯）。`saves.js` 的授权收益统计从「只认兑换码」扩为「+读 action_log」——服务端发放的收益不再触发镜像推送的「余额跳变/回退」误拒（实测 62414 石授权后推送 200）。
+- **客户端**：`doBattle`/`sweepBattle`/`awardOffline` 改为调端点渲染；灵石/修为**平加入账**（服务端已含 addStones 全部增益，禁止二次放大）；进度/击杀/扫荡计数以响应 `progress`/`counters` 对齐；掉落件 id 由客户端收货时重编（`grantSpecial(item)` 改收成件）；`spendStamina` 客户端链路删除（体力并入 fight 事务），/api/stamina 端点保留给运维。
+- **同源回归门 `scripts/parity-check.mjs`**：Node VM 加载 game.js（DOM stub，LX.debug 钩子暴露 `enemy/req`），同一份合成存档比对两端 playerCombatStats/enemyFor/contentReq/recommendedPower（浮点相对误差 1e-9，零容差）——**客户端公式改动必须同步 server/battle.js 并跑通此脚本**，实测抓过 stage 怪物索引、wild 200 区补足表两处移植错误。
+- **冒烟（18096 临时库全绿）**：镜像推送→四连闯关→403 未解锁→wild 首通（special 掉落）→扫荡计数→离线回拨 2h（1440 开箱+57 猎场胜、体力 300→237）→体力清零 429→对齐镜像推送 200→action_log 汇总吻合。**踩坑记录**：offline 猎场灵石曾与汇总双记（多 5985，已修）；curl 推陈旧镜像被「累计灵石回退」拒收是**正确行为**（真实客户端先应用响应增量再推）。
+- **已知取舍（P1 阶段内）**：战斗面板取自存档镜像（客户端换装后 ≤5s 内服务端用旧面板，后续可在 fight 前强制 flush）；开箱/付费/每日玩法仍是客户端规则（P2–P4 迁）；镜像推送与账本强耦合后，任何绕过端点的手改档会被单调校验直接拒收（防线更紧了）。
+
+### 自动战斗节奏（2026-11-01 用户指令：每场结束后间隔 1 分钟）
+
+- `game.js` 常量 `HUNT_INTERVAL_S = 60`：主循环 `huntAcc >= 60` 才发起下一场自动战斗（原 3 秒），自动巡猎（野外）与连续挑战（闯关/爬塔/无尽）共用同一开关与节奏；**首场也吃间隔**——开启开关只置位 + `huntAcc=0`，首场由主循环节奏发起，连点开关不产生额外战斗（2026-11-01 二次指令，堵「连点开关绕过节拍刷场」的口子）。体力闸门照常生效（每场仍需服务端扣 1 点成功）。
+- 离线巡猎估算同步改为 1 场/分钟（原 3 秒/场，`awardOffline` 的 `elapsed / HUNT_INTERVAL_S`）——离线与在线同口径，且仍受 `spendStaminaClamped` 实扣体力钳制。
+- `server/economy.js` `BATTLE_RATE_PER_S = 3` 保留为包络上界（只松不紧），注释更新为「1 分钟间隔 + 体力双闸，实际远低于包络」。
+- 范围口径：道童自动穿戴/自动分解/黑市代购是**掉落/购买事件驱动**，无节奏可调；自动开箱是放置核心收益循环，不属「自动战斗类」，均不按此规则。
+
+### 全站复审修复（2026-11-01：bug / 漏洞 / 玩法缺陷 / 明暗主题可读性）
+
+四路并行深审（服务端全量、game.js 前后半、主题对比度逐行）后修复，验收 = 全文件 `node --check` + 临时 DB 冒烟 curl + `npm run build:deploy`：
+
+- **种子校验 1 小时窗口洞（高）**：原「注册 1 小时内才查种子」存在绕过口——注册后等满 1 小时再首推，无账本行分支既不走增速也不走种子校验，可一次种入 `immortal=999` 满档基线（三道防线整体失效）。改为 `SEED_CHECK_SINCE = 2026-10-31`（账本上线时间）：之后注册的账号无论账龄、无账本行首推一律过种子校验；早于它的存量号保持迁移豁免。冒烟实测：回拨 2h 的号推满档 400、回拨到 10-01 的号正常 200。
+- **静态流崩溃（中）**：`serveStatic` 非文本分支 `createReadStream().pipe(res)` 无 error 监听——statSync 后文件被替换 / EACCES / EIO 会在异步回调抛 uncaughtException 整进程退出。补 `stream.on('error', () => res.destroy())`。
+- **妖王亡者伤害（中）**：`bossHit`/`guildBossHit` 不查 `hp<=0`，击杀后剩余次数仍可打尸体、伤害全额入世界/盟榜并产贡献（榜单灌水）。两处补 hp 闸门（429「已被斩落」）；快照校验统一 `snapOk` 八项口径（防脏行 NaN→NULL→NOT NULL 炸 500）。
+- **wildCleared 自锁口（中）**：`validateDeep` 不查 `wildCleared`、`wildMaxOf` 无上限——推 `[1e300]` 会把 `wild_max` 基线种到天文数字，此后真实进度全被「回退」永久拒收。两侧补 0..200 钳制。
+- **客户端玩法缺陷**：`applySaveData` 漏拷 `daily.gamble`（每次读档赌石计数归零，500 次/日上限失效）；`doInherit` 不查重（继承重复词条下次读档被静默删除，碎屑+材料白花）；战技/功法/灵宠文案标全值实际 ×0.25（GROWTH_SCALE 折算漏改文案，显示与效果差 4 倍）——三处文案/展示公式改按实际值；月度补签可把上月末日记入本月（白提前一天里程碑）；黑市货单 UTC 日与限购本地日两套日界（问答「0 点刷新」因此答错）→ 统一本地日；问答「宝石孔数随品质」四选项全错 → 改「仙位（飞升）」；赌石连开汇总从文案反解析（fmt 带「万」单位必不命中，汇总灵石恒 0）→ `gambleOnce` 改带数值返回；红尘录战斗计入锋芒/金身成就但回顾模式可无限重刷 → 与「百战」同口径只记秘境；回顾战胜负弹层宣称「收下奖励」实际不发 → 按 `f.review` 如实标注；胜利兜底文案「再接再厉」是败北语气 → 换中性句；跳过剧情漏记人物志结识 → `storySkipAll` 补 `storyMeet`（幂等）；`/api/guild` 失败后每秒 ~10 次重试风暴 → 60s 退避；捐献/传功/赠礼无在途锁（双击双倍扣款）→ 补 busy；灵药合丹按钮阈值（四成价）不入签名（跨 1200/2400 不重绘）→ 补 afford 位图；扫荡选关条与野外选区条共用 `wildGroupOpen` 互串展开组 → 拆 `sweepGroupOpen`；套装图鉴「n / 6」分母 12 部位后过期 → `min(n,6) / 6`。
+- **服务端杂项**：连点判定 `(clicks|0)` 32 位截断（每推恰 +2^32 增量恒 0，判定永不触发）→ 去截断；`acceptsGzip` 把 `gzip;q=0` 当接受 → 排除 q=0（curl 实测 q=0 不再压缩）；login 成功路径不查 `user.status`（停用号可「登录成功」后全 401）→ 对齐 403；`openDb` 补 `PRAGMA busy_timeout=5000`（CLI 与服务共用库撞锁）+ display_name 回填 try/catch（历史唯一冲突不再炸启动）；codes CLI `--max` 负数静默变「不限次」→ 显式报错；`game_saves.size` 存字符数 → `Buffer.byteLength`。
+- **明暗主题可读性（styles.css）**：明色 token 漏定义 `--orange/--red`（#fbbf24/#f87171 原样漏到纸底，天品/仙品名、五行金/火、图鉴 r4/r5、战败标题等十余处 ≈1.4-2.2:1）→ 补深色 token 并把品级/套装/五行字色全部 token 化（暗色逐一同值、像素不变）；明色 `--gold` 加深（#b8945a→#7d5d27，小字从 ≈2.1:1 到 ≈4.9:1）；`.cast-card b` 误入「浅字转墨」组（卡底恒深蓝 → 深字深底 ≈1.4:1）摘出；战斗飘字/战斗记录敌我行/日志分类色（明色被 `.log-list li` 高特异性压成全灰、品质语义全丢）/时辰徽章/宝点提示/凡品名/锁定页签/装备空槽/红尘录注释字/头像兜底首字逐一补明色深变体；暗色侧：选中页签 `--accent`（≈1.8:1，最高频导航）改亮金、「当前位置」格墨字金雾底（≈1.8:1）改金字、顶栏按钮 `--accent` 特异性压过 `.btn`（≈3.8:1）改回墨字；开匣匣面恒暗底字色固定亮金不再随 token 变深；game.js 两处 CSP 内联色（秘境偶遇名/装备查看品质名）补 `themeInk()` 明色 ×0.6 压暗（与说话人名同款）。对比度全部按 WCAG 程序化复核（正常字 ≥4.5 / 大字 ≥3）。
+
 ## 11. 给下一个开发工具的工作约定
+
 
 - 中文文案；原创素材；不动 `lingxia_idle_v1` 兼容性（新增字段先 `defaults()`，校验进 `load()`）。
 - **主角名展示（2026-10-31 用户指定）**：凡展示「林小凡/小凡」的地方（故事对白/说话人/人物志/卷简介/心魔敌名/战斗弹窗玩家名）一律走 `withPlayerName()` 替换为玩家昵称（`playerName()` = 服务端显示名，未改昵称即登录道号，兜底「林小凡」）。**故事数据原文（STORY 数据、STORY_CAST、foe.name）保持原名不动，只在渲染点替换**；`paintPlayerName()` 负责红尘录简介、战斗弹窗与人物志的刷新（人物志要清 `panelSigs.story` 强制重绘），改名 handler 与 `start()` 各调一次。

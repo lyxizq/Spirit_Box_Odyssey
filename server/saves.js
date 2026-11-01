@@ -7,8 +7,22 @@ import { checkVelocity, ledgerOf, equipPowerOf } from './economy.js';
 const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
 const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
 
+// 连点器判定（2026-10-31 服务端裁定）：客户端随档上报累计手动点击数（clickCount），
+// 30s 滑窗内累计 ≥200（≈6.7 次/秒持续，沿用原客户端判定速率）即判定点击器，
+// 封点击 5 分钟（click_ban_until 持久化在账本，重启不丢）。判定与封禁时长全部
+// 由服务端裁定，客户端仅按响应里的 clickBanUntil 阻止开箱点击。
+const CLICK_WINDOW_MS = 30 * 1000;
+const CLICK_BURST_MAX = 200;
+const CLICK_BAN_MS = 5 * 60 * 1000;
+
+// 种子校验生效边界：账本功能上线时间（2026-10-31）之后注册的账号，无账本行首推
+// 一律过种子校验；早于它的老号首推免查（存量玩家平滑迁移，不回溯）。
+const SEED_CHECK_SINCE = Date.UTC(2026, 9, 31);
+
 export function createSaveService(db) {
   const saveWindow = new SlidingWindow(60 * 1000, SAVE_PER_MIN);
+  const resetWindow = new SlidingWindow(3600 * 1000, 3); // 重置：每账号每小时最多 3 次
+  const clickWindows = new Map(); // userId -> [{t, n}] 手动点击增量滑窗（内存即可，封禁时间落库）
   const stmts = {
     getSave: db.prepare('SELECT data, updated_at FROM game_saves WHERE user_id = ?'),
     upsert: db.prepare(
@@ -16,24 +30,46 @@ export function createSaveService(db) {
        ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, size = excluded.size, updated_at = excluded.updated_at`),
     setPower: db.prepare('UPDATE users SET power_score = ? WHERE id = ?'),
     setProfile: db.prepare('UPDATE users SET power_score = ?, realm = ?, pvp_snapshot = ? WHERE id = ?'),
+    // 快照无效时只更新战力/境界，保留旧快照（防 NULL 毒化可战档案，见 syncPowerScore）
+    setProfileMeta: db.prepare('UPDATE users SET power_score = ?, realm = ? WHERE id = ?'),
+    // 存档重置（2026-10-31 云端唯一存档）：清档 + 清档案；账本不删行而是归零保留——
+    // 删行会让重置后的首推走「无账本行种基线」零校验分支，等于把增速防线整条
+    // 拆掉（老号可 reset 后直推贴天花板满档合法入库）。归零保留 = 首推走正常
+    // 增速校验，基线 0 + 真实经过时间，合法重玩能过、伪造跳变被拒。
+    delSave: db.prepare('DELETE FROM game_saves WHERE user_id = ?'),
+    resetLedger: db.prepare(
+      `INSERT INTO save_ledger (user_id, grants, updated_at) VALUES (?, 1, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         stones = 0, total_stones = 0, dust_total = 0, opens = 0, exp = 0,
+         pet_tickets = 0, ascensions = 0, immortal = 0, power = 0,
+         tower_cleared = 0, stage_cleared = 0, endless_best = 0, wild_max = 0,
+         grants = 1, clicks = 0, click_ban_until = 0, updated_at = excluded.updated_at`),
+    clearProfile: db.prepare("UPDATE users SET power_score = 0, realm = '', pvp_snapshot = NULL WHERE id = ?"),
     // 增速账本：上次入库计数器快照 + 窗口内兑换码授权收益
     getLedger: db.prepare('SELECT * FROM save_ledger WHERE user_id = ?'),
     upsertLedger: db.prepare(
       `INSERT INTO save_ledger (user_id, stones, total_stones, dust_total, opens, exp, pet_tickets,
-         ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants,
+         clicks, click_ban_until, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET stones = excluded.stones, total_stones = excluded.total_stones,
          dust_total = excluded.dust_total, opens = excluded.opens, exp = excluded.exp,
          pet_tickets = excluded.pet_tickets, ascensions = excluded.ascensions, immortal = excluded.immortal,
          power = excluded.power, tower_cleared = excluded.tower_cleared, stage_cleared = excluded.stage_cleared,
          endless_best = excluded.endless_best, wild_max = excluded.wild_max, grants = excluded.grants,
+         clicks = excluded.clicks, click_ban_until = excluded.click_ban_until,
          updated_at = excluded.updated_at`),
     redeemSince: db.prepare(
       `SELECT c.reward AS reward FROM redeem_log l LEFT JOIN redeem_codes c ON c.code = l.code
        WHERE l.user_id = ? AND l.created_at > ?`),
+    // 动作授权日志（2026-11-01 全量服务端校验迁移）：combat/social 等服务端端点
+    // 发放的每一笔收益，随存档校验一并计入授权，不触发「余额跳变」误拒
+    actionSince: db.prepare(
+      `SELECT kind, stones, dust, tickets, exp FROM action_log
+       WHERE user_id = ? AND created_at > ?`),
   };
 
-  // 窗口内兑换码授权收益（精确计入增速包络；奖励面在兑换时已钳制）
+  // 窗口内服务端授权收益（兑换码 + 动作端点；精确计入增速包络，奖励面发放时已钳制）
   function sanctionedSince(userId, since) {
     const out = { stones: 0, dust: 0, tickets: 0 };
     for (const row of stmts.redeemSince.all(userId, since)) {
@@ -44,13 +80,22 @@ export function createSaveService(db) {
         out.tickets += Math.max(0, Math.floor(Number(r.tickets) || 0));
       } catch (e) { /* 脏奖励数据跳过 */ }
     }
+    for (const row of stmts.actionSince.all(userId, since)) {
+      out.stones += Math.max(0, Math.floor(Number(row.stones) || 0));
+      out.dust += Math.max(0, Math.floor(Number(row.dust) || 0));
+      out.tickets += Math.max(0, Math.floor(Number(row.tickets) || 0));
+    }
     return out;
   }
 
   function get(req, res, ctx) {
     const row = stmts.getSave.get(ctx.user.id);
-    if (!row) return sendJSON(res, 200, { found: false, text: null, updatedAt: null });
-    return sendJSON(res, 200, { found: true, text: row.data, updatedAt: row.updated_at });
+    const ban = stmts.getLedger.get(ctx.user.id);
+    if (!row) return sendJSON(res, 200, { found: false, text: null, updatedAt: null, clickBanUntil: 0 });
+    return sendJSON(res, 200, {
+      found: true, text: row.data, updatedAt: row.updated_at,
+      clickBanUntil: (ban && ban.click_ban_until) || 0,
+    });
   }
 
   // 核心数值字段的类型与量级校验：真实客户端总是整份 state 序列化上传，缺字段、
@@ -95,13 +140,15 @@ export function createSaveService(db) {
   // 仙位感知上界：套装件与秘境要求的生成值乘 1.25^仙位，合法量级随仙位水涨船高，
   // 上界必须同步放宽，否则高仙位真玩家会被误拒。
   const DEEP = {
-    SLOT_KEYS: new Set(['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman']),
+    SLOT_KEYS: new Set(['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
+      'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings']),
     ELEMENT_KEYS: new Set(['jin', 'mu', 'shui', 'huo', 'tu']),
     AFFIX_KEYS: new Set(['atk', 'hp', 'def', 'crit', 'ls', 'pierce']),
     SET_KEYS: new Set(['tower', 'stage', 'wild']),
     BASE_POWER: [3, 10, 30, 90, 280, 900],
     AFFIX_COUNT: [0, 0, 0, 1, 2, 3],   // 各品质词条条数
     ENHANCE_MAX: 200, STAR_MAX: 5, PROGRESS_MAX: 200,
+    GEM_SLOTS_MAX: 6,                  // 部位宝石孔上限（2 + 飞升数，封顶 6）
     BAG_MAX: 300, PETS_MAX: 64,
     SPECIAL_POWER_BASE: 1e9,           // 套装件战力基准（合法顶配 ~1e8 量级 ×10 余量）
     POWER_BASE: 4e14,                  // 自报总战力基准（六件 theoretical ~3.3e14 ×余量）
@@ -180,11 +227,26 @@ export function createSaveService(db) {
     deepErrs.length = 0;
     if (!isInt(data.immortal, 0, 999)) bad('仙位越界');
     if (!isInt(data.ascensions, 0, 1e6)) bad('轮回越界');
+    // 境界水位（2026-11-01）：解锁回锁豁免的水印字段，客户端 featureOpen/剧情按 max(realm, 水位) 判定
+    if (data.realmPeak !== undefined && !isInt(data.realmPeak, 0, 9)) bad('境界水位越界');
+    if (data.clickCount !== undefined && !isInt(data.clickCount, 0, 1e12)) bad('点击计数越界');
     for (const k of ['trainAtk', 'trainHp', 'trainPierce']) {
       if (!isInt(data[k], 0, DEEP.PROGRESS_MAX)) bad(k + ' 越界');
     }
     if (!isInt(data.towerCleared, 0, DEEP.PROGRESS_MAX)) bad('爬塔进度越界');
     if (!isInt(data.stageCleared, 0, DEEP.PROGRESS_MAX)) bad('闯关进度越界');
+    // 野外已探区列表：只收 0..200 的整型元素（与 wildMaxOf 的钳制同口径）。
+    // 不校验会有自锁口：推 wildCleared:[1e300] 种下巨大 wild_max 基线，
+    // 之后任何真实进度都触发「野外探区出现回退」被永久拒收。
+    if (data.wildCleared !== undefined) {
+      if (!Array.isArray(data.wildCleared) || data.wildCleared.length > DEEP.PROGRESS_MAX) {
+        bad('野外探区表非法');
+      } else {
+        for (const z of data.wildCleared) {
+          if (!isInt(z, 0, DEEP.PROGRESS_MAX)) { bad('野外探区越界'); break; }
+        }
+      }
+    }
     if (data.gongfa && typeof data.gongfa === 'object' && !Array.isArray(data.gongfa)) {
       for (const k of ['atk', 'hp', 'hui']) {
         if (!isInt(data.gongfa[k], 0, DEEP.PROGRESS_MAX)) bad('功法 ' + k + ' 越界');
@@ -193,6 +255,35 @@ export function createSaveService(db) {
     if (data.cave && typeof data.cave === 'object' && !Array.isArray(data.cave)) {
       for (const k of ['array', 'garden', 'library']) {
         if (!isInt(data.cave[k], 0, DEEP.PROGRESS_MAX)) bad('洞府 ' + k + ' 越界');
+      }
+    }
+    // 部位强化 / 部位宝石（2026-10-31 部位化：强化与宝石改绑槽位，键 ⊆ 六槽位）
+    if (data.enh !== undefined) {
+      if (!data.enh || typeof data.enh !== 'object' || Array.isArray(data.enh)) bad('部位强化表非法');
+      else {
+        const keys = Object.keys(data.enh);
+        if (keys.length > DEEP.SLOT_KEYS.size) bad('部位强化键数越界');
+        for (const k of keys) {
+          if (!DEEP.SLOT_KEYS.has(k)) bad('部位强化键非法');
+          else if (!isInt(data.enh[k], 0, DEEP.ENHANCE_MAX)) bad('部位强化等级越界');
+        }
+      }
+    }
+    if (data.slotGems !== undefined) {
+      if (!data.slotGems || typeof data.slotGems !== 'object' || Array.isArray(data.slotGems)) bad('部位宝石表非法');
+      else {
+        const keys = Object.keys(data.slotGems);
+        if (keys.length > DEEP.SLOT_KEYS.size) bad('部位宝石键数越界');
+        for (const k of keys) {
+          if (!DEEP.SLOT_KEYS.has(k)) { bad('部位宝石键非法'); continue; }
+          const arr = data.slotGems[k];
+          if (!Array.isArray(arr) || arr.length > DEEP.GEM_SLOTS_MAX) { bad('部位宝石孔数越界'); continue; }
+          for (const g of arr) {
+            if (g === null) continue;
+            if (!g || typeof g !== 'object' || Array.isArray(g) || !DEEP.AFFIX_KEYS.has(g.k)) { bad('部位宝石类型非法'); break; }
+            if (!isInt(g.t, 1, 3)) { bad('部位宝石等级越界'); break; }
+          }
+        }
       }
     }
     if (data.pets !== undefined) {
@@ -312,6 +403,7 @@ export function createSaveService(db) {
       return sendJSON(res, 400, { error: '存档校验失败' });
     }
     const now = Date.now();
+    const led = ledgerOf(data, now);
     // —— 增速账本校验：无账本行以当档种入基线；有则做单调性 + 增速校验 ——
     const prevRow = stmts.getLedger.get(ctx.user.id);
     if (prevRow) {
@@ -336,10 +428,14 @@ export function createSaveService(db) {
         console.error('[saves] 增速校验拒收 user=' + ctx.user.id + '：' + fail);
         return sendJSON(res, 400, { error: '存档增速异常，已保留上次云端进度' });
       }
-    } else if (ctx.user.createdAt && now - ctx.user.createdAt < 3600 * 1000) {
-      // —— 新号首推种子校验（复审补）：注册 1 小时内的首推不许带超纲进度。
-      // 堵两条线：① 手写 localStorage / 直调 API 一次推满档（种基线零校验 = 全部防线失效）；
-      // ② 登出不清本地档，同浏览器新号继承旧大号存档。老号迁移（created_at 早）不受影响。
+    } else if (ctx.user.createdAt && ctx.user.createdAt >= SEED_CHECK_SINCE) {
+      // —— 新号首推种子校验（复审补，2026-11-01 二修）：账本功能上线后注册的账号，
+      // 无账本行首推一律过种子校验。原「注册 1 小时内」口径有绕过口：注册后等满
+      // 1 小时再首推，既不走增速校验也不走种子校验，可一次种入 immortal=999 满档
+      // 基线（防线整体失效）。改为以功能上线时间为界：早于它的存量账号免校验
+      // （不回溯迁移），之后注册的无论账龄、首推必查。堵两条线：
+      // ① 手写 localStorage / 直调 API 一次推满档（种基线零校验 = 全部防线失效）；
+      // ② 登出不清本地档，同浏览器新号继承旧大号存档。
       const seedFails = [];
       if (Number(data.totalStones) > 5e7) seedFails.push('累计灵石超新号上限');
       if (Number(data.opens) > 2e5) seedFails.push('开箱次数超新号上限');
@@ -352,22 +448,38 @@ export function createSaveService(db) {
         return sendJSON(res, 400, { error: '新账号存档异常，请从零开始修行' });
       }
     }
+    // —— 连点器判定（服务端裁定）：30s 滑窗累计手动点击增量 ——
+    let clickBanUntil = prevRow ? (prevRow.click_ban_until || 0) : 0;
+    // clicks 不做 |0：32 位截断下每次恰好 +2^32（validateDeep 上限 1e12 内合法）会让
+    // 增量恒为 0，连点判定永不触发；clampInt 已保证整数
+    const dClicks = Math.max(0, Math.floor(led.clicks) - (prevRow ? Math.floor(prevRow.clicks || 0) : 0));
+    const clickArr = clickWindows.get(ctx.user.id) || [];
+    const clickCutoff = now - CLICK_WINDOW_MS;
+    while (clickArr.length && clickArr[0].t <= clickCutoff) clickArr.shift();
+    clickArr.push({ t: now, n: dClicks });
+    clickWindows.set(ctx.user.id, clickArr);
+    const windowClicks = clickArr.reduce((a, x) => a + x.n, 0);
+    if (windowClicks >= CLICK_BURST_MAX && now >= clickBanUntil) {
+      clickBanUntil = now + CLICK_BAN_MS;
+      console.error('[saves] 连点器判定 user=' + ctx.user.id + '：30s 内手动点击 ' +
+        windowClicks + ' 次，封点击 5 分钟');
+    }
+
     db.exec('BEGIN');
     try {
-      stmts.upsert.run(ctx.user.id, ctx.rawBody, ctx.rawBody.length, now);
+      stmts.upsert.run(ctx.user.id, ctx.rawBody, Buffer.byteLength(ctx.rawBody), now);
       syncPowerScore(ctx.user.id, data);
-      const led = ledgerOf(data, now);
       stmts.upsertLedger.run(
         ctx.user.id, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
         led.petTickets, led.ascensions, led.immortal, led.power,
         led.towerCleared, led.stageCleared, led.endlessBest, led.wildMax,
-        prevRow ? 0 : 1, now);   // 校验通过即清离线豁免；种基线发 1 次
+        prevRow ? 0 : 1, led.clicks, clickBanUntil, now);   // 校验通过即清离线豁免；种基线发 1 次
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
       throw e;
     }
-    return sendJSON(res, 200, { ok: true, updatedAt: now });
+    return sendJSON(res, 200, { ok: true, updatedAt: now, clickBanUntil });
   }
 
   // 存档同步顺带落战力档案：power / realm / PvP 快照（客户端 persist 时打包）。
@@ -386,12 +498,10 @@ export function createSaveService(db) {
       DEEP.POWER_BASE * immortalMult({ immortal: data.immortal }) *
       ascensionMult(data) * DEEP.POWER_GROWTH_ALLOWANCE
     );
-    stmts.setProfile.run(
-      Math.min(Math.floor(power), cap),
-      Number.isFinite(realm) && realm >= 0 && realm <= 9 ? String(Math.floor(realm)) : '0',
-      snap ? JSON.stringify(snap) : null,
-      userId
-    );
+    const p = Math.min(Math.floor(power), cap);
+    const r = Number.isFinite(realm) && realm >= 0 && realm <= 9 ? String(Math.floor(realm)) : '0';
+    if (snap) stmts.setProfile.run(p, r, JSON.stringify(snap), userId);
+    else stmts.setProfileMeta.run(p, r, userId);
   }
 
   // PvP 快照：{atk, hp, def, crit, critMult, lifesteal, dr, pierce}，与 power 量级挂钩钳制
@@ -419,5 +529,30 @@ export function createSaveService(db) {
     };
   }
 
-  return { get, store };
+  // 重置存档：删云端档与增速账本、清排行档案（power_score / realm / pvp_snapshot）。
+  // 账本一并清空——下次首推按「无账本行首档种基线」走，等价于全新账号开局。
+  // 仙盟 / 竞技场天梯等社交数据不在重置范围（与旧本地重置口径一致）。
+  function reset(req, res, ctx) {
+    if (!resetWindow.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '重置过于频繁，请一小时后再试' }, { 'Retry-After': '3600' });
+    }
+    try {
+      db.exec('BEGIN');
+      try {
+        stmts.delSave.run(ctx.user.id);
+        stmts.resetLedger.run(ctx.user.id, Date.now());
+        stmts.clearProfile.run(ctx.user.id);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      return sendJSON(res, 200, { ok: true });
+    } catch (err) {
+      console.error('[saves] reset user=' + ctx.user.id, err);
+      return sendJSON(res, 500, { error: '重置失败，请稍后再试' });
+    }
+  }
+
+  return { get, store, reset };
 }

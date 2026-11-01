@@ -6,8 +6,13 @@ import { sendJSON, SlidingWindow } from './http-util.js';
 import { simulateBattle, bossEnemyOf } from './battle.js';
 
 const GUILD_CAP = 30;                 // 仙盟人数上限
-const GUILD_LEVEL_FUND = 200000;      // 每级基金门槛
+// 基金阶梯（2026-11-01 用户指定）：升到第 N 级累计需 20万×N(N-1)/2——首次 20 万，
+// 之后每级增量 +20 万（20万/60万/120万/…）；每级全局收益 +0.5%（客户端 baseGain 同步）
+const GUILD_LEVEL_FUND = 200000;      // 阶梯基础步长
 const GUILD_LEVEL_CAP = 10;
+const fundNeed = (lv) => GUILD_LEVEL_FUND * lv * (lv - 1) / 2; // 升到 lv 级的累计基金门槛
+const GUILD_CREATE_REALM = 4;         // 立盟境界门槛：化神（与 FEATURE_GATES.trials 对齐）
+const GUILD_CREATE_EXP_COST = 20000;  // 立盟修为消耗（与灵石一并双币扣）
 const DONATE_DAILY_CAP = 100000;      // 每人每日捐献上限
 const DONATE_CONTRIB_PER = 2000;      // 捐献每 2000 灵石 +1 贡献
 const PVP_DAILY_CAP = 15;             // 每人每日挑战次数（可灵石加购）
@@ -29,7 +34,7 @@ const WRITE_PER_MIN = 60;             // 单用户写接口滑窗限流
 const REDEEM_DAILY_CAP = 10;          // 单用户每日兑换次数
 const REDEEM_RE = /^[A-Z0-9]{4,32}$/;
 const GUILD_NAME_RE = /^[\u4e00-\u9fa5A-Za-z0-9]{2,8}$/;
-const GUILD_CREATE_COST = 50000;      // 立盟灵石（与客户端 GUILD_CREATE_COST 同口径）
+const GUILD_CREATE_COST = 10000000;   // 立盟灵石（2026-11-01 用户指定 5 万→1000 万；另有 2 万修为 + 境界化神门槛）
 const TASK_CLAIM_REWARD = { stones: 20000, contribution: 25 }; // 每项盟任务领取奖励
 
 // 盟任务：进度全部由服务端从真实行为表聚合（捐献额 / 盟妖王伤害 / 盟员切磋场数）。
@@ -88,7 +93,10 @@ function buildBotSnapshot(power, seed) {
 }
 
 export function guildLevel(fund) {
-  return Math.min(GUILD_LEVEL_CAP, 1 + Math.floor((fund || 0) / GUILD_LEVEL_FUND));
+  // 阶梯式（2026-11-01）：fund 达到 fundNeed(N) 即 N 级——20万/60万/120万/…
+  let lv = 1;
+  while (lv < GUILD_LEVEL_CAP && (fund || 0) >= fundNeed(lv + 1)) lv++;
+  return lv;
 }
 
 function dayStr(now = Date.now()) {
@@ -143,6 +151,11 @@ export function createSocialService(db) {
       `INSERT INTO world_boss (day, name, hp, max_hp, created_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(day) DO NOTHING`),
     topPower: db.prepare('SELECT MAX(power_score) AS m FROM users'),
+    // 装备查验（rank/inspect）：上榜用户公开信息 + 其云端存档的穿戴六件
+    inspectUser: db.prepare(
+      "SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score" +
+      " FROM users WHERE id = ? AND status = 'active' AND power_score > 0"),
+    inspectSave: db.prepare('SELECT data FROM game_saves WHERE user_id = ?'),
     hitBoss: db.prepare('UPDATE world_boss SET hp = MAX(0, hp - ?), killed_by = COALESCE(killed_by, ?), defeated_at = COALESCE(defeated_at, ?) WHERE day = ?'),
     upsertHit: db.prepare(
       `INSERT INTO world_boss_hits (day, user_id, name, damage, hits) VALUES (?, ?, ?, ?, 1)
@@ -191,7 +204,7 @@ export function createSocialService(db) {
        ON CONFLICT(guild_id, user_id, day) DO UPDATE SET amount = amount + excluded.amount`),
     setUsersGuild: db.prepare('UPDATE users SET guild_id = ? WHERE id = ?'),
     // 兑换码
-    codeGet: db.prepare('SELECT * FROM redeem_codes WHERE code = ?'),
+    codeGet: db.prepare('SELECT * FROM redeem_codes WHERE code = ? AND deleted = 0'),
     codeUse: db.prepare('UPDATE redeem_codes SET used_count = used_count + 1 WHERE code = ?'),
     codeLog: db.prepare('INSERT INTO redeem_log (code, user_id, created_at) VALUES (?, ?, ?)'),
     codeLogGet: db.prepare('SELECT 1 FROM redeem_log WHERE code = ? AND user_id = ?'),
@@ -265,6 +278,10 @@ export function createSocialService(db) {
        WHERE (status = 'bot' OR pvp_wins + pvp_losses > 0) AND pvp_rating > ?`),
     // 灵石余额（增速账本，saves.js 随存档更新）：加购 / 立盟 / 捐献的服务端余额依据
     ledgerSpend: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
+    ledgerRefund: db.prepare('UPDATE save_ledger SET stones = stones + ? WHERE user_id = ?'),
+    // 修为余额（同账本口径）：立盟双币消耗的修为侧原子扣款与退款
+    ledgerSpendExp: db.prepare('UPDATE save_ledger SET exp = exp - ? WHERE user_id = ? AND exp >= ?'),
+    ledgerRefundExp: db.prepare('UPDATE save_ledger SET exp = exp + ? WHERE user_id = ?'),
   };
 
   // 账本灵石原子扣款（2026-10-31 复审升级）：严格足额才扣成功——查而不扣时同一笔账本
@@ -273,6 +290,14 @@ export function createSocialService(db) {
   // 服务端扣减后客户端存档侧同步扣款，下次推送 dStones 向下不触发跳变校验。
   function spendLedger(userId, cost) {
     return stmts.ledgerSpend.run(cost, userId, cost).changes > 0;
+  }
+
+  // 修为原子扣款/退款（与 spendLedger 同款防重复消费口径，2026-11-01 立盟双币消耗引入）
+  function spendLedgerExp(userId, cost) {
+    return stmts.ledgerSpendExp.run(cost, userId, cost).changes > 0;
+  }
+  function refundLedgerExp(userId, cost) {
+    stmts.ledgerRefundExp.run(cost, userId);
   }
 
   // 服务启动时补齐假人名册（幂等：按道号查重）
@@ -293,6 +318,7 @@ export function createSocialService(db) {
   function rank(req, res, ctx) {
     const top = stmts.top.all().map((r, i) => ({
       rank: i + 1,
+      id: r.id,
       name: r.name,
       realm: r.realm,
       power: r.power_score,
@@ -302,6 +328,49 @@ export function createSocialService(db) {
     const mine = Math.max(0, me ? me.power_score : 0);
     const myRank = mine > 0 ? stmts.betterCount.get(mine).n + 1 : 0;
     return sendJSON(res, 200, { top, me: { rank: myRank, power: mine } });
+  }
+
+  // ---------------- 战力榜·装备查验 ----------------
+
+  // 只回传穿戴六件的展示字段（名称/品质/星级/战力/五行/套装/词条），存档其余内容不出库。
+  // 目标存档入库前已过深度校验，这里再钳一遍量级，双保险。
+  function rankInspect(req, res, ctx) {
+    const id = Math.floor(Number(ctx.body && ctx.body.id));
+    if (!Number.isFinite(id) || id <= 0) return sendJSON(res, 400, { error: '参数无效' });
+    const target = stmts.inspectUser.get(id);
+    if (!target) return sendJSON(res, 404, { error: '玩家不存在或未上榜' });
+    const clamp = (v, lo, hi, dflt) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+    };
+    const equipped = {};
+    try {
+      const row = stmts.inspectSave.get(id);
+      const data = row ? JSON.parse(row.data) : null;
+      const raw = data && data.equipped && typeof data.equipped === 'object' ? data.equipped : {};
+      for (const k of ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
+        'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings']) {
+        const it = raw[k];
+        if (!it || typeof it !== 'object') continue;
+        equipped[k] = {
+          name: String(it.name || '').slice(0, 24),
+          r: clamp(it.r, 0, 5, 0),
+          star: clamp(it.star, 0, 5, 0),
+          power: clamp(it.power, 1, 1e15, 1),
+          el: String(it.el || '').slice(0, 8),
+          setKey: typeof it.setKey === 'string' ? it.setKey.slice(0, 16) : '',
+          affixes: (Array.isArray(it.affixes) ? it.affixes : []).slice(0, 3).map((a) => ({
+            k: String((a && a.k) || '').slice(0, 8),
+            v: clamp(a && a.v, 0, 1, 0),
+          })),
+        };
+      }
+    } catch (e) {
+      // 存档解析失败按未穿戴展示，不向外泄露错误细节
+    }
+    return sendJSON(res, 200, {
+      name: target.name, realm: target.realm, power: target.power_score, equipped,
+    });
   }
 
   // ---------------- PvP 竞技场 ----------------
@@ -429,13 +498,18 @@ export function createSocialService(db) {
       return sendJSON(res, 429, { error: '今日已与这位道号切磋 3 场，换个人过招吧' });
     }
     // 胜负由服务端复算（2026-10-31）：双方 PvP 快照进 battle.js 模拟，
-    // 客户端上报的 win 不再采信——改快照/改内存刷天梯分从此无效
-    let win;
-    try {
-      win = simulateBattle(JSON.parse(me.pvp_snapshot), JSON.parse(opp.pvp_snapshot)).win ? 1 : 0;
-    } catch (e) {
-      return sendJSON(res, 400, { error: '战斗快照异常，稍后再战' });
+    // 客户端上报的 win 不再采信——改快照/改内存刷天梯分从此无效。
+    // 双方快照八项必须齐全可数值化：存量行快照列可能仍为 NULL（pvpSnap 字段名错位
+    // 当日才修，要等下一次存档同步才回填），缺失/坏档走 409 且不扣次数与冷却
+    // （次数/冷却写在下方才落库），客户端收到 409 会立即补推快照
+    let mine = null;
+    let theirs = null;
+    try { mine = JSON.parse(me.pvp_snapshot); } catch (e) { /* 我的快照缺失/坏档 */ }
+    try { theirs = JSON.parse(opp.pvp_snapshot); } catch (e) { /* 对手快照坏档 */ }
+    if (!snapOk(mine) || !snapOk(theirs)) {
+      return sendJSON(res, 409, { error: '战斗快照未就绪，已触发重新同步，几秒后再战' });
     }
+    const win = simulateBattle(mine, theirs).win ? 1 : 0;
 
     const dMe = eloDelta(me.pvp_rating, opp.pvp_rating, win);
     const dOpp = eloDelta(opp.pvp_rating, me.pvp_rating, 1 - win);
@@ -453,6 +527,13 @@ export function createSocialService(db) {
   }
 
   // ---------------- 世界 BOSS ----------------
+
+  // PvP 快照八项齐全校验（pvpFight / bossHit / guildBossHit 统一口径）：
+  // 只查 atk/hp 两项的旧口径下，缺 def/crit/dr 等字段的脏行会让 simulateBattle
+  // 算出 NaN，存库变 NULL 后触发 NOT NULL 约束——该账号此接口永久 500。
+  const snapOk = (s) => !!s && typeof s === 'object' && !Array.isArray(s) &&
+    ['atk', 'hp', 'def', 'crit', 'critMult', 'lifesteal', 'dr', 'pierce']
+      .every((k) => Number.isFinite(Number(s[k])));
 
   function ensureBoss(today) {
     let boss = stmts.bossOfDay.get(today);
@@ -487,12 +568,16 @@ export function createSocialService(db) {
       return sendJSON(res, 429, { error: '今日妖王已打过 30 场，歇息吧' });
     }
     const boss = ensureBoss(today);
+    // 妖王已被斩落后当日不再受理挑战：原实现不查 hp，击杀后剩余次数仍可对尸体
+    // 输出伤害，全额计入世界榜排名（榜单灌水失真）
+    if (boss.hp <= 0) {
+      return sendJSON(res, 429, { error: '今日妖王已被斩落，明日再来' });
+    }
     // 伤害由服务端复算（2026-10-31）：我的 PvP 快照 vs 妖王（血池随 maxHp 伸缩），
     // 客户端上报的 damage 不再采信——改快照/改内存刷伤害排名从此要过快照钳制
     let snap;
     try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { snap = null; }
-    if (!snap || !Number.isFinite(Number(snap.atk)) || Number(snap.atk) <= 0 ||
-      !Number.isFinite(Number(snap.hp)) || Number(snap.hp) <= 0) {
+    if (!snapOk(snap) || !(Number(snap.atk) > 0) || !(Number(snap.hp) > 0)) {
       return sendJSON(res, 400, { error: '战档尚未同步，请稍后再战' });
     }
     const dealt = simulateBattle(snap, bossEnemyOf(boss.max_hp)).dealt;
@@ -614,8 +699,18 @@ export function createSocialService(db) {
     if (stmts.guildByName.get(name.toLowerCase())) {
       return sendJSON(res, 409, { error: '此盟名已被占用' });
     }
-    // 立盟余额校验 + 原子扣款（2026-10-31）：账本灵石不足 5 万直接拒绝
+    // 境界门槛（2026-11-01 用户指定）：须达化神（realm 4，users.realm 随存档同步）
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me || Number(me.realm) < GUILD_CREATE_REALM) {
+      return sendJSON(res, 400, { error: '立盟需境界「化神」' });
+    }
+    // 立盟双币消耗（2026-11-01）：1000 万灵石 + 2 万修为，均走账本原子扣款防重复消费；
+    // 灵石不足时退还已扣修为，保证两币种要么都扣要么都不扣
+    if (!spendLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST)) {
+      return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_EXP_COST + ' 修为' });
+    }
     if (!spendLedger(ctx.user.id, GUILD_CREATE_COST)) {
+      refundLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST);
       return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_COST + ' 灵石' });
     }
     const now = Date.now();
@@ -623,6 +718,9 @@ export function createSocialService(db) {
     try {
       guildId = Number(stmts.insertGuild.run(name, name.toLowerCase(), ctx.user.id, now).lastInsertRowid);
     } catch (e) {
+      // 盟名冲突回滚双币扣款（非事务多语句，失败路径手工退回）
+      refundLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST);
+      stmts.ledgerRefund.run(GUILD_CREATE_COST, ctx.user.id);
       return sendJSON(res, 409, { error: '此盟名已被占用' });
     }
     stmts.joinGuild.run(guildId, ctx.user.id, 'leader', now);
@@ -794,11 +892,14 @@ export function createSocialService(db) {
       return sendJSON(res, 429, { error: '今日盟妖王已打过 5 场，歇息吧' });
     }
     const boss = ensureGuildBoss(row.id, guildLevel(row.fund), today);
+    // 盟妖王同款亡者拦截：击杀后不再受理挑战，防伤害灌水进盟榜与贡献
+    if (boss.hp <= 0) {
+      return sendJSON(res, 429, { error: '盟妖王已被斩落，明日再来' });
+    }
     // 伤害由服务端复算（2026-10-31），与世界妖王同口径（含 1e15 硬顶防砖库）
     let snap;
     try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { snap = null; }
-    if (!snap || !Number.isFinite(Number(snap.atk)) || Number(snap.atk) <= 0 ||
-      !Number.isFinite(Number(snap.hp)) || Number(snap.hp) <= 0) {
+    if (!snapOk(snap) || !(Number(snap.atk) > 0) || !(Number(snap.hp) > 0)) {
       return sendJSON(res, 400, { error: '战档尚未同步，请稍后再战' });
     }
     const dealt = simulateBattle(snap, bossEnemyOf(boss.max_hp)).dealt;
@@ -887,6 +988,7 @@ export function createSocialService(db) {
     }
     switch (pathname) {
       case '/api/rank':        return rank(req, res, ctx), true;
+      case '/api/rank/inspect': return write ? (rankInspect(req, res, ctx), true) : false;
       case '/api/ladder':      return ladder(req, res, ctx), true;
       case '/api/pvp':         return pvpState(req, res, ctx), true;
       case '/api/pvp/buy':     return write ? (pvpBuy(req, res, ctx), true) : false;

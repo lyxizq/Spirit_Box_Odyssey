@@ -9,12 +9,14 @@
    * 「后续计划」见 docs/HANDOFF.md，玩法说明见 docs/README.md。
    * ============================================================ */
 
-  const SAVE_KEY = 'lingxia_idle_v1';
+  const THEME_KEY = 'lingxia_theme'; // 主题提示键（仅防首帧闪烁，非存档；正题随云端档走）
   const CLOUD_MIN_GAP = 5000;        // 两次云存档推送的最小间隔
   const OFFLINE_CAP = 4 * 3600;      // 离线收益最多结算 4 小时
   const OFFLINE_EFF = 0.5;           // 离线效率 50%
   const CRIT_CHANCE = 0.05;          // 暴击率
   const CRIT_MULT = 10;              // 暴击倍率
+  const EQUIP_CHANCE = 0.01;         // 每次开箱掉装备的概率（品质在掉落内按权重另掷）
+  const DUST_CHANCE = 0.1;           // 开箱未掉装备时掉碎屑的概率（1~3 枚，补偿空开）
   const BUFF_CHANCE = 0.008;         // 每次开箱掉丹药的概率（未生效时）
   const BUFF_MS = 30000;             // 丹药持续时间
   // 背包格数：默认 100，用「乾坤扩容符」每张 +20，最高 300
@@ -42,6 +44,12 @@
   // 敌人强度总乘区（血/攻/防同乘）：进度墙主力——不靠硬锁，靠怪的难度自然封顶推进；
   // 建议战力标签同乘此系数保持口径一致
   const ENEMY_DIFF = 3.0;
+  // 怪物难度二档曲线（2026-11-01 用户指定「提升闯关/爬塔/野外/无尽怪物难度」）：
+  // 按关卡数对血/攻/防复利加压，只作用于敌人属性与建议战力标签，不进奖励公式
+  // （contentReq 仍是收益与套装件战力口径，服务端经济包络不受影响）。
+  // +0.8%/关：20 关 +17%、50 关 +50%、100 关 ×2.2、200 关 ×4.9；封顶 300 关防失控
+  const ENEMY_HARD_STEP = 1.008;
+  const diffBoost = (mode, level) => Math.pow(ENEMY_HARD_STEP, Math.min(level | 0, 300));
   // 装备加成收敛（2026-10-30）：词条/宝石等百分比加成在 playerCombatStats 消费端折算，
   // 老档存量装备同步生效（装备面板显示的仍是词条原始值）；战力主通道走灵石/道具升级，
   // 装备只做补充。套装为数值表直改、文案同步；共鸣/符文组词量级仅 3-12% 不动；
@@ -88,12 +96,50 @@
     { name: '厚血', desc: '敌方生命 ×1.5', hp: 1.5 },
   ];
 
-  // 首通里程碑：沿用原节奏（塔 10 / 关 5 / 野 2 一档）循环六部位，一直铺到 200
-  const MILESTONE_SLOTS = ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman'];
+  // 套装件随机掉率（2026-11-01 用户指定逐次下调，末档 2026-11-01 定值：
+  // 野外随机 0.8%/保底 50 杀/无尽与复战扫荡 0.8%；离线巡猎估算与 UI 文案
+  // 同读本组常量，口径恒一致）。首通里程碑与满层/满野首通必掉是进度奖励骨架，不动
+  const WILD_SET_PITY = 50;     // 野外本区击杀保底：每 N 杀必掉 1 件
+  const WILD_SET_RATE = 0.008;  // 野外每场随机掉率 0.8%（离线巡猎估算同口径）
+  const MODE_SET_RATE = 0.008;  // 无尽 / 闯关爬塔复战与扫荡的每场随机掉率 0.8%
+  const OFFLINE_HUNT_PITY = 100; // 离线巡猎估算保底：每 N 胜必掉 1 件（2026-11-01 用户指定，弱于在线 50 杀）
+
+  // 自动战斗节奏（2026-11-01 用户指定）：自动巡猎/连续挑战每场结束后间隔 1 分钟，
+  // 离线巡猎估算同口径（1 场/分钟），四模式共用此节奏；体力闸门（一场 1 点）照常生效
+  const HUNT_INTERVAL_S = 60;
+
+  // 四秘境战斗修为 nerf（2026-11-01 用户指定）：闯关/爬塔/野外/无尽的修为报酬降为 1/50，
+  // 在线战斗、扫荡与离线巡猎估算同乘此系数；开箱修为（expected()）与功法通道不动。
+  // 灵石/碎屑/兽骨等其余奖励不动；只降不涨，服务端经济包络无需放宽
+  const MODE_EXP_MULT = 1 / 50;
+
+  // 首通里程碑：沿用原节奏（塔 10 / 关 5 / 野 2 一档）循环十二部位，一直铺到 200
+  // （2026-11-01 槽位扩容：加入手镯/戒指/护腕/护腿/发箍/翅膀，轮转取模随数组长度走）
+  const MILESTONE_SLOTS = ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
+    'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings'];
   const MILESTONES = { tower: {}, stage: {}, wild: {} };
-  for (let lv = 10; lv <= TOWER_MAX; lv += 10) MILESTONES.tower[lv] = MILESTONE_SLOTS[(lv / 10 - 1) % 6];
-  for (let lv = 5; lv <= STAGE_MAX; lv += 5) MILESTONES.stage[lv] = MILESTONE_SLOTS[(lv / 5 - 1) % 6];
-  for (let lv = 1; lv <= WILD_MAX; lv += 2) MILESTONES.wild[lv] = MILESTONE_SLOTS[((lv - 1) / 2) % 6];
+  for (let lv = 10; lv <= TOWER_MAX; lv += 10) MILESTONES.tower[lv] = MILESTONE_SLOTS[(lv / 10 - 1) % MILESTONE_SLOTS.length];
+  for (let lv = 5; lv <= STAGE_MAX; lv += 5) MILESTONES.stage[lv] = MILESTONE_SLOTS[(lv / 5 - 1) % MILESTONE_SLOTS.length];
+  for (let lv = 1; lv <= WILD_MAX; lv += 2) MILESTONES.wild[lv] = MILESTONE_SLOTS[((lv - 1) / 2) % MILESTONE_SLOTS.length];
+
+  // 扫荡（2026-10-31）：已通关关卡 instant 重打；每日每玩法免费 10 次，用完可
+  // 灵石加购 20 万/次、每日至多加购 10 次。奖励口径：闯关/爬塔按「再战」5 折、
+  // 野外维持现状全额；一律无首通奖励、不推进关卡进度（野外击杀计数照常）。
+  const SWEEP_DAILY_FREE = 10;
+  const SWEEP_BUY_MAX = 30;
+  const SWEEP_BUY_COST = 200000;
+  // 野外已胜怪物每日挑战上限（2026-10-31）：全局共享 50 次/日（非每怪物各 50），
+  // 挑战即计数（战败也占）；扫荡走独立额度不占此数；首通挑战不受限
+  const WILD_REPEAT_DAILY = 50;
+  const emptyDailySweep = () => ({ stage: 0, tower: 0, wild: 0 });
+  const clampDailySweep = (raw, hi) => {
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const out = emptyDailySweep();
+    for (const k of ['stage', 'tower', 'wild']) {
+      out[k] = Math.max(0, Math.min(hi, Math.floor(src[k]) || 0));
+    }
+    return out;
+  };
 
   const SETS = {
     tower: {
@@ -101,6 +147,9 @@
       pieces: {
         weapon: '镇塔·斩妖剑', armor: '镇塔·玄鳞甲', helm: '镇塔·观星冠',
         boots: '镇塔·踏云履', artifact: '镇塔·镇魂印', talisman: '镇塔·封魔符',
+        // 第七批槽位（2026-11-01）：套装补齐 12 部位，与 MILESTONE_SLOTS / 服务端白名单对齐
+        bracelet: '镇塔·缚灵镯', ring: '镇塔·定星戒', wrist: '镇塔·玄铁腕',
+        legs: '镇塔·盘龙腿', band: '镇塔·绾云簪', wings: '镇塔·凌霄翼',
       },
       bonuses: [
         { need: 2, text: '防御 +15%', apply: (b) => { b.def *= 1.15; } },
@@ -113,6 +162,8 @@
       pieces: {
         weapon: '征伐·破阵刀', armor: '征伐·百战袍', helm: '征伐·将军盔',
         boots: '征伐·疾风靴', artifact: '征伐·虎符', talisman: '征伐·帅旗',
+        bracelet: '征伐·擒龙镯', ring: '征伐·点将戒', wrist: '征伐·伏虎腕',
+        legs: '征伐·追电腿', band: '征伐·束发箍', wings: '征伐·掠风翼',
       },
       bonuses: [
         { need: 2, text: '攻击 +10%', apply: (b) => { b.atk *= 1.1; } },
@@ -125,6 +176,8 @@
       pieces: {
         weapon: '荒狩·噬骨矛', armor: '荒狩·兽皮甲', helm: '荒狩·狼首冠',
         boots: '荒狩·追风靴', artifact: '荒狩·兽王骨', talisman: '荒狩·猎魂幡',
+        bracelet: '荒狩·兽牙镯', ring: '荒狩·狼瞳戒', wrist: '荒狩·熊筋腕',
+        legs: '荒狩·猎风腿', band: '荒狩·兽骨箍', wings: '荒狩·鹰翎翼',
       },
       bonuses: [
         { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },
@@ -142,8 +195,10 @@
   };
 
   const TRAININGS = {
-    atk: { name: '战意', desc: '攻击 +3% / 级', lvField: 'trainAtk', currency: 'towerMarks' },
-    hp: { name: '体魄', desc: '生命 +3% / 级', lvField: 'trainHp', currency: 'warMerits' },
+    // 战意/体魄消费端过 GROWTH_SCALE（×0.25，见 playerCombatStats），文案按实际值标；
+    // 破甲消费端不折算（pierce = 0.015·级 原值），文案保持全值（2026-11-01 口径对齐）
+    atk: { name: '战意', desc: '攻击 +0.75% / 级', lvField: 'trainAtk', currency: 'towerMarks' },
+    hp: { name: '体魄', desc: '生命 +0.75% / 级', lvField: 'trainHp', currency: 'warMerits' },
     pierce: { name: '破甲', desc: '无视敌人防御 +1.5% / 级', lvField: 'trainPierce', currency: 'beastBones' },
   };
   // 战技升级成本（2026-10-30 陡峭化）：1.5 次幂增长（累计 ~22 万勋章）——
@@ -235,6 +290,12 @@
     { key: 'boots', name: '云靴', icon: '靴' },
     { key: 'artifact', name: '法宝', icon: '宝' },
     { key: 'talisman', name: '灵符', icon: '符' },
+    { key: 'bracelet', name: '手镯', icon: '镯' },
+    { key: 'ring', name: '戒指', icon: '戒' },
+    { key: 'wrist', name: '护腕', icon: '腕' },
+    { key: 'legs', name: '护腿', icon: '腿' },
+    { key: 'band', name: '发箍', icon: '箍' },
+    { key: 'wings', name: '翅膀', icon: '翼' },
   ];
 
   const SLOT_MAP = {};
@@ -266,6 +327,31 @@
       ['黄纸符', '木铃'], ['竹叶符', '灵玉佩'], ['太乙符', '七星铃'],
       ['九幽符', '龙骨尺'], ['九天雷符', '诛仙阵图'], ['太极图', '盘古幡'],
     ],
+    // 第七批槽位（2026-11-01）：命名沿用现有品质风味线（凡朴 / 灵青 / 玄紫 / 地煞九幽 / 天罡凤凰太虚 / 鸿蒙造化混沌）
+    bracelet: [
+      ['藤木镯', '铜环'], ['灵玉镯', '青竹镯'], ['紫金镯', '太乙镯'],
+      ['九幽镯', '龙骨镯'], ['天罡镯', '凤凰玉镯'], ['鸿蒙镯', '造化玉镯'],
+    ],
+    ring: [
+      ['铁戒指', '木戒'], ['灵玉戒', '青玉戒'], ['紫金戒', '太乙戒'],
+      ['九幽戒', '龙骨戒'], ['天罡戒', '凤凰羽戒'], ['鸿蒙戒', '造化玉戒'],
+    ],
+    wrist: [
+      ['布护腕', '皮护腕'], ['流云护腕', '青竹护腕'], ['紫金护腕', '玄铁护腕'],
+      ['九幽护腕', '赤霄护腕'], ['天罡护腕', '太虚护腕'], ['鸿蒙护腕', '混沌护腕'],
+    ],
+    legs: [
+      ['麻布绑腿', '旧护腿'], ['流云护腿', '青竹护腿'], ['紫金护腿', '玄铁护腿'],
+      ['地行护腿', '九幽护腿'], ['天罡护腿', '太虚护腿'], ['鸿蒙护腿', '混沌道腿'],
+    ],
+    band: [
+      ['布发带', '木箍'], ['灵玉发带', '青丝带'], ['紫金发箍', '太乙发箍'],
+      ['九幽发箍', '龙骨发箍'], ['天罡发箍', '凤羽发箍'], ['鸿蒙发箍', '造化玉箍'],
+    ],
+    wings: [
+      ['破布翼', '纸鸢翼'], ['清风翼', '灵羽翼'], ['紫霞翼', '太乙羽翼'],
+      ['九幽魔翼', '赤霄战翼'], ['天罡圣翼', '凤凰羽翼'], ['鸿蒙天翼', '混沌神翼'],
+    ],
   };
 
   const BASE_POWER = [3, 10, 30, 90, 280, 900];
@@ -285,10 +371,13 @@
   const AFFIX_QMULT = [0.5, 0.6, 0.75, 0.9, 1.1, 1.35]; // 词条数值幅度随品质放大
 
   const GEM_TIERS = [
-    { name: '下品', dust: 20 },
-    { name: '中品', dust: 60 },
-    { name: '上品', dust: 150 },
+    { name: '下品', dust: 100 },
+    { name: '中品', dust: 400 },
+    { name: '上品', dust: 1000 },
   ];
+  // 部位孔位费用递增（2026-10-31 指定）：首孔上品 1000、末孔（第 6 孔）上品 10 万，中间几何插值 ≈×2.5
+  // 下/中品按 0.1 / 0.4 折算上品价；孔位数随飞升 2→6 逐步解锁，高价孔天然后置
+  const GEM_SOCKET_MULT = [1, 2.5, 6.5, 16, 40, 100];
   const GEM_VALUES = {
     atk: [0.02, 0.04, 0.07],
     hp: [0.03, 0.06, 0.10],
@@ -362,12 +451,12 @@
   const SIGN_LOG_MAX = 30;   // 签到流水保留条数（新条目在前）
   const SIGN_LOG_SHOW = 7;   // 战绩面板展示条数
 
+  // 部位化后「最高强化」= 六槽强化等级的最大值
   function maxItemLv(s) {
     let m = 0;
-    for (const it of s.bag) if (it.lv > m) m = it.lv;
     for (const k of SLOTS) {
-      const it = s.equipped[k.key];
-      if (it && it.lv > m) m = it.lv;
+      const lv = (s.enh && s.enh[k.key]) || 0;
+      if (lv > m) m = lv;
     }
     return m;
   }
@@ -391,7 +480,7 @@
     { id: 'wild6', name: '荒猎好手', desc: '首通野外 6 个区域', cur: (s) => s.wildCleared.length, target: 6, stones: 15000, trophies: { field: 'beastBones', n: 30 } },
     { id: 'wild12', name: '荒域之主', desc: '首通野外 12 个区域', cur: (s) => s.wildCleared.length, target: 12, stones: 80000, trophies: { field: 'beastBones', n: 100 }, title: '荒域之主' },
     { id: 'setMax', name: '套装收藏家', desc: '任一套装图鉴集齐 6 件', cur: (s) => Math.max(collectCount('tower'), collectCount('stage'), collectCount('wild')), target: 6, stones: 30000, dust: 100, title: '收藏大家' },
-    { id: 'enhance20', name: '强化宗师', desc: '单件装备强化至 +20', cur: (s) => maxItemLv(s), target: 20, stones: 10000, title: '神匠' },
+    { id: 'enhance20', name: '强化宗师', desc: '部位强化至 +20', cur: (s) => maxItemLv(s), target: 20, stones: 10000, title: '神匠' },
     { id: 'ascend1', name: '超脱轮回', desc: '完成首次飞升', cur: (s) => s.ascensions, target: 1, stones: 200000, title: '超脱者' },
     // —— 二梯队 ——
     { id: 'open10w', name: '开匣传奇', desc: '累计开箱 100000 次', cur: (s) => s.opens, target: 100000, stones: 200000, title: '开匣传奇' },
@@ -445,7 +534,7 @@
   ];
   // 突破修为门槛：前期平缓保新手节奏，化神起逐境加陡（6→8→10→12.5→15→16.7 倍），压制后期升级速度
   const REALM_COSTS = [0, 60, 400, 2500, 20000, 160000, 1600000, 20000000, 300000000, 5000000000];
-  // 轮回门槛系数：每点仙缘全梯门槛 ×2.5，对冲仙缘收益成长（+25% 永久收益、开箱修为 +50%/点等），
+  // 轮回门槛系数：每点仙缘全梯门槛 ×2.5，对冲仙缘收益成长（2026-11-01 起永久收益 +5%/点、开箱修为 +50%/点等），
   // 使每次飞升后下一轮周期比上一轮长约 1~2 天。state 运行时才初始化，仅在事件/渲染中调用。
   const realmCostOf = (i) =>
     Math.ceil(REALM_COSTS[Math.max(0, Math.min(REALM_COSTS.length - 1, i | 0))] *
@@ -525,7 +614,7 @@
       tiers: [1, 2, 3], base: 5e5, ratio: 2.5, names: ['一戒守心', '双戒护道', '三戒功圆'] },
     { id: 'cave', prefix: '洞府', cur: (s) => (s.cave ? s.cave.array + s.cave.garden + s.cave.library : 0), label: (n) => '洞府建筑总级数达到 ' + n + ' 级',
       tiers: [3, 6, 9, 12], base: 2e5, ratio: 2.5, names: ['初辟洞府', '洞天福地', '府邸生辉', '仙家气派'] },
-    { id: 'forge', prefix: '神匠', cur: (s) => SLOTS.filter((sl) => s.equipped[sl.key] && s.equipped[sl.key].lv >= MAX_ENHANCE).length, label: (n) => n + ' 个部位强化至 +' + MAX_ENHANCE,
+    { id: 'forge', prefix: '神匠', cur: (s) => SLOTS.filter((sl) => (s.enh && s.enh[sl.key] || 0) >= MAX_ENHANCE).length, label: (n) => n + ' 个部位强化至 +' + MAX_ENHANCE,
       tiers: [3, 6], base: 5e5, ratio: 2, names: ['渐入化境', '登峰造极'] },
     { id: 'map', prefix: '探图', cur: (s) => (s.map && s.map.rev ? s.map.rev.length : 0), label: (n) => '秘境图已探明 ' + n + ' 格',
       tiers: [10, 30, 64, 96], base: 1.5e5, ratio: 2.5, names: ['迷雾初开', '图穷匕见', '全图皆知', '足迹满图'] },
@@ -641,7 +730,7 @@
     { q: '修行十境中，仅次于「仙人」的境界是？', a: ['大乘', '渡劫', '合体', '炼虚'], idx: 1 },
     { q: '装备品质从低到高，第三档是？', a: ['玄品', '地品', '天品', '灵品'], idx: 0 },
     { q: '仙品装备最多可有多少条词条？', a: ['1 条', '2 条', '3 条', '5 条'], idx: 2 },
-    { q: '洗练最多可以锁定几条词条？', a: ['1 条', '2 条', '3 条', '不限'], idx: 0 },
+    { q: '洗练最多可以锁定几条词条？', a: ['1 条', '2 条', '3 条', '不限（费用逐条翻倍）'], idx: 3 },
     { q: '秘境探幽一共有多少层？', a: ['100 层', '150 层', '200 层', '365 层'], idx: 2 },
     { q: '探幽神物「不灭」的效果是？', a: ['攻击翻倍', '战败复活再战一次', '吸血 +50%', '跳过一层'], idx: 1 },
     { q: '藏宝图需要几片残片合成？', a: ['3 片', '5 片', '8 片', '10 片'], idx: 1 },
@@ -661,7 +750,8 @@
     { q: '工坊洗练花费的货币是？', a: ['灵石', '碎屑', '器魂', '贡献'], idx: 1 },
     { q: '分解装备主要获得什么？', a: ['灵石', '碎屑', '器魂', '修为'], idx: 1 },
     { q: '器魂「炼器」定向打造哪个品质的装备？', a: ['地品', '天品', '仙品', '玄品'], idx: 1 },
-    { q: '宝石镶嵌的部位数量随什么变化？', a: ['装备品质', '角色境界', '装备强化等级', '战力'], idx: 0 },
+    // 题目对齐实际机制：孔数 = 2 + 仙位（slotSocketCount，封顶 6），与品质/境界/强化/战力均无关
+    { q: '宝石镶嵌的部位数量随什么变化？', a: ['装备品质', '仙位（飞升）', '装备强化等级', '战力'], idx: 1 },
     { q: '成就「万匣归一」需要累计开箱多少次？', a: ['1000 次', '5000 次', '10000 次', '20000 次'], idx: 2 },
     { q: '挑战修行「苦行」的禁忌是？', a: ['服用丹药', '开箱', '战斗', '购物'], idx: 0 },
     { q: '试炼「无息试炼」的通关条件是？', a: ['不靠吸血击败塔层守卫', '5 回合取胜', '承伤不超 30%', '无损取胜'], idx: 0 },
@@ -732,13 +822,15 @@
   const TOKEN_MAX = 200;
 
   const GONGFA = {
-    atk: { name: '锋锐诀', desc: '攻击 +2% / 级', max: 200 },
-    hp: { name: '玄功诀', desc: '生命 +2% / 级', max: 200 },
+    // 攻/生命消费端过 GROWTH_SCALE（×0.25），修为诀不折算——文案按实际值标（2026-11-01）
+    atk: { name: '锋锐诀', desc: '攻击 +0.5% / 级', max: 200 },
+    hp: { name: '玄功诀', desc: '生命 +0.5% / 级', max: 200 },
     hui: { name: '慧心诀', desc: '修为收益 +5% / 级', max: 200 },
   };
   // 功法成本几何化（2026-10-30）：原 (lv+1)×3000 线性太廉价，改每层 ×1.05 复利——
   // 修为（战斗产出=游戏时间）成为功法战力的节流阀，满层累计 ~2000 亿修为
-  const gongfaCost = (lv) => (lv + 1) * 3000 * Math.pow(1.05, lv);
+  // （2026-10-31 用户指定：整体 ×5，满层累计 ~1 万亿修为）
+  const gongfaCost = (lv) => (lv + 1) * 3000 * Math.pow(1.05, lv) * 5;
 
   const MARKET_POOL = [
     { id: 'dust', name: '碎屑包', desc: '碎屑 ×100', cost: 2500 },
@@ -777,12 +869,14 @@
   const SOULS_ROGUE_CLEAR = 5;                 // 探幽通关器魂
   const CRAFT_COST = { souls: 30, stones: 50000 };
 
-  const GAMBLE_COST = 2000;
+  // 璞玉（2026-10-31 调价）：单次 20 万灵石，收益同步 ×100；单日至多开 500 次
+  const GAMBLE_COST = 200000;
+  const GAMBLE_DAILY_MAX = 500;
   const GAMBLE_TABLE = [
     { p: 62, type: 'none', text: '璞玉无瑕，只余石屑' },
-    { p: 18, type: 'dust', min: 20, max: 60, text: '碎石流光' },
-    { p: 10, type: 'stones', min: 3000, max: 6000, text: '玉髓天成' },
-    { p: 9, type: 'dust', min: 150, max: 260, text: '琼英满膛' },
+    { p: 18, type: 'dust', min: 2000, max: 6000, text: '碎石流光' },
+    { p: 10, type: 'stones', min: 300000, max: 600000, text: '玉髓天成' },
+    { p: 9, type: 'dust', min: 15000, max: 26000, text: '琼英满膛' },
     { p: 1, type: 'item', text: '璞中藏珍！' },
   ];
 
@@ -919,10 +1013,20 @@
     ore: { name: '灵矿脉', icon: '矿', ms: 30 * 60000, base: 6 },
     herb: { name: '灵药圃', icon: '药', ms: 45 * 60000, base: 4 },
   };
+  // 采集节点图标（SVG，currentColor 随 .cave-icon 金色；缺省回退 def.icon 文字）
+  const GATHER_ICONS = {
+    ore: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M6.5 3h11L22 9.2 12 21.5 2 9.2 6.5 3zm.9 2L5 9h5.4L12 4.3 7.4 5zM7.1 11l4.9 7.6L16.9 11H7.1z"/></svg>',
+    herb: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M13 21v-5.2c4.4-.4 7-3.4 7-8.3V4h-3c-4.3 0-7.2 2.6-7.9 6.4C8.2 8.9 6.6 8 4.5 8H3v1c0 3.9 2.9 7 7 7.2V21h3z"/></svg>',
+  };
   const gatherYield = (key) =>
     Math.round(GATHER_NODES[key].base * (1 + 0.1 * state.gather.nodes[key].lv));
   const HERB_ELIXIR_NEED = 10;   // 灵药合丹消耗
   const ORE_SOUL_NEED = 20;      // 矿石锻魂消耗
+  const MELT_NEED = 5;           // 装备熔铸材料件数（2026-10-31 起仅天→仙、仙→仙升星两档）
+  // 熔铸成功率：每次在 5%~15% 均匀浮动（目标 10% 上下 5%，2026-10-31 用户指定）；失败材料与手续费不退
+  const MELT_RATE_MIN = 0.05;
+  const MELT_RATE_SPAN = 0.10;
+  const meltRate = () => MELT_RATE_MIN + Math.random() * MELT_RATE_SPAN;
 
   // 天象：每日一换，与时辰同框架的全局微 buff
   const SKIES = [
@@ -946,7 +1050,7 @@
   const MAP_H = 8;
   const MAP_AP_DAY = 6;
   const MAP_AP_MAX = 12;
-  const MAP_BUY_MAX = 20;        // 每日加购次数上限
+  const MAP_BUY_MAX = 50;        // 每日加购次数上限
   const MAP_BUY_COST = 10000;    // 加购单价（灵石）
 
   const ORDEALS = [
@@ -1023,15 +1127,36 @@
     const img = DAO_PORTRAIT[id];
     if (!img) return '';
     const fallback = (DAO_NPCS.find((n) => n.id === id) || {}).icon || '';
-    return '<img class="dao-face" src="' + img + '" alt="" draggable="false" onerror="this.classList.add(\'dao-face-bad\')">' +
+    // 加载失败回退由 renderDao 统一挂 error 监听（CSP script-src 'self' 禁内联事件）
+    return '<img class="dao-face" src="' + img + '" alt="" draggable="false">' +
       '<span class="dao-face-text">' + fallback + '</span>';
   };
+  // 结缘难度上调（2026-10-31）：去掉灵宠礼；灵石礼 1000→100 万→5000 万（三次调整）、碎屑礼 50→10 万。
+  // 结缘门槛（2026-10-31 二次调整）：单个道侣累计灵石礼满 20 亿或碎屑礼满 500 万可结缘，
+  // 结缘进度（百分比，0.01% 粒度显示）由两条累计线中较高者的百分比折算——
+  // 不取整：单次灵石礼 +2.5%（5000 万 / 20 亿），取整会让低额送礼的进度显示不精确
   const DAO_GIFTS = [
-    { id: 'stones', name: '灵石礼', costLabel: '1000 灵石', aff: 2, stones: 1000 },
-    { id: 'dust', name: '碎屑礼', costLabel: '50 碎屑', aff: 5, dust: 50 },
-    { id: 'ticket', name: '灵宠礼', costLabel: '1 张招募券', aff: 10, ticket: 1 },
+    { id: 'stones', name: '灵石礼', costLabel: '5000万 灵石', stones: 5e7 },
+    { id: 'dust', name: '碎屑礼', costLabel: '10万 碎屑', dust: 100000 },
   ];
   const DAO_MARRY_AT = 100;
+  const DAO_MARRY_STONES = 2e9;   // 累计灵石礼门槛：20 亿
+  const DAO_MARRY_DUST = 5e6;     // 或累计碎屑礼门槛：500 万
+  const daoSpend = (id) => {
+    const s = (state.daoLv && state.daoLv.spend && state.daoLv.spend[id]) || {};
+    return { stones: s.stones || 0, dust: s.dust || 0 };
+  };
+  const daoBonded = (id) => {
+    const s = daoSpend(id);
+    return s.stones >= DAO_MARRY_STONES || s.dust >= DAO_MARRY_DUST;
+  };
+  const daoAffOf = (id) => {
+    const s = daoSpend(id);
+    return Math.min(DAO_MARRY_AT,
+      Math.max(s.stones / DAO_MARRY_STONES, s.dust / DAO_MARRY_DUST) * DAO_MARRY_AT);
+  };
+  // 结缘进度显示：按百分比（0.01% 粒度，去尾零）——单次灵石礼 +2.5% 能被精确看见
+  const daoAffText = (a) => String(Math.round(a * 100) / 100);
   const DAO_BONUS = { qing: { gain: 0.08 }, bai: { atk: 0.05 }, shi: { hp: 0.06 } };
 
   const TRIBULATION_DAYS = 3;
@@ -1039,6 +1164,8 @@
   const TALISMAN_REDUCE = 0.15;     // 每张减伤
 
   // 天道录：按境界解锁的十卷短章（原创文案）
+  // 天道录参悟奖励基数（2026-10-31 ×500）：100 万 × (卷数 + 1)
+  const CHAPTER_GAIN = 2000 * 500;
   const CHAPTERS = [
     { title: '第一卷 · 灵匣初开', text: '山中一匣，无故自鸣。你打开它的那一刻，灵石如尘落袋，修途自此始。老人说：匣中藏的不是物，是机缘。' },
     { title: '第二卷 · 筑基立身', text: '第一道门槛前，无数散修止步。你把开匣得来的每一件旧兵器都摸了一遍，忽然明白：所谓筑基，筑的不是塔，是心。' },
@@ -1053,18 +1180,24 @@
   ];
 
   const UPGRADES = {
-    // 上限 60 = 开箱间隔触底点（2×0.94^60 ≈ 0.05s 封底），满级即极速，无废级；
+    // 上限 50 = 开箱间隔触底点（2.5×0.95^50≈0.19 被 0.2s 下限封住，2026-11-01 调整：
+    // 原 2×0.94^60→0.05s），满级即极速，无废级；
     // growth 2026-10-30 各 +0.1：灵石升级成本曲线加陡，节流后期战力与收益膨胀
-    speed: { label: '开箱速度', base: 50, growth: 1.65, max: 60 },
+    // 开箱速度（2026-11-01 用户指定逆推）：base 100（同日 ×2 指定），第 50 级（Lv49→50 末次升级）
+    // 锚定 50 兆灵石 → growth = (5e13/100)^(1/49) ≈ 1.7333，几何阶梯精确触达
+    speed: { label: '开箱速度', base: 100, growth: Math.pow(5e11, 1 / 49), max: 50 },
     gain: { label: '灵石收益', base: 40, growth: 1.7, max: 60 },
     luck: { label: '气运', base: 150, growth: 1.8, max: 60 },
   };
 
   const $ = (id) => document.getElementById(id);
 
-  const emptyEquipped = () => ({
-    weapon: null, armor: null, helm: null, boots: null, artifact: null, talisman: null,
-  });
+  // 默认穿戴/强化/宝石表：从 SLOTS 生成（2026-11-01 槽位扩容后不再手写键名，防漂移）
+  const emptyEquipped = () => Object.fromEntries(SLOTS.map((s) => [s.key, null]));
+
+  // 部位强化等级与部位宝石孔（2026-10-31 部位化：绑部位不随装备）
+  const emptyEnhance = () => Object.fromEntries(SLOTS.map((s) => [s.key, 0]));
+  const emptySlotGems = () => Object.fromEntries(SLOTS.map((s) => [s.key, []]));
 
   const defaults = () => ({
     stones: 0,
@@ -1073,7 +1206,9 @@
     exp: 0,
     opens: 0,
     realm: 0,
+    realmPeak: 0,    // 境界水位：历史最高境界，飞升重置境界但不清水位——已解锁的境界门槛内容不回锁（2026-11-01 用户指定）
     ascensions: 0,
+    clickCount: 0,   // 累计手动开箱点击（连点器服务端判定信号，随档上报）
     speedLv: 0,
     gainLv: 0,
     luckLv: 0,
@@ -1090,7 +1225,7 @@
     lastSignMode: '',
     signLog: [],
     signStats: { plays: 0, big: 0, keep: 0, zero: 0, bust: 0, bestMult: 0, worstCut: 0 },
-    daily: { date: '', opens: 0, wins: 0, forge: 0, claimed: [] },
+    daily: { date: '', opens: 0, wins: 0, forge: 0, claimed: [], sweep: emptyDailySweep(), sweepBought: emptyDailySweep(), wildRepeat: 0, gamble: 0 },
     weekly: { week: '', opens: 0, wins: 0, rogue: 0, claimed: [] },
     dustTotal: 0,
     trialWins: 0,
@@ -1116,7 +1251,7 @@
     adventure: { lastAt: 0 },
     rerollCoupon: 0,
     endlessBest: 0,
-    steward: { autoWear: false, autoSalvage: 0, autoEnhance: 0, autoMarket: [] },
+    steward: { autoWear: false, autoSalvage: 0, autoMarket: [] },
     souls: 0,
     mirror: { week: '', snap: null, claimed: false },
     map: null,
@@ -1130,11 +1265,13 @@
     bounty: { date: '', slots: [], rerolls: 0, allClaimed: false },
     talismans: 0,
     tribulation: { last: '', done: false },
-    daoLv: { aff: {}, married: '' },
+    daoLv: { aff: {}, spend: {}, married: '' },
     battleStats: { dmg: 0, taken: 0, wins: 0 },
     log: [],
     bag: [],
     equipped: emptyEquipped(),
+    enh: emptyEnhance(),
+    slotGems: emptySlotGems(),
     itemSeq: 1,
     bagWarned: false,
     towerCleared: 0,
@@ -1193,14 +1330,17 @@
   let bagFilter = 'all';   // 背包筛选：all / 部位 key（仅内存，不入档）
   let achvFilter = 'all';  // 成就筛选：all / ready（未领取）/ done（已完成）/ todo（未完成）（仅内存，不入档）
   let wildGroupOpen = -1;  // 野外分组展开：-1 = 跟随当前所在关卡（仅内存，不入档）
+  // 扫荡选关条独立展开组：与野外选区条分属不同玩法（闯关/爬塔 vs 野外），
+  // 共用 wildGroupOpen 会在两玩法间互串展开组（2026-11-01 拆开）
+  let sweepGroupOpen = -1;
+  const sweepPick = { stage: 0, tower: 0 }; // 扫荡目标关：0 = 默认最高已通关（仅内存，不入档）
   let panelSigs = {};      // 新面板签名缓存（内容没变就不重绘）
   let tribPrompted = false;
-  let bootSettled = false; // OPFS 备份门闩：启动恢复完成前不覆盖备份
 
-  /* ---------------- 存档 ---------------- */
+  /* ---------------- 存档（云端唯一持久层，2026-10-31 去本地落盘） ---------------- */
 
-  // 多标签页保存锁：心跳标记 + 过期判定，防止旧标签页的新内存覆盖磁盘存档
-  const TAB_LOCK_KEY = SAVE_KEY + '_tab';
+  // 多标签页推送锁：心跳标记 + 过期判定，防止两个标签页同时往云端推档互相踩
+  const TAB_LOCK_KEY = 'lingxia_idle_tab';
   const TAB_LOCK_MS = 6000;
   const TAB_ID = Math.random().toString(36).slice(2);
 
@@ -1243,11 +1383,9 @@
         pierce: Math.round(cs.pierce * 1000) / 1000,
       };
       const text = JSON.stringify(state);
-      localStorage.setItem(SAVE_KEY, text);
-      opfsWrite(text); // 防清除备份：OPFS 不受门户 localStorage.clear / IDB 清理影响
-      queueCloud(text); // 云存档：登录后进度同步入 SQLite（节流推送）
+      queueCloud(text); // 云端唯一持久层：进度同步入 SQLite（节流推送，关页有 beacon 兜底）
     } catch (e) {
-      /* 隐私模式或空间不足时忽略 */
+      /* 序列化异常忽略 */
     }
   }
 
@@ -1277,7 +1415,7 @@
 
   function blockStart(msg) {
     const mask = document.createElement('div');
-    mask.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#07090f;color:#e8e6df;font:15px/1.8 -apple-system,"PingFang SC",sans-serif;text-align:center;padding:24px;';
+    mask.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#101614;color:#e8e6df;font:15px/1.8 -apple-system,"PingFang SC",sans-serif;text-align:center;padding:24px;';
     mask.textContent = msg;
     document.body.appendChild(mask);
   }
@@ -1303,28 +1441,23 @@
     }
   }
 
-  // 取云端存档与新者合并：云端较新写本地再 load；本地较新（或导入覆盖标记）立即上推
+  // 启动恢复（云端唯一存档层）：拉云端档直接入 state；无档 = 全新账号全新开局；
+  // 拉取失败或档损坏则拦下启动——不能拿空白档开局，否则首推会把云端真实进度顶掉
   async function cloudRestore() {
-    let forcePush = false;
-    try {
-      forcePush = sessionStorage.getItem('lx_force_push') === '1';
-      sessionStorage.removeItem('lx_force_push');
-    } catch (e) { /* 忽略 */ }
     try {
       const res = await api('/api/save');
-      if (!res.ok) return;
+      if (!res.ok) throw new Error('bad status ' + res.status);
       const body = await res.json();
-      const serverText = body && body.found ? body.text : null;
-      let localRaw = null;
-      try { localRaw = localStorage.getItem(SAVE_KEY); } catch (e) { /* 忽略 */ }
-      const seen = (t) => { try { return JSON.parse(t).lastSeen || 0; } catch (e) { return 0; } };
-      if (!forcePush && serverText && seen(serverText) >= seen(localRaw || '')) {
-        try { localStorage.setItem(SAVE_KEY, serverText); } catch (e) { /* 忽略 */ }
-      } else if (localRaw) {
-        cloudPending = localRaw;
-        flushCloud();
+      if (body && body.found && body.text) {
+        applySaveData(JSON.parse(body.text)); // 档损坏会 throw，由下方统一拦截
       }
-    } catch (e) { /* 拉取失败先用本地档，之后随自动存档重试上推 */ }
+      applyClickBan(body && body.clickBanUntil);
+      return true;
+    } catch (e) {
+      console.error('[cloud] 存档拉取失败', e);
+      blockStart('云端存档拉取失败，请检查网络后刷新重试。');
+      return false;
+    }
   }
 
   function queueCloud(text) {
@@ -1339,14 +1472,17 @@
   }
 
   async function flushCloud() {
+    if (authSignedOut) return; // 登出/重置后不再推已作废的会话档（5 秒重试定时器也走这里）
     if (!cloudOn || !cloudPending || cloudBusy) return;
     const text = cloudPending;
     cloudBusy = true;
     try {
       const res = await api('/api/save', { method: 'POST', body: text });
       if (res.ok) {
-        cloudPending = null;
+        // await 期间 persist 可能已把 pending 换成更新的档：只清掉自己推的那份
+        if (cloudPending === text) cloudPending = null;
         cloudLastPush = Date.now();
+        try { applyClickBan((await res.json()).clickBanUntil); } catch (e) { /* 忽略非 JSON */ }
       } else if (res.status === 400 || res.status === 422) {
         // 服务端校验拒收（量级/增速 400）：丢弃本份待推档避免 5 秒死循环重试，
         // 节流提示一次；本地照常可玩，下次 persist 的自然重推即为重新同步。
@@ -1358,7 +1494,7 @@
           cloudWarnAt = Date.now();
           const tip = msg || '云端存档被拒';
           floatText('云端同步：' + tip, '#f87171');
-          pushLog('云端存档被拒：' + tip + '（导入旧档 / 换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
+          pushLog('云端存档被拒：' + tip + '（换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
         }
       }
     } catch (e) { /* 失败保留 pending，由下一次存档或关页兜底重试 */ }
@@ -1413,7 +1549,7 @@
       const d = new Date(Date.now() + offset - tzOff * 60000);
       timeEl.textContent = '服务器时间 ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ':' + p2(d.getUTCSeconds());
       timeEl.title = '服务器日期 ' + d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) +
-        '，签到 / 日常 / 竞技场等每日重置以此为准';
+        '，竞技场 / 妖王等每日重置以服务器日期为准；签到 / 日常 / 商店等以设备本地日期为准';
     }
     async function sync() {
       try {
@@ -1503,90 +1639,25 @@
     });
   }
 
-  /* ---------------- 存档防清除备份（OPFS） ---------------- */
-
-  async function opfsWrite(text) {
-    try {
-      if (!bootSettled) return; // 启动恢复完成前不覆盖备份
-      if (!navigator.storage || !navigator.storage.getDirectory) return;
-      const dir = await navigator.storage.getDirectory();
-      const fh = await dir.getFileHandle("save_bak.txt", { create: true });
-      const w = await fh.createWritable();
-      await w.write(text);
-      await w.close();
-    } catch (e) { /* OPFS 不可用时忽略 */ }
-  }
-
-  function opfsRead() {
-    return new Promise((resolve) => {
-      try {
-        if (!navigator.storage || !navigator.storage.getDirectory) return resolve(null);
-        navigator.storage.getDirectory().then((dir) =>
-          dir.getFileHandle("save_bak.txt", { create: false }).then((fh) =>
-            fh.getFile().then((file) => file.text().then((t) => resolve(t || null)))
-          ).catch(() => resolve(null))
-        ).catch(() => resolve(null));
-      } catch (e) { resolve(null); }
-    });
-  }
-
-  // 登出清备份（2026-10-31 复审）：备份不清会让下一账号被 recoverSaveIfNeeded 恢复出旧档串号
-  async function opfsClear() {
-    try {
-      if (!navigator.storage || !navigator.storage.getDirectory) return;
-      const dir = await navigator.storage.getDirectory();
-      await dir.removeEntry("save_bak.txt").catch(() => { /* 无备份时忽略 */ });
-    } catch (e) { /* 忽略 */ }
-  }
-
-  // 主存档被外部清空 / 被过期云档覆盖时，从 OPFS 备份恢复（以 lastSeen 新者为准）
-  function recoverSaveIfNeeded() {
-    try {
-      let mainSeen = -1;
-      const mainRaw = localStorage.getItem(SAVE_KEY);
-      if (mainRaw) {
-        try { mainSeen = JSON.parse(mainRaw).lastSeen || 0; } catch (e) { mainSeen = 0; }
-      }
-      opfsRead().then((bak) => {
-        if (!bak) { bootSettled = true; return; }
-        let data = null;
-        let bakSeen = -1;
-        try {
-          data = JSON.parse(bak);
-          bakSeen = data.lastSeen || 0;
-        } catch (e) { bootSettled = true; return; }
-        if (bakSeen > mainSeen) {
-          const settledTo = Date.now(); // boot 首次离线结算已推进到的时刻（近似）
-          localStorage.setItem(SAVE_KEY, bak);
-          load();
-          // 补结算差额而非整段重结：boot 已按主档 lastSeen 结算过一次离线，
-          // 恢复档 lastSeen 更旧，重结会双份入账并被云端增速校验拒收（复审 P2-7）
-          const stale = state.lastSeen || 0;
-          if (settledTo - stale > 60000) {
-            state.lastSeen = stale;
-            awardOffline();
-          }
-          render();
-          paintBag(true);
-          save();
-          pushLog("检测到存档被外部清除，已从加密备份恢复", "special");
-        }
-        bootSettled = true;
-      });
-    } catch (e) { bootSettled = true; }
-  }
-
   function save() {
     if (!document.hidden) state.lastSeen = Date.now();
     persist();
   }
 
-  function load() {
+  // 应用云端档（或重置后的空白档）：迁移/钳制口径与旧本地载入完全一致。
+  // 逐键拷贝并跳过 __proto__/constructor/prototype——Object.assign 会触发
+  // __proto__ setter，被改档的云端文本可借它重挂 state 的原型（原型注入）
+  function applySaveData(data) {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      state = Object.assign(defaults(), data);
+      state = defaults();
+      for (const k of Object.keys(data)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        state[k] = data[k];
+      }
+      // lastSeen 是唯一直接进时间运算的字段：坏值会让 awardOffline 产出 NaN
+      // 灵石并污染后续所有推送（NaN 序列化为 null → 服务端 400 死循环）
+      const ls = Number(state.lastSeen);
+      state.lastSeen = Number.isFinite(ls) && ls > 0 ? ls : Date.now();
 
       if (!Array.isArray(state.counts) || state.counts.length !== RARITIES.length) {
         state.counts = [0, 0, 0, 0, 0, 0];
@@ -1595,6 +1666,19 @@
       if (!Array.isArray(state.featureSeen)) state.featureSeen = [];
       state.tutorialSeen = !!state.tutorialSeen;
       state.realm = Math.max(0, Math.min(REALMS.length - 1, state.realm | 0));
+      // 境界水位（2026-11-01）：老档无此字段按当前境界种初始值，此后只升不降
+      state.realmPeak = Math.max(
+        Math.max(0, Math.min(REALMS.length - 1, state.realmPeak | 0)),
+        state.realm
+      );
+      // 存量飞升档追溯：旧版飞升会丢水位，用 featureSeen（历史解锁播报）反推门槛下限——
+      // 播报过的玩法必然达成过其境界门槛，按最高门槛回填
+      if (Array.isArray(state.featureSeen)) {
+        for (const fid of state.featureSeen) {
+          const gate = FEATURE_GATES[fid] || 0;
+          if (gate > state.realmPeak) state.realmPeak = Math.min(gate, REALMS.length - 1);
+        }
+      }
       state.best = Math.max(-1, Math.min(RARITIES.length - 1, state.best | 0));
 
       if (!Array.isArray(state.bag)) state.bag = [];
@@ -1618,8 +1702,6 @@
       };
       const fixItem = (it) => {
         if (typeof it.id !== 'number') it.id = seq++;
-        if (typeof it.lv !== 'number' || !isFinite(it.lv)) it.lv = 0;
-        it.lv = Math.max(0, Math.min(MAX_ENHANCE, Math.floor(it.lv)));
         if (it.setKey && !SETS[it.setKey]) {
           delete it.setKey;
           delete it.special;
@@ -1632,9 +1714,12 @@
           if (it.power > cap) it.power = Math.max(1, cap);
         }
         it.star = fixInt(it.star, 0, 5);
-        if (typeof it.name !== 'string' || !it.name) it.name = RARITIES[it.r].name + '遗物';
+        if (typeof it.name !== 'string' || !it.name) {
+          // 套装件按槽位还原正式件名（覆盖第七批槽位迁移期掉落的 undefined 名存量件）
+          it.name = (it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[it.slot]) ||
+            RARITIES[it.r].name + '遗物';
+        }
         sanitizeAffixes(it);
-        sanitizeGems(it);
         if (it.id > maxId) maxId = it.id;
       };
       for (const it of state.bag) fixItem(it);
@@ -1652,13 +1737,14 @@
       state.trainHp = fixInt(state.trainHp, 0, MAX_TRAIN);
       state.trainPierce = fixInt(state.trainPierce, 0, MAX_TRAIN);
       state.speedLv = fixInt(state.speedLv, 0, UPGRADES.speed.max);
+      state.clickCount = fixInt(state.clickCount, 0, 1e12);
       state.gainLv = fixInt(state.gainLv, 0, UPGRADES.gain.max);
       state.luckLv = fixInt(state.luckLv, 0, UPGRADES.luck.max);
       state.dust = fixInt(state.dust, 0, 1e12);
       // 自动战斗需飞升一次：未飞升的老档读档时自动关
       state.autoHunt = !!state.autoHunt && (state.ascensions | 0) >= 1;
       state.battleSpeed = [1, 2, 4].includes(state.battleSpeed) ? state.battleSpeed : 1;
-      if (!isFinite(state.volume)) state.volume = 0.6;
+      if (!Number.isFinite(state.volume)) state.volume = 0.6;
       state.volume = Math.max(0, Math.min(1, Number(state.volume)));
       if (typeof state.lastSignIn !== 'string') state.lastSignIn = '';
       if (!['', 'normal', 'gamble'].includes(state.lastSignMode)) state.lastSignMode = '';
@@ -1702,6 +1788,12 @@
         claimed: Array.isArray(state.daily.claimed)
           ? state.daily.claimed.filter((id) => DAILY_TASKS.some((t) => t.id === id))
           : [],
+        // 老档当日补默认：扫荡计数（钳制上限随 SWEEP_DAILY_FREE/SWEEP_BUY_MAX 常量走）
+        sweep: clampDailySweep(state.daily.sweep, SWEEP_DAILY_FREE + SWEEP_BUY_MAX),
+        sweepBought: clampDailySweep(state.daily.sweepBought, SWEEP_BUY_MAX),
+        wildRepeat: fixInt(state.daily.wildRepeat, 0, WILD_REPEAT_DAILY),
+        // 赌石当日次数：漏拷此键会让每次读档计数归零，500 次/日上限形同虚设（2026-11-01 修）
+        gamble: fixInt(state.daily.gamble, 0, GAMBLE_DAILY_MAX),
       };
       const collected = { tower: [], stage: [], wild: [] };
       if (state.setCollection && typeof state.setCollection === 'object') {
@@ -1902,16 +1994,82 @@
           ? Math.min(Math.max(0, Number(state.adventure.lastAt)), Date.now())
           : 0,
       };
-      // 仙位收益倍率 1.25^n，钳过宽会溢出为 Infinity 污染全部分子分母；999 已远超玩法上限
+      // 仙位钳制：过宽会溢出为 Infinity 污染全部分子分母；999 已远超玩法上限
+      //（仙位收益倍率 2026-11-01 起为 1.1^n 收益 / 1.05^n 秘境缩放，钳制口径不变）
       state.immortal = fixInt(state.immortal, 0, 999);
       state.rerollCoupon = fixInt(state.rerollCoupon, 0, 99);
+
+      // —— 部位化迁移（2026-10-31，旧档一次性）：强化等级与宝石从装备迁到部位 ——
+      // 判定：档里没有 enh 字段即为旧档（迁移后的档必然带 enh）。
+      // 强化：每槽取历史最高（穿戴 → 背包同部位 → 陈列室）；宝石：按同样顺序入槽，
+      // 装不下的全额折算碎屑返还。迁移后所有装备剥离 lv / gems 字段。
+      if (data && !data.enh) {
+        for (const s of SLOTS) {
+          let best = state.equipped[s.key] ? (state.equipped[s.key].lv || 0) : 0;
+          for (const it of state.bag) {
+            if (it.slot === s.key && (it.lv || 0) > best) best = it.lv || 0;
+          }
+          if (state.museum && state.museum[s.key] && (state.museum[s.key].lv || 0) > best) {
+            best = state.museum[s.key].lv || 0;
+          }
+          state.enh[s.key] = Math.max(0, Math.min(MAX_ENHANCE, Math.floor(best) || 0));
+        }
+        let movedGems = 0;
+        let overflowGems = 0;
+        let refundDust = 0;
+        const gemsOf = (it) => (it && Array.isArray(it.gems)) ? it.gems.slice(0, 12) : [];
+        for (const s of SLOTS) {
+          const arr = slotGemList(s.key);
+          const sources = [];
+          sources.push(...gemsOf(state.equipped[s.key]));
+          for (const it of state.bag) {
+            if (it.slot === s.key) sources.push(...gemsOf(it));
+          }
+          if (state.museum && state.museum[s.key]) sources.push(...gemsOf(state.museum[s.key]));
+          for (const g of sources) {
+            if (!g || !affixDef(g.k)) continue;
+            const t = Math.max(1, Math.min(GEM_TIERS.length, g.t | 0));
+            const idx = arr.indexOf(null);
+            if (idx < 0) {
+              overflowGems++;
+              // 一次性迁移退款：装不下的宝石按首孔价退（新阶梯价下最保守口径）
+              refundDust += gemCost(g.k, t);
+              continue;
+            }
+            arr[idx] = { k: g.k, t };
+            movedGems++;
+          }
+        }
+        if (refundDust > 0) {
+          state.dust += refundDust;
+          state.dustTotal = (state.dustTotal || 0) + refundDust;
+        }
+        if (movedGems || overflowGems) {
+          pushLog('装备部位化：宝石入槽 ' + movedGems + ' 颗' +
+            (overflowGems ? '，' + overflowGems + ' 颗放不下折算 ' + refundDust + ' 碎屑' : ''), 'sys');
+        }
+      }
+      // 所有档统一：装备剥离 lv / gems（部位化后装备不再携带）
+      const stripSlotFields = (it) => {
+        delete it.lv;
+        delete it.gems;
+      };
+      for (const it of state.bag) stripSlotFields(it);
+      for (const s of SLOTS) {
+        if (state.equipped[s.key]) stripSlotFields(state.equipped[s.key]);
+        if (state.museum && state.museum[s.key]) stripSlotFields(state.museum[s.key]);
+      }
+      for (const s of SLOTS) {
+        state.enh[s.key] = Math.max(0, Math.min(MAX_ENHANCE, Math.floor(state.enh[s.key]) || 0));
+      }
+      sanitizeSlotGems();
       // —— 反作弊自洽校验（软修正）——
       if (data && data.dustTotal === undefined) state.dustTotal = fixInt(state.dust, 0, 1e15);
       state.dustTotal = fixInt(state.dustTotal, 0, 1e15);
       state.opens = fixInt(state.opens, 0, 1e15);
-      if (!isFinite(state.totalStones) || state.totalStones < 0) state.totalStones = 0;
+      if (!Number.isFinite(state.totalStones) || state.totalStones < 0) state.totalStones = 0;
       state.totalStones = Math.min(state.totalStones, 1e18); //与服务端校验同口径的量级天花板
-      if (!isFinite(state.stones)) state.stones = 0;
+      if (!Number.isFinite(state.stones)) state.stones = 0;
       // 赌狗签到可倒扣负债：灵石允许为负（下限 -1e12，与服务端校验同口径），
       // 但仍不可能超过历史总收益
       state.stones = Math.max(-1e12, Math.min(state.stones, state.totalStones));
@@ -1943,12 +2101,11 @@
       };
       // —— 第三批（共鸣 / 道童 / 升星 / 炼器 / 镜像 / 秘境图 / 修行 / 陈列 / 灵田 / 天道录）——
       if (!state.steward || typeof state.steward !== 'object' || Array.isArray(state.steward)) {
-        state.steward = { autoWear: false, autoSalvage: 0, autoEnhance: 0, autoMarket: [] };
+        state.steward = { autoWear: false, autoSalvage: 0, autoMarket: [] };
       }
       state.steward = {
         autoWear: !!state.steward.autoWear,
         autoSalvage: fixInt(state.steward.autoSalvage, 0, 2),
-        autoEnhance: fixInt(state.steward.autoEnhance, 0, MAX_ENHANCE),
         autoMarket: Array.isArray(state.steward.autoMarket)
           ? state.steward.autoMarket.filter((id) => MARKET_POOL.some((p) => p.id === id))
           : [],
@@ -2136,15 +2293,36 @@
         done: !!state.tribulation.done,
       };
       if (!state.daoLv || typeof state.daoLv !== 'object' || Array.isArray(state.daoLv)) {
-        state.daoLv = { aff: {}, married: '' };
+        state.daoLv = { aff: {}, spend: {}, married: '' };
       }
       const aff = {};
       const affRaw = (state.daoLv.aff && typeof state.daoLv.aff === 'object' &&
         !Array.isArray(state.daoLv.aff)) ? state.daoLv.aff : {};
       for (const npc of DAO_NPCS) aff[npc.id] = fixInt(affRaw[npc.id], 0, DAO_MARRY_AT);
+      // 结缘改累计礼金门槛（2026-10-31）：spend[npcId] = { stones, dust }；
+      // 旧档 aff 是情谊计数无法折算回礼金，一律从 0 起算
+      const spend = {};
+      const spendRaw = (state.daoLv.spend && typeof state.daoLv.spend === 'object' &&
+        !Array.isArray(state.daoLv.spend)) ? state.daoLv.spend : {};
+      for (const npc of DAO_NPCS) {
+        const s = (spendRaw[npc.id] && typeof spendRaw[npc.id] === 'object' &&
+          !Array.isArray(spendRaw[npc.id])) ? spendRaw[npc.id] : {};
+        spend[npc.id] = {
+          stones: fixInt(s.stones, 0, 1e15),
+          dust: fixInt(s.dust, 0, 1e15),
+        };
+      }
+      // 结缘进度一次性清零（2026-10-31 三次调整）：灵石礼单价调至 5000 万后旧累计口径作废，
+      // 全员从 0 重新攒；已结缘（married）不受影响。wiped 标记随档持久防反复清零
+      //（服务端原样存 JSON，未知字段不剥离）
+      if (state.daoLv.wiped !== '20261031') {
+        for (const k of Object.keys(spend)) spend[k] = { stones: 0, dust: 0 };
+      }
       state.daoLv = {
         aff,
+        spend,
         married: DAO_NPCS.some((n) => n.id === state.daoLv.married) ? state.daoLv.married : '',
+        wiped: '20261031',
       };
       if (!state.battleStats || typeof state.battleStats !== 'object' || Array.isArray(state.battleStats)) {
         state.battleStats = { dmg: 0, taken: 0, wins: 0 };
@@ -2190,6 +2368,7 @@
       state.guildBoss.claimed = typeof state.guildBoss.claimed === 'string' ? state.guildBoss.claimed : '';
     } catch (e) {
       state = defaults();
+      throw e; // 云端唯一存档层：档损坏必须拦下启动（cloudRestore 统一提示），不能拿空白档开局
     }
   }
 
@@ -2217,23 +2396,28 @@
   /* ---------------- 数值 ---------------- */
 
   const realmMult = () => Math.pow(1.7, state.realm);
-  const prestigeMult = () => 1 + 0.25 * state.ascensions;
+  const prestigeMult = () => 1 + 0.05 * state.ascensions; // 飞升永久收益 +5%/次（2026-11-01 用户指定，原 +25%）
   const buffOn = () => Date.now() < state.buffUntil;
   const buffMult = () => (buffOn() ? 2 : 1);
 
-  const interval = () => Math.max(0.05, 2 * Math.pow(0.94, state.speedLv));
+  // 开箱节奏（2026-11-01 用户指定）：起始 2.5s/次，×0.95/级，满级 50 触底 0.2s/次
+  // （2.5×0.95^50≈0.192 被下限 0.2 封住）；原 2s×0.94^60→0.05s 太快，服务端连点
+  // 判定与增速包络的 20 次/秒假设同步放宽，只慢不快无需调包络
+  const interval = () => Math.max(0.2, 2.5 * Math.pow(0.95, state.speedLv));
 
+  // 装备战力（2026-10-31 部位化）：只含装备自身（基础战力 × 升星），强化改绑部位
   function itemPower(it) {
-    return Math.round(it.power * (1 + 0.18 * (it.lv || 0)) * (1 + 0.1 * (it.star || 0)));
+    return Math.round(it.power * (1 + 0.1 * (it.star || 0)));
   }
 
   function totalPower() {
     let p = 0;
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
-      if (it) p += itemPower(it);
+      // 部位强化（永久）：乘区挂穿戴件基础上，换装不丢
+      if (it) p += itemPower(it) * (1 + 0.18 * (state.enh[s.key] || 0));
     }
-    return p;
+    return Math.round(p);
   }
 
   // 战力收益系数：开平方软压（1 + √战力/20），战力线性放大灵石收益会让固定数值的
@@ -2249,7 +2433,10 @@
   function ensureDaily() {
     const today = todayStr();
     if (state.daily && state.daily.date === today) return;
-    state.daily = { date: today, opens: 0, wins: 0, forge: 0, claimed: [] };
+    state.daily = {
+      date: today, opens: 0, wins: 0, forge: 0, claimed: [],
+      sweep: emptyDailySweep(), sweepBought: emptyDailySweep(), wildRepeat: 0, gamble: 0,
+    };
   }
 
   const weekKey = () => {
@@ -2297,21 +2484,22 @@
 
   const baseGain = () => (3 + 0.9 * state.gainLv) * realmMult() * prestigeMult() * powerMult()
     * (1 + collectionBonus().gain + petBonus('gain') + caveGainBonus())
-    * (1 + 0.5 * (state.immortal || 0))
+    * (1 + 0.1 * (state.immortal || 0)) // 仙位收益 +10%/位（2026-11-01 用户指定，原 +50%）
     * (state.title ? 1.02 : 1)
     * (1 + museumBonus() + (state.ordealDone.includes('fanYi') ? 0.10 : 0))
     * (1 + (shichenNow().gain || 0) + skyVal('gain') + daoBonus('gain'))
-    * (1 + 0.02 * guildBuffLevel()) // 仙盟等级加成（天下页缓存，每级 +2%）
+    * (1 + 0.005 * guildBuffLevel()) // 仙盟等级加成（天下页缓存，每级 +0.5%，2026-11-01 由 +2% 下调）
     * (elixirOn('gain') ? 1.3 : 1);
-  const enhanceCost = (it) => it.special
-    ? Math.floor((it.power * 2.2 + 30) * Math.pow(1.42, it.lv || 0))
-    : Math.floor(RARITIES[it.r].stone * 10 * Math.pow(1.55, it.lv || 0));
+  // 部位强化费用（2026-10-31 部位化）：强化绑部位永久生效，费用只与等级相关——
+  // 若按穿戴装备计价，可穿低品刷满强化再换高品白拿；5000×1.5^lv 介于天品/仙品旧曲线之间
+  const enhanceCost = (lv) => Math.floor(5000 * Math.pow(1.5, lv || 0));
   const salvageValue = (it) => it.special
-    ? Math.floor((it.power * 2 + 20) * (1 + 0.35 * (it.lv || 0)))
-    : Math.floor(RARITIES[it.r].stone * 2 * (1 + 0.4 * (it.lv || 0)) * (1 + 0.2 * state.gainLv));
+    ? Math.floor(it.power * 2 + 20)
+    : Math.floor(RARITIES[it.r].stone * 2 * (1 + 0.2 * state.gainLv));
 
   function weights() {
-    const m = 1 + 0.1 * state.luckLv;
+    // 气运对高品质呈指数放大，系数过大时满级仙品占比爆炸（曾达 23.6%），压到 0.02
+    const m = 1 + 0.02 * state.luckLv;
     return RARITIES.map((r, i) => r.weight * Math.pow(m, i));
   }
 
@@ -2335,7 +2523,8 @@
       total += w[i];
       exp += w[i] * (1 + RARITIES[i].exp);
     }
-    return { stone: baseGain(), exp: exp / total };
+    // 修为期望按开箱掉装备概率折算：未掉落只有基础 1 份
+    return { stone: baseGain(), exp: (1 - EQUIP_CHANCE) + EQUIP_CHANCE * exp / total };
   }
 
   const upgradeCost = (key) => Math.floor(UPGRADES[key].base * Math.pow(UPGRADES[key].growth, state[key + 'Lv']));
@@ -2343,10 +2532,18 @@
   /* ---------------- 词条 / 宝石：生成与结算 ---------------- */
 
   const affixDef = (k) => AFFIXES.find((a) => a.k === k);
-  const socketSlots = (r) => (r >= 5 ? 2 : 1);
-  const socketCount = (it) => socketSlots(it.r);
-  const emptyGems = (r) => new Array(socketSlots(r)).fill(null);
   const fmtPct = (v) => (v * 100).toFixed(1).replace(/\.0$/, '') + '%';
+
+  // 部位宝石孔（2026-10-31 部位化）：孔位绑部位不随装备，孔数 = 2 + 飞升数（上限 6）
+  const SLOT_GEMS_MAX = 6;
+  const slotSocketCount = () => Math.max(2, Math.min(SLOT_GEMS_MAX, 2 + ((state.immortal || 0) | 0)));
+  // 取某槽孔位数组（不足自动补空孔；所有槽位宝石读写都走这里）
+  function slotGemList(slotKey) {
+    let arr = state.slotGems[slotKey];
+    if (!Array.isArray(arr)) arr = state.slotGems[slotKey] = [];
+    while (arr.length < slotSocketCount()) arr.push(null);
+    return arr;
+  }
 
   function rollAffixValue(def, r) {
     const v = (def.min + Math.random() * (def.max - def.min)) * (AFFIX_QMULT[r] || 1);
@@ -2386,32 +2583,38 @@
     }
   }
 
-  function sanitizeGems(it) {
-    const n = socketCount(it);
-    const old = Array.isArray(it.gems) ? it.gems : [];
-    it.gems = [];
-    for (let i = 0; i < n; i++) {
-      const g = old[i];
-      const t = (g && (g.t | 0)) || 0;
-      it.gems.push(g && affixDef(g.k) && t >= 1 && t <= GEM_TIERS.length ? { k: g.k, t } : null);
+  // 校验六槽孔位数组（load 用）：条目合法化、长度补齐/截断至当前孔位数
+  function sanitizeSlotGems() {
+    for (const s of SLOTS) {
+      const old = Array.isArray(state.slotGems[s.key]) ? state.slotGems[s.key] : [];
+      const n = slotSocketCount();
+      const fixed = [];
+      for (let i = 0; i < old.length && fixed.length < n; i++) {
+        const g = old[i];
+        const t = (g && (g.t | 0)) || 0;
+        fixed.push(g && affixDef(g.k) && t >= 1 && t <= GEM_TIERS.length ? { k: g.k, t } : null);
+      }
+      while (fixed.length < n) fixed.push(null);
+      state.slotGems[s.key] = fixed;
     }
   }
 
   const gemValue = (g) => (GEM_VALUES[g.k] ? GEM_VALUES[g.k][g.t - 1] || 0 : 0);
   const gemName = (g) => GEM_TIERS[g.t - 1].name + affixDef(g.k).name + '石';
-  const gemCost = (k, t) => GEM_TIERS[t - 1].dust;
-  const rerollCost = (it) => Math.floor(RARITIES[it.r].stone * 12 * Math.pow(1.3, it.rerolls || 0));
+  // 宝石费用 = 品质基价 × 孔位系数（socketIdx 从 1 计；缺省按首孔价，迁移退款等旧调用沿用）
+  const gemCost = (k, t, socketIdx) =>
+    GEM_TIERS[t - 1].dust * (GEM_SOCKET_MULT[Math.max(1, Math.min(GEM_SOCKET_MULT.length, socketIdx || 1)) - 1] || 1);
+  // 洗练费用（2026-11-01 用户指定多锁指数加价）：品质基价 × 重随次数 1.3^n × 锁定条数 2^n
+  const rerollCost = (it, lockN) =>
+    Math.floor(RARITIES[it.r].stone * 12 * Math.pow(1.3, it.rerolls || 0) * Math.pow(2, lockN || 0));
 
-  // 洗练：保留锁定词条，其余重随机（同件装备词条不重复）
-  function rerollAffixes(it, lockIdx) {
+  // 洗练：保留全部锁定词条（多锁，2026-11-01），其余重随机（同件装备词条不重复）
+  function rerollAffixes(it) {
     const count = AFFIX_COUNT[it.r] || 0;
     if (!count) return false;
-    const lock = Array.isArray(it.affixes) ? it.affixes[lockIdx] : null;
-    const keep = lock && affixDef(lock.k)
-      ? { k: lock.k, v: lock.v, ...(lock.lock ? { lock: true } : {}) }
-      : null;
-    const used = new Set(keep ? [keep.k] : []);
-    const next = keep ? [keep] : [];
+    const locked = (it.affixes || []).filter((a) => a.lock && affixDef(a.k));
+    const used = new Set(locked.map((a) => a.k));
+    const next = locked.map((a) => ({ k: a.k, v: a.v, lock: true }));
     while (next.length < count) {
       const def = AFFIXES[Math.floor(Math.random() * AFFIXES.length)];
       if (used.has(def.k)) continue;
@@ -2440,31 +2643,36 @@
     return n;
   };
 
-  // 镶嵌：放进第一个空孔；拆卸返还一半合成碎屑
-  function socketGem(it, k, t) {
+  // 镶嵌：放进部位第一个空孔，费用按孔位递增；拆卸返还所在孔位费用一半（宝石绑部位，换装不丢）
+  function socketGem(slotKey, k, t) {
     if (!affixDef(k)) return { ok: false, msg: '未知宝石' };
     t = Math.max(1, Math.min(GEM_TIERS.length, t | 0));
-    if (!Array.isArray(it.gems) || it.gems.length !== socketCount(it)) it.gems = emptyGems(it.r);
-    if (!it.gems.includes(null)) return { ok: false, msg: '没有空孔了' };
-    const cost = gemCost(k, t);
+    const gems = slotGemList(slotKey);
+    const dest = gems.indexOf(null);
+    if (dest < 0) return { ok: false, msg: '没有空孔了' };
+    const cost = gemCost(k, t, dest + 1);
     if (state.dust < cost) return { ok: false, msg: '碎屑不足' };
     state.dust -= cost;
-    it.gems[it.gems.indexOf(null)] = { k, t };
+    gems[dest] = { k, t };
     return { ok: true };
   }
 
-  function unsocketGem(it, idx) {
-    if (!Array.isArray(it.gems)) return null;
-    const g = it.gems[idx];
+  function unsocketGem(slotKey, idx) {
+    const gems = state.slotGems[slotKey];
+    if (!Array.isArray(gems)) return null;
+    const g = gems[idx];
     if (!g) return null;
-    it.gems[idx] = null;
-    addDust(Math.floor(gemCost(g.k, g.t) * 0.5));
+    gems[idx] = null;
+    addDust(Math.floor(gemCost(g.k, g.t, idx + 1) * 0.5));
     return g;
   }
 
   /* ---------------- 战斗数值 ---------------- */
 
-  const immortalMult = () => Math.pow(1.25, state.immortal || 0);
+  // 仙位对秘境的难度/产出缩放：×1.05/位（2026-11-01 用户指定，原 1.25）——
+  // 抬敌人血攻防与奖励基线（contentReq 同源），也抬套装件战力；服务端 validateItem
+  // 的 IMMORTAL_STEP=1.25 上界保持更松，不会误拒真玩家档
+  const immortalMult = () => Math.pow(1.05, state.immortal || 0);
 
   // 分段难度表：旧上限（关30/塔60/野12）内沿用原曲线，之后按尾段增长率续接到 200
   // （尾段 2026-10-30 加陡拉长周期，见 CURVE_TAIL 注）；legacy 段难度不变
@@ -2538,9 +2746,9 @@
       name, base: name, icon, kicker, boss, req,
       el: randEl(),
       affix: aff ? aff.name + '：' + aff.desc : '',
-      hp: Math.max(1, Math.round(req * cfg.hp * ENEMY_DIFF * (boss ? cfg.bossHp : 1) * (aff && aff.hp ? aff.hp : 1))),
-      atk: Math.max(1, Math.round(req * cfg.atk * ENEMY_DIFF * (boss ? cfg.bossAtk : 1) * (aff && aff.atk ? aff.atk : 1))),
-      def: Math.max(0, Math.round(req * cfg.def * ENEMY_DIFF * (boss ? 1.12 : 1) * (aff && aff.def ? aff.def : 1))),
+      hp: Math.max(1, Math.round(req * cfg.hp * ENEMY_DIFF * diffBoost(mode, level) * (boss ? cfg.bossHp : 1) * (aff && aff.hp ? aff.hp : 1))),
+      atk: Math.max(1, Math.round(req * cfg.atk * ENEMY_DIFF * diffBoost(mode, level) * (boss ? cfg.bossAtk : 1) * (aff && aff.atk ? aff.atk : 1))),
+      def: Math.max(0, Math.round(req * cfg.def * ENEMY_DIFF * diffBoost(mode, level) * (boss ? 1.12 : 1) * (aff && aff.def ? aff.def : 1))),
     };
   }
 
@@ -2559,7 +2767,7 @@
 
   // 各玩法解锁境界（下标与 REALMS 对齐）；未列出的玩法开局即开
   const FEATURE_GATES = {
-    gongfa: 2, rogue: 2, wander: 2,
+    gongfa: 2, rogue: 2, wander: 2, melt: 2,
     fish: 3,
     steward: 8, // 道童：渡劫后开启
     market: 3, bossrush: 3, craft: 3,
@@ -2570,8 +2778,11 @@
     trib: 9,
   };
 
+  // 解锁判定境界：当前境界与历史水位取高——飞升轮回后境界归零，但已解锁过的玩法不回锁
+  const gateRealm = () => Math.max(state.realm | 0, state.realmPeak | 0);
+
   function featureOpen(id) {
-    return (FEATURE_GATES[id] || 0) <= state.realm;
+    return (FEATURE_GATES[id] || 0) <= gateRealm();
   }
 
   // 修行指南：全部玩法按解锁顺序排列；无 check 的条目默认解锁（开局即启）
@@ -2594,13 +2805,13 @@
       desc: '行走江湖偶遇事件，善恶抉择改变果报；果报微调赌石与洗练的运气。' },
     { id: 'steward', name: '道童', where: '修炼', cond: '境界「渡劫」',
       check: () => featureOpen('steward'),
-      desc: '挂机策略中枢：自动穿戴、自动分解、自动强化与黑市代购，睡觉也能变强。' },
+      desc: '挂机策略中枢：自动穿戴、自动分解与黑市代购，睡觉也能变强。' },
     { id: 'rogue', name: '秘境探幽', where: '征战 · 试炼', cond: '境界「金丹」',
       check: () => featureOpen('rogue'),
       desc: '连闯 200 层 roguelike，每层胜后三选一神物加持，战败整局结束，越深越肥。' },
     { id: 'market', name: '黑市 · 赌石', where: '日常', cond: '境界「元婴」',
       check: () => featureOpen('market'),
-      desc: '每日三件限购商品 + 2000 灵石开璞玉，是灵石的重要消化口。' },
+      desc: '每日三件限购商品 + 20 万灵石开璞玉（单日 500 次），是灵石的重要消化口。' },
     { id: 'fish', name: '垂钓', where: '闲趣', cond: '境界「元婴」',
       check: () => featureOpen('fish'),
       desc: '每日 5 枚鱼饵抛竿起钓，时机条停得越正鱼获越肥，灵龙鱼可化形赠宝。' },
@@ -2610,6 +2821,9 @@
     { id: 'craft', name: '炼器', where: '征战 · 装备', cond: '境界「元婴」',
       check: () => featureOpen('craft'),
       desc: '分解专属件积攒器魂，定向打造指定部位的天品装备。' },
+    { id: 'melt', name: '装备熔铸', where: '征战 · 装备', cond: '境界「金丹」',
+      check: () => featureOpen('melt'),
+      desc: '五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率 10%±5%，失败材料与手续费不退，部位随机。' },
     { id: 'trials', name: '条件试炼', where: '征战 · 试炼', cond: '境界「化神」',
       check: () => featureOpen('trials'),
       desc: '每日三项限制试炼（速杀 / 禁吸血 / 限承伤），全通额外 60 碎屑。' },
@@ -2636,7 +2850,7 @@
       desc: '每周记录属性快照，挑战上周的自己，胜了拿周奖。' },
     { id: 'endless', name: '无尽秘境', where: '征战 · 秘境征战', cond: '通关爬塔 60 层',
       check: () => state.towerCleared >= ENDLESS_GATE,
-      desc: '无限层挑战，坚壁 / 狂暴 / 厚血词缀轮换，8% 概率掉镇塔件。' },
+      desc: '无限层挑战，坚壁 / 狂暴 / 厚血词缀轮换，0.8% 概率掉镇塔件。' },
     { id: 'farm', name: '灵田', where: '闲趣 · 洞府', cond: '境界「合体」',
       check: () => featureOpen('farm'),
       desc: '三种灵籽按现实时间生长，下线也在长，收获得碎屑。' },
@@ -2645,13 +2859,13 @@
       desc: '把各部位最强装备封存陈列，换全局收益加成，穿戴不受影响。' },
     { id: 'dao', name: '道侣', where: '闲趣', cond: '境界「大乘」',
       check: () => featureOpen('dao'),
-      desc: '三位 NPC 好感度送礼，情谊满百可结为道侣，得永久加成与一段往事。' },
+      desc: '三位 NPC 赠礼结缘：单个道侣累计灵石礼满 20 亿或碎屑礼满 500 万可结为道侣，得永久加成与一段往事。' },
     { id: 'trib', name: '天劫', where: '征战 · 试炼', cond: '境界「仙人」',
       check: () => featureOpen('trib'),
       desc: '每三日九霄神雷来袭：提前用碎屑炼护体符减伤，抗住得重奖，输了亦无损。' },
     { id: 'ascend', name: '飞升轮回', where: '修炼 · 境界', cond: '境界「仙人」· 1 亿灵石',
       check: () => state.realm >= REALMS.length - 1,
-      desc: '重置灵石、境界与淬炼换取仙缘，永久收益每点 +25%，并可挑战三系修行。' },
+      desc: '重置灵石、境界与淬炼换取仙缘，永久收益每点 +5%，并可挑战三系修行。' },
   ];
 
   // 检查解锁进度：announce 为 true 时对本次新解锁播报；返回本轮是否有新解锁
@@ -2685,6 +2899,7 @@
     { sel: '.panel.market', id: 'market' },
     { sel: '#bossBox', id: 'bossrush' },
     { sel: '#craftSec', id: 'craft' },
+    { sel: '#meltSec', id: 'melt' },
     { sel: '#trialsBox', id: 'trials' },
     { sel: '#bountyBox', id: 'bounty' },
     { sel: '.panel.pets', id: 'pets' },
@@ -2759,15 +2974,16 @@
     atk *= ascMult;
     hp *= ascMult;
 
-    // 词条与宝石：已穿戴装备的百分比汇总
+    // 词条与宝石：词条逐装备汇总；宝石绑部位（2026-10-31），不随装备离手失效
     const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
-      if (!it) continue;
-      for (const a of it.affixes || []) {
-        if (agg[a.k] !== undefined) agg[a.k] += a.v || 0;
+      if (it) {
+        for (const a of it.affixes || []) {
+          if (agg[a.k] !== undefined) agg[a.k] += a.v || 0;
+        }
       }
-      for (const g of it.gems || []) {
+      for (const g of state.slotGems[s.key] || []) {
         if (g && agg[g.k] !== undefined) agg[g.k] += gemValue(g);
       }
     }
@@ -2818,7 +3034,7 @@
     // 符文组词 + 时辰 + 道侣
     let rune = { atk: 0, hp: 0, def: 0, dr: 0, crit: 0, ls: 0, pierce: 0 };
     for (const s of SLOTS) {
-      const w = runewordOf(state.equipped[s.key]);
+      const w = runewordOf(state.slotGems[s.key]);
       if (w) for (const k of Object.keys(w.apply)) rune[k] += w.apply[k];
     }
     atk *= 1 + rune.atk;
@@ -2868,7 +3084,7 @@
   }
 
   const recommendedPower = (mode, level) =>
-    Math.ceil(contentReq(mode, level) * (isBoss(mode, level) ? 1.35 : 1) * ENEMY_DIFF);
+    Math.ceil(contentReq(mode, level) * (isBoss(mode, level) ? 1.35 : 1) * ENEMY_DIFF * diffBoost(mode, level));
 
   function specialPower(mode, level) {
     // 套装件战力贬值（2026-10-30）：原 0.4/0.42/0.45 时 60 层就出 +20w，装备成了战力主通道；
@@ -2881,16 +3097,16 @@
   function makeSpecialItem(mode, level, slotKey) {
     const slotDef = SLOT_MAP[slotKey] || SLOTS[Math.floor(Math.random() * SLOTS.length)];
     const set = SETS[mode];
+    // 兜底命名：套装件名必须为字符串（服务端 validateItem 拒收非字符串名，整档 400）
+    const pieceName = set.pieces[slotDef.key] || (set.name + '·' + slotDef.name);
     return {
       id: state.itemSeq++,
       r: 5,
       slot: slotDef.key,
-      name: set.pieces[slotDef.key],
+      name: pieceName,
       power: specialPower(mode, level),
-      lv: 0,
       el: randEl(),
       affixes: rollAffixes(5),
-      gems: emptyGems(5),
       special: true,
       setKey: mode,
       source: mode,
@@ -2973,6 +3189,12 @@
     boots: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h4v6l4.5 2.5V14H5Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M5 12h8.5" stroke="#8a6a2c" stroke-width="1" opacity=".7"/></svg>',
     artifact: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="7" r="4.2" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><circle cx="6.8" cy="5.8" r="1.2" fill="#fff6d8" opacity=".9"/><path d="M5.5 13.5h5M8 11.2v2.3" stroke="#8a6a2c" stroke-width="1" stroke-linecap="round"/></svg>',
     talisman: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h6l2 2v9H4Z" fill="#e8d5a8" stroke="#8a6a2c" stroke-width=".8"/><path d="M10 2.5v2h2" fill="none" stroke="#8a6a2c" stroke-width=".8"/><path d="M6.5 6v5M9 6v5" stroke="#8a2f28" stroke-width="1" stroke-linecap="round"/></svg>',
+    bracelet: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="4.3" fill="none" stroke="#d8b36a" stroke-width="2.2"/><circle cx="8" cy="3.4" r="1.2" fill="#fff6d8" stroke="#8a6a2c" stroke-width=".6"/></svg>',
+    ring: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9.8" r="3.9" fill="none" stroke="#d8b36a" stroke-width="1.8"/><path d="M8 2.2 10.2 4.6 8 7 5.8 4.6Z" fill="#f0d9a8" stroke="#8a6a2c" stroke-width=".7"/></svg>',
+    wrist: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="5" width="9" height="6.5" rx="1.6" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M3.5 7.6h9M3.5 9.8h9" stroke="#8a6a2c" stroke-width=".7" opacity=".7"/></svg>',
+    legs: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h6v5.5L9.8 14H8.5L8 9.2 7.5 14H6.2L5 7.5Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/></svg>',
+    band: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 11c0-3.8 2.2-6.2 5-6.2s5 2.4 5 6.2" fill="none" stroke="#d8b36a" stroke-width="2"/><circle cx="11.6" cy="10.6" r="1.3" fill="#f0d9a8" stroke="#8a6a2c" stroke-width=".6"/></svg>',
+    wings: '<svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5C6 13 2.8 10.8 1.8 6.4c2.3.2 4 1.1 5.1 2.4C6.6 6 7.2 3.8 8 2.2c.8 1.6 1.4 3.8 1.1 6.6 1.1-1.3 2.8-2.2 5.1-2.4-1 4.4-4.2 6.6-6.2 7.1Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".7"/></svg>',
   };
   const slotIcon = (key) => SLOT_ICONS[key] || '';
 
@@ -3073,15 +3295,14 @@
       slot: slotDef.key,
       name,
       power,
-      lv: 0,
       el: randEl(),
       affixes: rollAffixes(ri),
-      gems: emptyGems(ri),
     };
   }
 
+  // 部位化后装备自身评分：只看自身战力与品质（强化在部位上，不参与装备对比）
   function itemScore(it) {
-    return itemPower(it) * 1000 + it.r * 10 + Math.min(it.lv || 0, MAX_ENHANCE);
+    return itemPower(it) * 1000 + it.r * 10;
   }
 
   function weakestBagIndex() {
@@ -3167,7 +3388,7 @@
     equipDirty = true;
     combatDirty = true;
 
-    pushLog('穿戴「' + item.name + '」' + (item.lv ? ' +' + item.lv : '') + '，战力 ' + fmt(itemPower(item)), 'r' + item.r);
+    pushLog('穿戴「' + item.name + '」，战力 ' + fmt(itemPower(item)), 'r' + item.r);
     beep(620, 0.06);
     render();
     paintBag(true);
@@ -3194,23 +3415,25 @@
     save();
   }
 
+  // 部位强化（2026-10-31 部位化）：等级绑部位永久生效，换装不丢；入口仍需槽位有装备
   function enhanceSlot(slotKey) {
     const item = state.equipped[slotKey];
     if (!item) return;
-    if (item.lv >= MAX_ENHANCE) {
+    const lv = state.enh[slotKey] || 0;
+    if (lv >= MAX_ENHANCE) {
       floatText('已强化至 +' + MAX_ENHANCE, '#9aa4b2');
       return;
     }
-    const cost = enhanceCost(item);
+    const cost = enhanceCost(lv);
     if (state.stones < cost) {
       floatText('灵石不足', '#f87171');
       return;
     }
     state.stones -= cost;
-    item.lv++;
+    state.enh[slotKey] = lv + 1;
     equipDirty = true;
     combatDirty = true;
-    pushLog('强化「' + item.name + '」至 +' + item.lv + '，战力 ' + fmt(itemPower(item)), 'sys');
+    pushLog(SLOT_MAP[slotKey].name + '部位强化至 +' + (lv + 1), 'sys');
     beep(780, 0.07);
     render();
     save();
@@ -3241,9 +3464,9 @@
   }
 
   function salvageLow() {
-    const items = state.bag.filter((it) => it.r <= 1);
+    const items = state.bag.filter((it) => it.r <= 2);
     if (!items.length) {
-      floatText('没有凡品 / 灵品', '#9aa4b2');
+      floatText('没有凡品 / 灵品 / 玄品', '#9aa4b2');
       return;
     }
     let value = 0;
@@ -3301,6 +3524,7 @@
 
   function autoEquip(silent) {
     let changed = 0;
+    let vowSkipped = 0; // 凡衣修行戒律跳过的「确比穿戴件强」的专属件数（用于诚实提示）
 
     for (const slotDef of SLOTS) {
       let best = -1;
@@ -3308,7 +3532,10 @@
         if (state.bag[i].slot !== slotDef.key) continue;
         // 凡衣修行期间自动穿戴不碰专属件：破戒是玩家的显式选择（手动穿仍照常判破戒），
         // 不能让道童/一键穿戴替玩家默默破戒
-        if (state.ordeal.active === 'fanYi' && state.bag[i].special) continue;
+        if (state.ordeal.active === 'fanYi' && state.bag[i].special) {
+          if (itemScore(state.bag[i]) > itemScore(state.equipped[slotDef.key] || { power: -1, r: -1 })) vowSkipped++;
+          continue;
+        }
         if (best < 0 || itemScore(state.bag[i]) > itemScore(state.bag[best])) best = i;
       }
       if (best < 0) continue;
@@ -3323,7 +3550,9 @@
     }
 
     if (!changed) {
-      if (!silent) floatText('没有更强的装备', '#9aa4b2');
+      if (!silent) {
+        floatText(vowSkipped ? '凡衣修行中：更强的专属件不自动穿（手动穿戴会破戒）' : '没有更强的装备', '#9aa4b2');
+      }
       return 0;
     }
 
@@ -3355,16 +3584,19 @@
     rollBagToken('box');
 
     const crit = Math.random() < critChance();
-    const ri = rollRarity();
-    const item = makeItem(ri);
+    // 装备改为概率掉落：1% 掉装备，品质在掉落内按权重另掷；未掉落只有灵石/修为基础收益
+    const drop = Math.random() < EQUIP_CHANCE;
+    const ri = drop ? rollRarity() : -1;
+    const item = drop ? makeItem(ri) : null;
     let gain = Math.max(1, Math.floor(baseGain() * (crit ? CRIT_MULT : 1) * buffMult() * dayProdMult()));
 
     gain = addStones(gain); // 统一走 addStones：灵石周/时辰/天象/核心增益对主收益路径生效
-    state.exp += (1 + RARITIES[ri].exp) * (1 + 0.8 * state.realm) * (1 + 0.5 * state.ascensions) * expMult();
-    state.counts[ri]++;
-    if (ri > state.best) state.best = ri;
-
-    addItem(item);
+    state.exp += (drop ? 1 + RARITIES[ri].exp : 1) * (1 + 0.8 * state.realm) * (1 + 0.5 * state.ascensions) * expMult();
+    if (drop) {
+      state.counts[ri]++;
+      if (ri > state.best) state.best = ri;
+      addItem(item);
+    }
 
     let buffed = false;
     if (!buffOn() && Math.random() < BUFF_CHANCE) {
@@ -3378,17 +3610,28 @@
       ticket = true;
     }
 
-    if (!silent || ri >= 2) {
-      pushLog(
-        item.name + '（' + RARITIES[ri].name + '） 战力 +' + fmt(itemPower(item)) +
-        (crit ? ' · 暴击×10' : '') + ' · +' + fmt(gain) + ' 灵石',
-        'r' + ri
-      );
+    // 空开补偿：未掉装备时小概率掉 1~3 碎屑（走 addDust，吃周/时辰/天象/核心加成）
+    let dusted = 0;
+    if (!drop && Math.random() < DUST_CHANCE) {
+      dusted = addDust(1 + Math.floor(Math.random() * 3));
+    }
+
+    if (drop) {
+      if (!silent || ri >= 2) {
+        pushLog(
+          item.name + '（' + RARITIES[ri].name + '） 战力 +' + fmt(itemPower(item)) +
+          (crit ? ' · 暴击×10' : '') + ' · +' + fmt(gain) + ' 灵石',
+          'r' + ri
+        );
+      }
+    } else if (!silent) {
+      pushLog((crit ? '暴击×10 · ' : '') + '+' + fmt(gain) + ' 灵石', 'sys');
     }
     if (buffed) pushLog('拾得「聚气丹」，30 秒内收益翻倍', 'buff');
     if (ticket) pushLog('拾得「灵宠招募券」，可在灵宠面板招募伙伴', 'buff');
+    if (dusted) pushLog('拾得碎屑 ×' + dusted, 'buff');
 
-    if (!silent || ri >= 4) floatText('+' + fmt(gain), RARITIES[ri].color);
+    if (!silent || (drop && ri >= 4)) floatText('+' + fmt(gain), drop ? RARITIES[ri].color : '#9aa4b2');
     if (!bulk) {
       pulse();
       if (ri >= 3) burst(RARITIES[ri].color, ri >= 5 ? 18 : 10);
@@ -3398,36 +3641,36 @@
     return { ri, gain, item };
   }
 
-  /* ---------------- 反作弊：连点器检测 ---------------- */
+  /* ---------------- 反作弊：连点器（2026-10-31 服务端判定） ---------------- */
 
-  let clickTimes = [];
-  let botStrikes = 0;
+  // 判定与封禁时长全部由服务端裁定：客户端只随档上报累计手动点击数
+  //（state.clickCount，服务端 30s 滑窗累计 ≥200 ≈6.7 次/秒持续即判定点击器，
+  // 封点击 5 分钟），并按响应里的 clickBanUntil 阻止开箱点击。
   let botLockUntil = 0;
 
-  // 返回 false 表示本次手动开箱被拦截。
-  // 判定放宽（2026-10-28）：只有持续快速点击满 1 分钟（≈6.7 次/秒不间断）才认定连点器，
-  // 短窗快击是人类手速范围，不再单独触发
-  const BOT_WINDOW_MS = 60 * 1000;
-  const BOT_FAST_CLICKS = 400;
-  function botCheck(now) {
-    if (now < botLockUntil) return false;
-    clickTimes = clickTimes.filter((t) => now - t < BOT_WINDOW_MS);
-    clickTimes.push(now);
-    if (clickTimes.length >= BOT_FAST_CLICKS) {
-      botStrikes++;
-      const lockMs = botStrikes === 1 ? 3000 : botStrikes === 2 ? 15000 : 60000;
-      botLockUntil = now + lockMs;
-      clickTimes = [];
-      pushLog('手速异常，暂停手动开箱 ' + Math.round(lockMs / 1000) + ' 秒', 'sys');
-      floatText('检测到连点器', '#f87171');
-      beep(200, 0.2);
-      return false;
+  // 服务端下发的封禁落地：只在延长时提示一次，剩余时间每次点击尝试时展示
+  function applyClickBan(until) {
+    const t = Number(until) || 0;
+    if (t <= botLockUntil) return;
+    botLockUntil = t;
+    floatText('检测到连点器，封点击 5 分钟', '#f87171');
+    pushLog('手速异常，服务端封点击 ' + Math.ceil((t - Date.now()) / 1000) + ' 秒', 'sys');
+    beep(200, 0.2);
+  }
+
+  // 返回 true 表示本次手动开箱被拦截
+  function clickBlocked(now) {
+    if (now < botLockUntil) {
+      floatText('点击封禁中，剩 ' + Math.ceil((botLockUntil - now) / 1000) + ' 秒', '#f87171');
+      return true;
     }
-    return true;
+    return false;
   }
 
   function manualOpen(n) {
-    if (!botCheck(performance.now())) return;
+    // botLockUntil 是服务端 epoch 时间戳，比较与倒计时都用 Date.now() 同一口径
+    if (clickBlocked(Date.now())) return;
+    state.clickCount = (state.clickCount || 0) + 1;
     if (n > 1 && needAscension()) {
       floatText('飞升一次后才能连开十次', '#f87171');
       return;
@@ -3469,6 +3712,7 @@
     if (state.exp < cost) return;
     state.exp -= cost;
     state.realm++;
+    if (state.realm > state.realmPeak) state.realmPeak = state.realm;
     combatDirty = true;
     spawnDemon();
     pushLog('突破至「' + REALMS[state.realm] + '」', 'sys');
@@ -3490,17 +3734,20 @@
     }
     state.ordeal.active = '';
     state.ordeal.dirty = false;
-    const gain = Math.max(1, Math.floor(Math.sqrt(state.stones / 1e8)));
+    // 仙缘固定 +1/次（2026-11-01 用户指定）：原 √(灵石/1亿) 阶梯废除，飞升次数=仙缘点数；
+    // 1 亿灵石仍是发起飞升的门槛（上方 stones 判定），只是不再影响获得量
+    const gain = 1;
     state.ascensions += gain;
     state.stones = 0;
     state.exp = 0;
     state.realm = 0;
+    state.innerDemon = null; // 心魔随境界走：轮回重开，旧形与斩杀计数一并清空，突破后重新现形
     state.speedLv = 0;
     state.gainLv = 0;
     state.luckLv = 0;
     state.buffUntil = 0;
     combatDirty = true;
-    pushLog('飞升成功，得 ' + gain + ' 点仙缘，永久收益 +' + gain * 25 + '%', 'sys');
+    pushLog('飞升成功，得 ' + gain + ' 点仙缘，永久收益 +' + gain * 5 + '%', 'sys');
     burst('#f0d9a8', 26);
     beep(1046, 0.22);
     paintUserChip();
@@ -3511,58 +3758,55 @@
 
   /* ---------------- 离线收益 ---------------- */
 
-  function awardOffline() {
-    const now = Date.now();
-    const elapsed = Math.min(OFFLINE_CAP, Math.max(0, (now - state.lastSeen) / 1000));
-    state.lastSeen = now;
-    if (elapsed < 60) return;
+  // 离线收益（2026-11-01 全量迁移 P1）：整体上收服务端复算——时间起点
+  // （ledger.offline_at）、开箱期望、巡猎胜率、体力 clamp 全在服务端，
+  // 客户端调钟彻底失效；本地只应用响应并展示
+  async function awardOffline() {
+    let out = null;
+    try {
+      out = await worldFetch('/api/combat/offline', { method: 'POST', body: '{}' });
+    } catch (e) {
+      return; // 断网不结算（云端唯一持久层口径：服务端裁定为准）
+    }
+    if (!out) return;
+    if (out.stamina) {
+      STAMINA.v = out.stamina.stamina;
+      STAMINA.cap = out.stamina.cap;
+      STAMINA.nextAt = out.stamina.nextAt;
+      STAMINA.syncedAt = Date.now();
+      updateStaminaChip();
+    }
+    if (!out.settled) return;
 
-    const n = Math.floor((elapsed / interval()) * OFFLINE_EFF);
-    if (n <= 0) return;
-
-    const e = expected();
-    const stones = Math.floor(n * e.stone);
-    const exp = n * e.exp * (1 + 0.8 * state.realm) * (1 + 0.5 * state.ascensions) * expMult();
-
+    const elapsed = out.elapsed;
+    const n = out.opens;
+    const stones = out.stones;
+    const exp = out.exp;
     state.stones += stones;
     state.totalStones += stones;
     state.exp += exp;
     state.opens += n;
 
-    // 离线巡猎：自动巡猎开启且野外已解锁时，按 3 秒/场估算胜场、战利品与保底掉落
     let huntText = '';
     let huntDrops = 0;
-    if (state.autoHunt && unlockedMode('wild')) {
+    if (out.hunt) {
+      const h = out.hunt;
       ensureDaily();
-      const hunts = Math.floor((elapsed / 3) * OFFLINE_EFF);
-      const level = currentLevel('wild');
-      const ratio = playerCombatStats().power / Math.max(1, recommendedPower('wild', level));
-      const winRate = ratio >= 1.3 ? 0.95 : ratio >= 1 ? 0.8 : ratio >= 0.75 ? 0.5 : 0.2;
-      const wins = Math.floor(hunts * winRate);
-      if (wins > 0) {
-        const cfg = MODES.wild;
-        const stoneEach = Math.floor(contentReq('wild', level) * cfg.stone);
-        const expEach = Math.floor(contentReq('wild', level) * cfg.exp * expMult());
-        const trophyEach = 1 + Math.floor(level / cfg.trophyStep);
-        const huntStones = wins * stoneEach;
-        state.stones += huntStones;
-        state.totalStones += huntStones;
-        state.exp += wins * expEach;
-        addTrophy('wild', wins * trophyEach);
-        state.daily.wins += wins;
-
-        const oldKills = state.wildKills[level] || 0;
-        state.wildKills[level] = oldKills + wins;
-        const pity = Math.floor((oldKills + wins) / 12) - Math.floor(oldKills / 12);
-        const randomDrops = Math.floor(wins * 0.06);
-        for (let i = 0; i < pity + randomDrops && state.bag.length < bagCap(); i++) {
-          const slotKey = SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
-          grantSpecial('wild', level, slotKey);
-          huntDrops++;
-        }
-        huntText = '自动巡猎 <b>' + fmt(wins) + '</b> 胜 / ' + fmt(hunts) + ' 场<br>' +
-          '获得 <b>' + fmt(huntStones) + '</b> 灵石 · <b>' + fmt(wins * trophyEach) + '</b> 兽骨' +
+      state.daily.wins += h.wins;
+      if (h.wildKills) state.wildKills = Object.assign({}, h.wildKills); // 权威击杀计数对齐
+      if (h.trophy) state.beastBones = (state.beastBones || 0) + h.trophy;
+      for (const d of h.drops || []) {
+        d.id = state.itemSeq++;
+        grantSpecial(d);
+        huntDrops++;
+      }
+      if (h.wins > 0) {
+        huntText = '自动巡猎 <b>' + fmt(h.wins) + '</b> 胜 / ' + fmt(h.hunts) + ' 场' +
+          (h.clamped ? '（体力只够 ' + fmt(h.wins) + ' 场）' : '') + '<br>' +
+          '获得 <b>' + fmt(h.stones) + '</b> 灵石 · <b>' + fmt(h.trophy) + '</b> 兽骨' +
           (huntDrops ? ' · 掉落 <b>' + huntDrops + '</b> 件荒狩装备' : '');
+      } else {
+        huntText = '自动巡猎 <b>0</b> 胜 / ' + fmt(h.hunts) + ' 场（体力不足，未结算）';
       }
     }
 
@@ -3671,8 +3915,8 @@
     state[field] = (state[field] || 0) + n;
   }
 
-  function grantSpecial(mode, level, slotKey) {
-    const item = makeSpecialItem(mode, level, slotKey);
+  // 服务端生成的套装件入包（2026-11-01 全量迁移：生成在服务端，id 由调用方重编）
+  function grantSpecial(item) {
     const coll = state.setCollection[item.setKey];
     let newRecord = false;
     if (coll && SETS[item.setKey].pieces[item.slot] && !coll.includes(item.slot)) {
@@ -3691,107 +3935,210 @@
     return { item, result };
   }
 
-  function doBattle(mode, opts) {
+  /* ---------------- 征战体力（2026-11-01，服务端裁定） ----------------
+   * 一场战斗 1 点，每日 300 点（本地日回满），每 5 分钟恢复 1 点，上限 300。
+   * 数值唯一权威在服务端（users 表三列），客户端只持最近一次同步的展示快照：
+   * 每场战斗（含扫荡/复战/自动巡猎）前必须 POST 扣点成功才开打，扣不动（429）
+   * 就打不了——改内存/断网都无法绕过服务端闸门。 */
+  const STAMINA_REGEN_MS = 5 * 60 * 1000;
+  const STAMINA = { v: 0, cap: 300, nextAt: 0, syncedAt: 0 };
+
+  async function staminaRefresh() {
+    try {
+      const out = await worldFetch('/api/stamina');
+      STAMINA.v = out.stamina; STAMINA.cap = out.cap; STAMINA.nextAt = out.nextAt;
+      STAMINA.syncedAt = Date.now();
+    } catch (e) { /* 展示快照维持旧值；下次战斗/切页回来再同步 */ }
+    updateStaminaChip();
+  }
+
+  // 体力扣点已并入 /api/combat/fight 事务（2026-11-01 全量迁移 P1），
+  // 独立 spend 端点保留给运维 curl；客户端只剩展示快照同步。
+  // 展示插值：服务端快照 + 本地按 5 分钟/点推进（每次真实同步会矫正）
+  function staminaDisplay() {
+    if (!STAMINA.syncedAt) return null;
+    if (STAMINA.v >= STAMINA.cap) return { v: STAMINA.cap, cap: STAMINA.cap, nextAt: 0 };
+    const gained = Math.floor(Math.max(0, Date.now() - STAMINA.syncedAt) / STAMINA_REGEN_MS);
+    const v = Math.min(STAMINA.cap, STAMINA.v + gained);
+    const nextAt = v >= STAMINA.cap ? 0 : STAMINA.nextAt;
+    return { v, cap: STAMINA.cap, nextAt };
+  }
+
+  let staminaChipText = '';
+  function updateStaminaChip() {
+    const el = document.getElementById('combatStamina');
+    if (!el) return;
+    const s = staminaDisplay();
+    const text = !s ? '…'
+      : s.nextAt ? s.v + ' / ' + s.cap + '（' + fmtDuration(Math.max(0, s.nextAt - Date.now())) + '）'
+        : s.v + ' / ' + s.cap;
+    if (text !== staminaChipText) {
+      staminaChipText = text;
+      el.textContent = text;
+    }
+  }
+
+  async function doBattle(mode, opts) {
     const modeCfg = MODES[mode];
     if (!modeCfg || !unlockedMode(mode)) return null;
     const auto = !!(opts && opts.auto);
+    // 扫荡（2026-10-31）：opts.sweepLevel 指定已通关关卡 instant 重打——
+    // 一律 first=false（无首通奖励/里程碑套装/进度推进），闯关/爬塔按「再战」5 折、野外全额；
+    // 野外击杀计数照常（保底套装口径不变），闯关/爬塔复战套装掉率与「再战」一致（MODE_SET_RATE）
+    const sweep = !!(opts && opts.sweepLevel != null);
     if (!auto) state.autoHunt = false;
     ensureDaily();
     state.lastScene = mode; // 离线驻留场景（结算文案用）
 
     const now = performance.now();
-    if (auto && now < battleCooldownUntil) return null;
+    if (auto && !sweep && now < battleCooldownUntil) return null; // 扫荡免冷却：连点每击必应
     if (!auto && $('battleModal').classList.contains('show')) return;
     battleCooldownUntil = now + 450;
 
-    const level = currentLevel(mode);
-    const replay = mode !== 'wild' && mode !== 'endless' &&
-      (mode === 'tower' ? state.towerCleared : state.stageCleared) >= modeCfg.max;
-    const first = mode === 'endless' ? true
-      : mode === 'wild' ? !state.wildCleared.includes(level) : !replay;
-    const enemy = enemyFor(mode, level);
-    const player = playerCombatStats();
-    const elb = elementBonus(enemy.el);
-    player.atk *= elb.mult;
-    const result = simulateBattle(player, enemy);
-    const rewardScale = replay ? 0.5 : 1;
-    const bossScale = enemy.boss ? 1.8 : 1;
-    const weekendScale = isWeekend() ? 2 : 1;
+    // —— 服务端结算（2026-11-01 全量迁移 P1）：胜负/奖励/进度/掉落/体力全部服务端
+    // 裁定，本地只留「扫荡要不要加购」的预判（服务端复核）。关卡语义（打第几关、
+    // 是否首通/复战）也以服务端裁定为准，客户端不再自行推断 ——
+    let sweepLevel = null;
+    let needBuy = false;
+    if (sweep) {
+      sweepLevel = Math.floor(opts.sweepLevel);
+      const clearedNow = mode === 'tower' ? state.towerCleared : state.stageCleared;
+      const ok = mode === 'wild'
+        ? state.wildCleared.includes(sweepLevel)
+        : sweepLevel >= 1 && sweepLevel <= clearedNow;
+      if (!ok) return null;
+      const used = (state.daily.sweep && state.daily.sweep[mode]) || 0;
+      needBuy = used >= SWEEP_DAILY_FREE;
+      if (needBuy) {
+        const bought = (state.daily.sweepBought && state.daily.sweepBought[mode]) || 0;
+        if (bought >= SWEEP_BUY_MAX) {
+          floatText('今日扫荡加购次数已用完', '#f87171');
+          return null;
+        }
+        if (state.stones < SWEEP_BUY_COST) {
+          floatText('灵石不足（加购需 ' + fmt(SWEEP_BUY_COST) + '）', '#f87171');
+          return null;
+        }
+      }
+    } else if (mode === 'wild') {
+      // 本地预判野外复战额度（服务端复核；首通挑战不受限）
+      const zone = state.wildZone || 1;
+      if (state.wildCleared.includes(zone) && (state.daily.wildRepeat || 0) >= WILD_REPEAT_DAILY) {
+        if (auto) {
+          state.autoHunt = false;
+          combatDirty = true;
+          pushLog('已战胜怪物今日 50 次挑战额度已用完，自动巡猎停止', 'sys');
+        }
+        floatText('已战胜怪物每日挑战已达上限（' + WILD_REPEAT_DAILY + '/' + WILD_REPEAT_DAILY + '）', '#f87171');
+        return null;
+      }
+    }
 
-    if (result.win) {
+    let out;
+    try {
+      const body = sweep
+        ? { mode, sweepLevel, buy: needBuy }
+        : (mode === 'wild' ? { mode, level: state.wildZone || 1 } : { mode });
+      out = await worldFetch('/api/combat/fight', { method: 'POST', body: JSON.stringify(body) });
+    } catch (e) {
+      const msg = (e && e.message) || '';
+      if (e && e.status === 429 && /体力不足/.test(msg)) {
+        STAMINA.v = 0;
+        STAMINA.nextAt = Date.now() + STAMINA_REGEN_MS;
+        updateStaminaChip();
+        if (auto) {
+          state.autoHunt = false;
+          combatDirty = true;
+          pushLog('体力耗尽，自动巡猎停止（每日 300 点，每 5 分钟恢复 1 点）', 'sys');
+        }
+        floatText(msg, '#f87171');
+      } else if (e && e.status === 429 && /挑战上限/.test(msg)) {
+        if (auto) {
+          state.autoHunt = false;
+          combatDirty = true;
+          pushLog('已战胜怪物今日 50 次挑战额度已用完，自动巡猎停止', 'sys');
+        }
+        floatText(msg, '#f87171');
+      } else if (!auto) {
+        floatText(msg || '网络异常，请稍后再战', '#f87171');
+      }
+      // 静默失败（auto/网络抖动）由自动巡猎心跳与玩家下次点击自然重试
+      return null;
+    }
+
+    // 体力展示快照以响应为准（扣点已在服务端事务内完成）
+    if (out.stamina) {
+      STAMINA.v = out.stamina.stamina;
+      STAMINA.cap = out.stamina.cap;
+      STAMINA.nextAt = out.stamina.nextAt;
+      STAMINA.syncedAt = Date.now();
+      updateStaminaChip();
+    }
+
+    const enemy = out.enemy;
+    const result = out.result;
+    const win = !!out.win;
+    const level = out.level;
+    const first = !!out.first;
+    const replay = !!out.replay;
+    const player = playerCombatStats(); // 仅战报展示用（结算已在服务端完成）
+
+    if (win) {
       rollBagToken('battle');
-      const stoneGain = Math.floor(
-        contentReq(mode, level) * modeCfg.stone * bossScale * (first ? 1.5 : 1) * rewardScale * weekendScale * dayProdMult()
-      );
-      const expGain = Math.floor(
-        contentReq(mode, level) * modeCfg.exp * bossScale * (first ? 1.5 : 1) * rewardScale * expMult()
-      );
-      const trophy = trophyGain(mode, level, enemy.boss, first);
-
-      addStones(stoneGain);
-      state.exp += expGain;
-      addTrophy(mode, trophy);
+      // 灵石/修为服务端已含全部增益：平加入账，不走 addStones 二次放大
+      state.stones += out.stoneGain;
+      state.totalStones += out.stoneGain;
+      state.exp += out.expGain;
+      const tField = out.trophyField || TROPHIES[mode].field;
+      state[tField] = (state[tField] || 0) + out.trophy;
       state.daily.wins++;
       ensureWeekly();
       state.weekly.wins++;
       ensureBounty();
-      bountyProgress('wins', 1); // 与其余悬赏同走 bountyProgress（带封顶，字段口径不漂移）
+      bountyProgress('wins', 1);
       bountyProgress('el_' + enemy.el, 1);
       state.battleStats.dmg += result.dealt;
       state.battleStats.taken += result.taken;
       state.battleStats.wins++;
       state.bestiary[enemy.base] = (state.bestiary[enemy.base] || 0) + 1;
-      // 藏宝图残片：战斗胜利概率掉落（解锁秘境图后）
-      if (featureOpen('treasure') && Math.random() < TREASURE_DROP) {
-        state.treasure.frags = Math.min(1e6, state.treasure.frags + 1);
+      if (out.frag) {
+        state.treasure.frags = Math.min(1e6, (state.treasure.frags || 0) + 1);
         if (state.treasure.frags % TREASURE_FRAG_COST === 0) {
           pushLog('拾得藏宝图残片，已集齐 ' + state.treasure.frags + ' 片', 'sys');
         }
       }
-
-      if (mode === 'wild') {
-        state.wildKills[level] = (state.wildKills[level] || 0) + 1;
-        if (first) state.wildCleared.push(level);
-      } else if (mode === 'endless') {
-        // 只进不退：老档未飞升时无尽被钉在门槛层，不得把既有最高层数打回去
-        state.endlessBest = Math.max(state.endlessBest, level);
-      } else if (!replay) {
-        if (mode === 'tower') state.towerCleared = level;
-        else state.stageCleared = level;
-        syncFeatureUnlocks(true);
+      // 进度以服务端账本为准（权威镜像对齐）
+      if (out.progress) {
+        state.towerCleared = out.progress.towerCleared;
+        state.stageCleared = out.progress.stageCleared;
+        state.endlessBest = out.progress.endlessBest;
+        state.wildCleared = out.progress.wildCleared.slice();
+        state.wildKills = Object.assign({}, out.progress.wildKills);
       }
-
-      // 套装件随机掉率 2026-10-30 减半（野外 3%、无尽/复战 4%、野怪 20 杀一保底）：
-      // 高等级装备更难获取；首通里程碑与满层/满野首通必掉是进度奖励骨架，不动
+      if (mode === 'wild' && !sweep) {
+        // 战胜后自动选择下一个怪物（口径同前）：仅「挑战」胜利顺势选中刚解锁的下一区
+        const nextZone = level + 1;
+        if (nextZone <= wildMaxUnlocked() && nextZone !== state.wildZone) {
+          state.wildZone = nextZone;
+          wildGroupOpen = -1;
+        }
+      }
+      if (mode === 'tower' || mode === 'stage') syncFeatureUnlocks(true);
       let special = null;
-      const milestoneSlot = MILESTONES[mode] ? MILESTONES[mode][level] : null;
-      if (first && milestoneSlot) {
-        special = grantSpecial(mode, level, milestoneSlot);
-      } else if (mode === 'wild') {
-        const kills = state.wildKills[level];
-        if (first && level === WILD_MAX) {
-          special = grantSpecial(mode, level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key);
-        } else if (kills % 20 === 0 || Math.random() < 0.03) {
-          special = grantSpecial(mode, level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key);
-        }
-      } else if (mode === 'endless') {
-        if (Math.random() < 0.04) {
-          special = grantSpecial('tower', level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key);
-        }
-      } else if (first && level === modeCfg.max) {
-        special = grantSpecial(mode, level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key);
-      } else if (replay && Math.random() < 0.04) {
-        special = grantSpecial(mode, level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key);
+      if (out.special) {
+        out.special.id = state.itemSeq++; // 服务端发件不带 id，入包时本地重编
+        special = grantSpecial(out.special);
       }
 
       lastBattles[mode] = {
-        mode, level, win: true, result, enemy, player, stoneGain, expGain,
-        trophy, special, first, replay,
+        mode, level, win: true, result, enemy, player,
+        stoneGain: out.stoneGain, expGain: out.expGain,
+        trophy: out.trophy, special, first, replay,
       };
 
       pushLog(
-        '通关「' + enemy.name + '」 · +' + fmt(stoneGain) + ' 灵石 · +' +
-        fmt(expGain) + ' 修为 · +' + trophy + ' ' + TROPHIES[mode].name,
+        '通关「' + enemy.name + '」 · +' + fmt(out.stoneGain) + ' 灵石 · +' +
+        fmt(out.expGain) + ' 修为 · +' + out.trophy + ' ' + TROPHIES[mode].name,
         'special'
       );
       if (enemy.boss) chime([523, 659, 784, 1046]);
@@ -3806,6 +4153,13 @@
       beep(220, 0.12);
     }
 
+    // 权威计数镜像对齐（扫荡/野外复战每日额度以服务端为准）
+    if (out.counters) {
+      if (out.counters.sweepUsed != null) state.daily.sweep[mode] = out.counters.sweepUsed;
+      if (out.counters.sweepBought != null) state.daily.sweepBought[mode] = out.counters.sweepBought;
+      if (out.counters.wildRepeatUsed != null) state.daily.wildRepeat = out.counters.wildRepeatUsed;
+    }
+
     combatDirty = true;
     render();
     paintBag(true);
@@ -3813,6 +4167,68 @@
 
     if (!auto) openBattleModal(lastBattles[mode]);
     return lastBattles[mode];
+  }
+
+  // 扫荡入口（2026-10-31）：当前玩法选中的已通关关卡 instant 重打一次。
+  // 每日每玩法免费 10 次；用完后自动按 20 万/次加购（每日至多加购 10 次）。
+  // 2026-11-01 起扫荡也是一场战斗：doBattle 内先过服务端体力闸门（1 点/场）。
+  async function sweepBattle() {
+    const mode = uiMode;
+    if (mode !== 'stage' && mode !== 'tower' && mode !== 'wild') {
+      floatText('无尽没有扫荡', '#f87171');
+      return;
+    }
+    if (!unlockedMode(mode)) {
+      floatText('尚未解锁该玩法', '#f87171');
+      return;
+    }
+    ensureDaily();
+    const used = state.daily.sweep[mode] || 0;
+    const needBuy = used >= SWEEP_DAILY_FREE;
+    if (needBuy) {
+      const bought = state.daily.sweepBought[mode] || 0;
+      if (bought >= SWEEP_BUY_MAX) {
+        floatText('今日扫荡次数已用完', '#f87171');
+        return;
+      }
+      if (state.stones < SWEEP_BUY_COST) {
+        floatText('灵石不足（加购需 ' + fmt(SWEEP_BUY_COST) + '）', '#f87171');
+        return;
+      }
+    }
+    let level;
+    if (mode === 'wild') {
+      level = state.wildZone || 1;
+      if (!state.wildCleared.includes(level)) {
+        floatText('先通关本区域才能扫荡', '#f87171');
+        return;
+      }
+    } else {
+      const cleared = mode === 'tower' ? state.towerCleared : state.stageCleared;
+      level = sweepPick[mode] > 0 ? Math.min(sweepPick[mode], cleared) : cleared;
+      if (level < 1) {
+        floatText('先通关后再扫荡', '#f87171');
+        return;
+      }
+    }
+    const res = await doBattle(mode, { auto: true, sweepLevel: level, buy: needBuy });
+    if (res) {
+      // 扫荡是一场真实战斗：体力/次数/加购费用在服务端事务内即扣（胜负皆耗），
+      // 次数镜像已由 doBattle 按 counters 对齐；本地只需补记加购灵石消耗
+      if (needBuy) {
+        state.stones -= SWEEP_BUY_COST;
+        pushLog('扫荡加购：-' + fmt(SWEEP_BUY_COST) + ' 灵石（今日 ' +
+          (state.daily.sweepBought[mode] || 0) + '/' + SWEEP_BUY_MAX + ' 次）', 'sys');
+      }
+      if (res.win) {
+        floatText('扫荡成功：+' + fmt(res.stoneGain) + ' 灵石 · +' + fmt(res.expGain) + ' 修为', '#f0d9a8');
+      } else {
+        floatText('扫荡战败（体力与扫荡次数照常消耗）', '#f87171');
+      }
+    }
+    combatDirty = true;
+    renderCombat();
+    save();
   }
 
   function upgradeTraining(key) {
@@ -3833,29 +4249,26 @@
     save();
   }
 
-  /* ---------------- 工坊：洗练 / 宝石（只对已穿戴装备开放） ---------------- */
+  /* ---------------- 工坊：洗练 / 宝石（部位化后：宝石走槽位，词条走穿戴件） ---------------- */
 
-  let forgeItemId = 0;
+  let forgeSlot = '';
   let forgePickerOpen = false;
   let forgeMsgTimer = null;
 
+  // 当前工坊部位的穿戴件（洗练/升星/继承用；宝石直接走 slotGems）
   function forgeTarget() {
-    for (const s of SLOTS) {
-      const it = state.equipped[s.key];
-      if (it && it.id === forgeItemId) return it;
-    }
-    return null;
+    return forgeSlot ? (state.equipped[forgeSlot] || null) : null;
   }
 
-  function openForge(id) {
-    forgeItemId = id;
+  function openForge(slotKey) {
+    forgeSlot = slotKey;
     forgePickerOpen = false;
     renderForge();
     $('forgeModal').classList.add('show');
   }
 
   function closeForge() {
-    forgeItemId = 0;
+    forgeSlot = '';
     forgePickerOpen = false;
     $('forgeModal').classList.remove('show');
   }
@@ -3877,7 +4290,7 @@
 
     $('forgeDust').textContent = fmt(state.dust);
     $('forgeKicker').textContent =
-      it.name + (it.lv ? ' +' + it.lv : '') + ' · ' + RARITIES[it.r].name +
+      it.name + ' · ' + RARITIES[it.r].name +
       ' · 已洗练 ' + (it.rerolls || 0) + ' 次';
 
     const count = AFFIX_COUNT[it.r] || 0;
@@ -3903,14 +4316,15 @@
         '<div class="forge-reroll">' +
           '<button class="btn" data-act="reroll">洗练 ' + fmt(rc.cost) + resIcon('stones') +
             (rc.coupon ? '（券）' : '') + '</button>' +
-          '<p>锁定 1 条，其余重随机<br>费用每次 ×1.3' +
+          '<p>可锁多条，其余重随机<br>每锁 1 条费用 ×2 · 每次洗练 ×1.3' +
             (state.rerollCoupon ? '<br>持有半价券 ×' + state.rerollCoupon : '') + '</p>' +
         '</div>';
       const rerollBtn = affixBox.querySelector('button[data-act="reroll"]');
       if (rerollBtn) rerollBtn.disabled = state.stones < rc.cost;
     }
 
-    const gems = it.gems || [];
+    // 宝石区走部位孔位（2026-10-31 部位化），与穿戴件无关
+    const gems = slotGemList(forgeSlot);
     let gemHtml =
       '<p class="forge-section-title">宝石（' + gems.filter(Boolean).length + ' / ' + gems.length + '）</p>' +
       gems.map((g, i) => g
@@ -3936,14 +4350,16 @@
       }
     }
     if (fuses.length) {
-      gemHtml += '<p class="forge-section-title">宝石融合（三合一）</p>' + fuses.map((f) =>
-        '<div class="affix-row">' +
+      const fuseDest = gems.indexOf(null); // 融合入孔 = 首个空孔，孔费按孔位递增
+      gemHtml += '<p class="forge-section-title">宝石融合（三合一）</p>' + fuses.map((f) => {
+        const fcost = fuseDest < 0 ? Infinity : gemCost(f.k, f.t + 1, fuseDest + 1);
+        return '<div class="affix-row">' +
           '<span class="affix-name">' + GEM_TIERS[f.t - 1].name + affixDef(f.k).name + '石 ×' + f.n + '</span>' +
-          '<b>→ ' + GEM_TIERS[f.t].name + '</b>' +
+          '<b>→ ' + GEM_TIERS[f.t].name + '（' + fmt(fcost) + ' 碎屑）</b>' +
           '<button class="mini" data-act="fuse" data-k="' + f.k + '" data-t="' + f.t + '"' +
-            (gems.includes(null) ? '' : ' disabled') + '>融合</button>' +
-        '</div>'
-      ).join('');
+            (fuseDest >= 0 && state.dust >= fcost ? '' : ' disabled') + '>融合</button>' +
+        '</div>';
+      }).join('');
     }
     $('forgeGems').innerHTML = gemHtml;
 
@@ -3953,16 +4369,18 @@
       picker.innerHTML = '';
     } else {
       picker.classList.remove('hidden');
+      const destIdx = gems.indexOf(null); // 镶嵌固定落首个空孔，价格按该孔位展示
       picker.innerHTML =
-        '<p class="forge-section-title">选择宝石（合成即镶嵌）</p>' +
+        '<p class="forge-section-title">选择宝石（合成即镶嵌 · 第 ' + (destIdx + 1) + ' 孔）</p>' +
         AFFIXES.map((def) =>
           '<div class="gem-row"><span>' + def.name + '</span>' +
-          GEM_TIERS.map((tier, ti) =>
-            '<button class="mini" data-act="socket" data-k="' + def.k + '" data-t="' + (ti + 1) + '"' +
-              (state.dust < tier.dust ? ' disabled' : '') + '>' +
-              tier.name + ' +' + fmtPct(GEM_VALUES[def.k][ti]) + '<br>' + tier.dust + resIcon('dust') +
-            '</button>'
-          ).join('') +
+          GEM_TIERS.map((tier, ti) => {
+            const cost = gemCost(def.k, ti + 1, destIdx + 1);
+            return '<button class="mini" data-act="socket" data-k="' + def.k + '" data-t="' + (ti + 1) + '"' +
+              (state.dust < cost ? ' disabled' : '') + '>' +
+              tier.name + ' +' + fmtPct(GEM_VALUES[def.k][ti]) + '<br>' + fmt(cost) + resIcon('dust') +
+            '</button>';
+          }).join('') +
           '</div>'
         ).join('');
     }
@@ -3995,8 +4413,10 @@
     if (a.lock) {
       delete a.lock;
     } else {
-      if ((it.affixes || []).some((x) => x.lock)) {
-        forgeMsg('最多锁定 1 条词条');
+      // 多锁（2026-11-01 用户指定）：条数不限价随锁涨，但至少留 1 条可洗练
+      const freeN = (it.affixes || []).filter((x) => !x.lock).length;
+      if (freeN <= 1) {
+        forgeMsg('至少保留 1 条可洗练词条');
         return;
       }
       a.lock = true;
@@ -4004,9 +4424,10 @@
     renderForge();
   }
 
-  // 洗练实际费用：持半价券自动折半并消耗一张；工坊周全局 -30%
+  // 洗练实际费用：锁定条数 2^n 指数加价在前；持半价券自动折半并消耗一张；工坊周全局 -30%
   function rerollCostNow(it) {
-    let cost = rerollCost(it);
+    const lockN = (it.affixes || []).filter((a) => a.lock).length;
+    let cost = rerollCost(it, lockN);
     if (weekIs('forge')) cost = Math.ceil(cost * 0.7);
     let coupon = false;
     if (state.rerollCoupon > 0) {
@@ -4025,9 +4446,8 @@
       return;
     }
     if (coupon) state.rerollCoupon--;
-    const lockIdx = (it.affixes || []).findIndex((a) => a.lock);
     state.stones -= cost;
-    rerollAffixes(it, lockIdx);
+    rerollAffixes(it);
     if (state.ordeal.active === 'wuJiang') {
       state.ordeal.dirty = true;
       pushLog('无匠修行破戒：动用了洗练', 'sys');
@@ -4044,8 +4464,8 @@
     save();
   }
 
-  function forgeSocket(it, k, t) {
-    const res = socketGem(it, k, t);
+  function forgeSocket(slotKey, k, t) {
+    const res = socketGem(slotKey, k, t);
     if (!res.ok) {
       forgeMsg(res.msg);
       return;
@@ -4056,14 +4476,14 @@
     state.daily.forge++;
     ensureBounty();
     bountyProgress('forge', 1);
-    pushLog('「' + it.name + '」镶嵌' + gemName({ k, t }), 'sys');
+    pushLog(SLOT_MAP[slotKey].name + '部位镶嵌' + gemName({ k, t }), 'sys');
     beep(760, 0.07);
     renderForge();
     save();
   }
 
-  function forgeUnsocket(it, idx) {
-    const g = unsocketGem(it, idx);
+  function forgeUnsocket(slotKey, idx) {
+    const g = unsocketGem(slotKey, idx);
     if (!g) return;
     equipDirty = true;
     combatDirty = true;
@@ -4090,24 +4510,6 @@
     // 道童未解锁（筑基前）不做任何自动操作；黑市代购还需黑市本身解锁（金丹）
     const stewardOn = featureOpen('steward');
     if (stewardOn && state.steward.autoWear) autoEquip(true);
-
-    if (stewardOn && state.steward.autoEnhance > 0) {
-      let changed = false;
-      for (const slotDef of SLOTS) {
-        const it = state.equipped[slotDef.key];
-        if (!it || it.lv >= state.steward.autoEnhance) continue;
-        while (it.lv < state.steward.autoEnhance && state.stones >= enhanceCost(it)) {
-          state.stones -= enhanceCost(it);
-          it.lv++;
-          changed = true;
-        }
-      }
-      if (changed) {
-        equipDirty = true;
-        combatDirty = true;
-        pushLog('道童自动强化完成', 'sys');
-      }
-    }
 
     if (stewardOn && featureOpen('market') && state.steward.autoMarket.length) {
       for (const p of marketPicks()) {
@@ -4218,10 +4620,8 @@
       slot: slotKey,
       name: pool[Math.floor(Math.random() * pool.length)] + '（器）',
       power: Math.max(1, Math.round(BASE_POWER[4] * (0.9 + Math.random() * 0.3))),
-      lv: 0,
       el: randEl(),
       affixes: rollAffixes(4),
-      gems: emptyGems(4),
     };
     addItem(item);
     bagDirty = true;
@@ -4250,15 +4650,21 @@
     }
     let resText = '';
     let resCls = '';
+    // 数值随结果一并返回：连开汇总不再从文案反解析——fmt 会把灵石输出成
+    // 「30万」这类带单位串，正则永远匹配不到，汇总灵石恒为 0（2026-11-01 修）
+    let resStones = 0;
+    let resDust = 0;
     if (outcome.type === 'none') {
-      addStones(200);
-      resText = outcome.text + '，回手 200 灵石';
+      addStones(20000);
+      resStones = 20000;
+      resText = outcome.text + '，回手 2万 灵石';
       resCls = 'g-none';
-      pushLog('赌石：' + outcome.text + '，得回手 200 灵石', 'sys');
+      pushLog('赌石：' + outcome.text + '，得回手 2万 灵石', 'sys');
       beep(300, 0.1);
     } else if (outcome.type === 'dust') {
       const n = Math.floor(outcome.min + Math.random() * (outcome.max - outcome.min));
       addDust(n);
+      resDust = n;
       resText = outcome.text + '，+' + n + ' 碎屑';
       resCls = 'g-dust';
       pushLog('赌石：' + outcome.text + '，+' + n + ' 碎屑', 'special');
@@ -4266,6 +4672,7 @@
     } else if (outcome.type === 'stones') {
       const n = Math.floor(outcome.min + Math.random() * (outcome.max - outcome.min));
       addStones(n);
+      resStones = n;
       resText = outcome.text + '，+' + fmt(n) + ' 灵石';
       resCls = 'g-stone';
       pushLog('赌石：' + outcome.text + '，+' + fmt(n) + ' 灵石', 'special');
@@ -4280,7 +4687,7 @@
       floatText('璞中藏珍！「' + item.name + '」', '#ffd479');
       chime([659, 784, 1046, 1318]);
     }
-    return { text: resText, cls: resCls };
+    return { text: resText, cls: resCls, stones: resStones, dust: resDust };
   }
 
   // 弹层再开按钮的次数随上一次操作走（1 = 再开一次 / 10 = 再开十次）
@@ -4288,11 +4695,23 @@
 
   function doGamble(times) {
     const n = times || 1;
+    ensureDaily();
+    const opened = state.daily.gamble | 0;
+    const left = Math.max(0, GAMBLE_DAILY_MAX - opened);
+    if (left <= 0) {
+      floatText('今日璞玉已开满 ' + GAMBLE_DAILY_MAX + ' 次，明天再来', '#f87171');
+      return;
+    }
+    if (n > left) {
+      floatText('今日璞玉只剩 ' + left + ' 次（单日上限 ' + GAMBLE_DAILY_MAX + '）', '#f87171');
+      return;
+    }
     const cost = GAMBLE_COST * n;
     if (state.stones < cost) {
       floatText('灵石不足（需 ' + fmt(cost) + '）', '#f87171');
       return;
     }
+    state.daily.gamble = opened + n;
     const results = [];
     for (let i = 0; i < n; i++) results.push(gambleOnce());
     lastGambleTimes = n;
@@ -4306,9 +4725,8 @@
     } else {
       let sumStones = 0, sumDust = 0, items = 0;
       for (const r of results) {
-        const m = r.text.match(/\+([\d,]+) 灵石/);
-        if (m) sumStones += Number(m[1].replace(/,/g, ''));
-        if (r.cls === 'g-dust') sumDust += Number(r.text.match(/\+(\d+) 碎屑/)[1]);
+        sumStones += r.stones || 0;
+        sumDust += r.dust || 0;
         if (r.cls === 'g-item') items++;
       }
       el.textContent = '连开 ' + n + ' 块璞玉：' +
@@ -4322,12 +4740,11 @@
 
     // 结果弹层：逐条明细 + 汇总；再开按钮文案随本次次数
     $('gambleModalList').innerHTML = results.map((r, i) =>
-      '<p class="gamble-result ' + r.cls + '" style="margin:6px 0 0">' +
+      '<p class="gamble-result ' + r.cls + '">' +
       (n > 1 ? '<b>#' + (i + 1) + '</b> ' : '') + r.text + '</p>'
     ).join('');
-    $('gambleModalSum').textContent = n > 1
-      ? '共 ' + n + ' 块璞玉 · 消耗 ' + fmt(cost) + ' 灵石'
-      : '消耗 ' + fmt(cost) + ' 灵石';
+    $('gambleModalSum').textContent = (n > 1 ? '共 ' + n + ' 块璞玉 · ' : '') +
+      '消耗 ' + fmt(cost) + ' 灵石 · 当前灵石 ' + fmt(state.stones);
     $('gambleModalAgain').textContent = n > 1 ? '再开十次' : '再开一次';
     $('gambleModalAgain').dataset.times = String(n);
     $('gambleModal').classList.add('show');
@@ -4473,6 +4890,26 @@
     save();
   }
 
+  // 秘境图事件弹层（2026-10-31）：矿/尘/窟/挖宝/偶遇结算后统一弹层展示收获
+  function showMapEvent(title, bodyHtml) {
+    $('mapEventTitle').textContent = title;
+    $('mapEventBody').innerHTML = bodyHtml;
+    // data-c 颜色经 CSSOM 落地：CSP style-src 'self' 拦内联 style 属性（含偶遇 NPC 名）；
+    // 明色下按 themeInk 压暗，防亮色名落在纸底弹卡上看不清（2026-11-01 修）
+    $('mapEventBody').querySelectorAll('[data-c]').forEach((el) => { el.style.color = themeInk(el.dataset.c); });
+    $('mapEventModal').classList.add('show');
+  }
+  const MAP_EVENT_FLAVOR = {
+    stones: ['矿脉在锄下泛起金芒。', '石屑纷飞，露出一窝晶亮的灵石。', '这窝矿埋得深，运气不错。'],
+    dust: ['碎屑堆里翻出些炼器剩料。', '拂开浮土，是一小堆可用的碎屑。', '别人看不上的零碎，攒起来也是家底。'],
+    shrine: ['洞中石壁刻满旧符文，深处藏着一窖灵石。', '窟里灵气凝而不散，满地灵石发着微光。', '这是哪位散修留下的洞府遗藏。'],
+    dig: ['铲子落处金光乍现。', '图上的记号分毫不差。'],
+  };
+  const mapFlavor = (k) => MAP_EVENT_FLAVOR[k][Math.floor(Math.random() * MAP_EVENT_FLAVOR[k].length)];
+  const mapEventHtml = (gainLine, flavorKey) =>
+    '<p class="map-event-line">' + gainLine + '</p>' +
+    '<p class="map-event-flavor">' + mapFlavor(flavorKey) + '</p>';
+
   function doDigTreasure() {
     if (state.treasure.maps <= 0 || state.treasure.at < 0) return;
     state.treasure.maps--;
@@ -4501,6 +4938,7 @@
       floatText('镇图之宝！「' + item.name + '」', '#ffd479');
     }
     pushLog('挖宝：' + text, 'special');
+    showMapEvent('挖宝', mapEventHtml(esc(text), 'dig'));
     chime([659, 784, 1046]);
     render();
     save();
@@ -4650,7 +5088,7 @@
       '<p class="hint">鱼饵 ' + state.fishing.bait + ' 枚（每日 0 点补 5）· 已钓 ' + state.fishing.casts +
         ' 竿 · 最旺 ' + best + '</p>' +
       '<div class="fish-track"><span class="fish-zone"></span>' +
-        '<span class="fish-cursor" id="fishCursor"' + (fishRod ? '' : ' style="display:none"') + '></span></div>' +
+        '<span class="fish-cursor' + (fishRod ? '' : ' hidden') + '" id="fishCursor"></span></div>' +
       '<button class="btn wide" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + '>' +
         (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
       (fishMsg
@@ -4757,7 +5195,7 @@
       const stock = key === 'ore' ? state.gather.ore : state.gather.herb;
       return (
         '<div class="cave-row">' +
-          '<span class="cave-icon">' + def.icon + '</span>' +
+          '<span class="cave-icon" aria-hidden="true">' + (GATHER_ICONS[key] || def.icon) + '</span>' +
           '<div class="cave-main"><span class="cave-name">' + def.name + ' <em>' + node.lv + ' 级</em></span>' +
           '<p class="cave-desc">' + (busy ? '采集中 · 剩 ' + left : canCollect
             ? '可收取 ' + gatherYield(key) + ' ' + (key === 'ore' ? '矿石' : '灵药')
@@ -4769,7 +5207,7 @@
               (busy ? '采集中' : '采集') + '</button>' +
             '<button class="mini ghost" data-gather="up" data-key="' + key + '"' +
               (node.lv >= GATHER_MAX_LV || state.stones < gatherCost(node.lv) ? ' disabled' : '') + '>' +
-              (node.lv >= GATHER_MAX_LV ? '已满级' : '扩建 ' + fmt(gatherCost(node.lv))) + '</button>' +
+              (node.lv >= GATHER_MAX_LV ? '已满级' : '扩建 ' + fmt(gatherCost(node.lv)) + resIcon('stones')) + '</button>' +
           '</div>' +
         '</div>'
       );
@@ -4812,6 +5250,65 @@
     pushLog('矿石锻魂：器魂 +3', 'special');
     chime([659, 880]);
     render();
+    save();
+  }
+
+  // 装备熔铸（2026-10-31 收敛为两档）：天品 ×5 → 仙品；仙品 ×5 → 星级 +1 的仙品
+  //（封顶 ★5，星级只乘算战力、不改 power 字段，服务端校验口径不变）。材料取最弱
+  // MELT_NEED 件（套装/专属件不入料），部位随机，手续费按档位固定。
+  const meltStock = (r) => state.bag.filter((it) => it.r === r && !it.special).length;
+  const meltFee = (r) => (r === 4 ? RARITIES[5].stone * 10 : RARITIES[5].stone * 25);
+  function meltItem(r) {
+    if (r !== 4 && r !== 5) return;
+    const mats = state.bag
+      .filter((it) => it.r === r && !it.special)
+      .sort((a, b) => itemScore(a) - itemScore(b))
+      .slice(0, MELT_NEED);
+    if (mats.length < MELT_NEED) {
+      floatText(RARITIES[r].name + '不足（需 ' + MELT_NEED + ' 件）', '#f87171');
+      return;
+    }
+    const fee = meltFee(r);
+    if (state.stones < fee) {
+      floatText('灵石不足（熔铸手续费）', '#f87171');
+      return;
+    }
+    const outLabel = r === 4
+      ? '熔出 1 件仙品装备（部位随机）'
+      : '熔出 1 件星级更高的仙品（封顶 ★5）';
+    const rate = meltRate();
+    if (!confirm('熔铸：消耗 ' + MELT_NEED + ' 件' + RARITIES[r].name + '装备（取最弱 ' + MELT_NEED +
+      ' 件）+' + fmt(fee) + ' 灵石，成功率 ' + Math.round(rate * 100) + '%（10% 上下浮动 5%），' +
+      outLabel + '。失败材料与手续费不退。确定？')) return;
+    mats.forEach((it) => state.bag.splice(state.bag.indexOf(it), 1));
+    state.stones -= fee;
+    if (Math.random() >= rate) {
+      bagDirty = true;
+      pushLog('熔铸失败：' + RARITIES[r].name + ' ×' + MELT_NEED + ' 与 ' + fmt(fee) +
+        ' 灵石手续费俱耗，仙火未成', 'sys');
+      beep(220, 0.1);
+      panelSigs.melt = null;
+      render();
+      paintBag(true);
+      save();
+      return;
+    }
+    let item;
+    if (r === 4) {
+      item = makeItem(5);
+    } else {
+      item = makeItem(5);
+      const maxMatStar = mats.reduce((m, it) => Math.max(m, it.star || 0), 0);
+      item.star = Math.min(5, maxMatStar + 1); // 品质稍高一点 = 星级 +1（封顶 ★5）
+    }
+    addItem(item);
+    bagDirty = true;
+    pushLog('熔铸成功：「' + item.name + '」（' + RARITIES[item.r].name +
+      (item.star ? ' ★' + item.star : '') + '）', 'special');
+    chime([659, 784]);
+    panelSigs.melt = null;
+    render();
+    paintBag(true);
     save();
   }
 
@@ -4882,12 +5379,12 @@
     }
   }
 
-  // 秘境图行动力加购：灵石购买，每日至多 20 次（加购点当日有效）
+  // 秘境图行动力加购：灵石购买，每日至多 MAP_BUY_MAX 次（加购点当日有效）
   function buyMapAp() {
     ensureMap();
     const today = todayStr();
     if (state.map.buyDay !== today) { state.map.buyDay = today; state.map.buys = 0; }
-    if (state.map.buys >= MAP_BUY_MAX) { floatText('今日加购已达上限（20 次）', '#f87171'); return; }
+    if (state.map.buys >= MAP_BUY_MAX) { floatText('今日加购已达上限（' + MAP_BUY_MAX + ' 次）', '#f87171'); return; }
     if (state.stones < MAP_BUY_COST) { floatText('灵石不足', '#f87171'); return; }
     state.stones -= MAP_BUY_COST;
     state.map.buys++;
@@ -4909,11 +5406,100 @@
     const h = tileHash(idx);
     const h2 = tileHash(idx + 977);
     const el = ELEMENTS[h2 % ELEMENTS.length].key;
-    if (h < 560) return { type: 'empty', icon: '·', name: '荒径', el };
+    if (h < 520) return { type: 'empty', icon: '·', name: '荒径', el };
+    if (h < 560) return { type: 'encounter', icon: '遇', name: '故人偶遇', el };
     if (h < 700) return { type: 'stones', icon: '灵', name: '灵石矿', el };
     if (h < 840) return { type: 'dust', icon: '尘', name: '碎屑堆', el };
     if (h < 950) return { type: 'monster', icon: '妖', name: '据守妖物', el };
     return { type: 'shrine', icon: '洞', name: '藏宝窟', el };
+  }
+
+  // —— 偶遇（2026-10-31）：秘境图新格，与人物志已结识 NPC（state.story.met）随机相遇；
+  // 对白由模板池按当前境界/区域随机拼装，赠礼加权随机（量级对齐藏宝图挖宝）。
+  // 尚未结识任何人时回退到道侣三人（青璇/白芷/石坚的人物志版本）。
+  const ENCOUNTER_POOL_FALLBACK = ['qingxuan', 'baizhi', 'shijian'];
+  const ENCOUNTER_LINES = {
+    open: [
+      '山道转角，{npc}正负手望着一片云海出神。',
+      '雾气散开，{npc}竟坐在溪边小憩，身旁搁着一壶灵茶。',
+      '「好巧。」{npc}从一块界碑后转出来，说是顺着你的脚印一路找来的。',
+    ],
+    tale: [
+      '「{player}道友，听闻你已入{realm}，这份进境放在当年也算罕见。」',
+      '「我方才从{zone}那边过来，听说那片的妖物见了你都绕道。」',
+      '「匣子认主，人也认路。你走到哪儿，热闹就跟到哪儿。」',
+      '「修行是独行的事，只是路上偶尔有人搭句话，总归好走些。」',
+      '「前些日子听说你在这里连破了好几处秘境，我特来瞧瞧真假。」',
+    ],
+  };
+  // 赠礼加权：灵石 40 / 碎屑 25 / 丹药 15 / 券 15 / 天品装备 5（量级对齐挖宝表）
+  const ENCOUNTER_GIFTS = [
+    { p: 40, kind: 'stones' },
+    { p: 25, kind: 'dust' },
+    { p: 15, kind: 'elixir' },
+    { p: 15, kind: 'ticket' },
+    { p: 5, kind: 'item' },
+  ];
+  function encounterGift() {
+    let roll = Math.random() * 100;
+    for (const g of ENCOUNTER_GIFTS) {
+      if (roll < g.p) return g.kind;
+      roll -= g.p;
+    }
+    return 'stones';
+  }
+
+  function resolveMapEncounter(idx) {
+    const pool = (state.story.met || []).filter((id) => STORY_CAST[id]);
+    const met = pool.length ? pool : ENCOUNTER_POOL_FALLBACK.filter((id) => STORY_CAST[id]);
+    if (!met.length) return;
+    const id = met[Math.floor(Math.random() * met.length)];
+    const npc = STORY_CAST[id];
+    const zoneName = (WILD_ZONES[Math.min(WILD_ZONES.length - 1, (state.wildZone || 1) - 1)] || {}).name || '野外';
+    const fill = (t) => String(t)
+      .replace(/\{npc\}/g, esc(npc.name))
+      .replace(/\{player\}/g, esc(playerName()))
+      .replace(/\{realm\}/g, REALMS[Math.min(REALMS.length - 1, state.realm)] || '修行')
+      .replace(/\{zone\}/g, esc(zoneName));
+    const kind = encounterGift();
+    let giftText = '';
+    if (kind === 'stones') {
+      const n = Math.max(100000, Math.floor(totalPower() * 20));
+      addStones(n);
+      giftText = fill('{npc}从袖中摸出一袋灵石：「盘缠而已，莫推辞。」（+' + fmt(n) + ' 灵石）');
+    } else if (kind === 'dust') {
+      const n = Math.max(30, Math.min(300, Math.floor(totalPower() / 120)));
+      addDust(n);
+      giftText = fill('{npc}把一小包碎屑塞进你手里：「炼器用得着，收好。」（+' + n + ' 碎屑）');
+    } else if (kind === 'elixir') {
+      const el = ELIXIRS[Math.floor(Math.random() * ELIXIRS.length)];
+      state.elixir.owned[el.id] = (state.elixir.owned[el.id] || 0) + 1;
+      giftText = fill('{npc}取出一枚' + el.name + '：「趁热服下，别搁到失效。」（' + el.name + ' ×1）');
+    } else if (kind === 'ticket') {
+      if (Math.random() < 0.5) {
+        state.petTickets = Math.min(1e9, (state.petTickets || 0) + 1);
+        giftText = fill('{npc}递来一张兽栏的通行券：「听说你又惦记灵宠了？」（招募券 ×1）');
+      } else {
+        state.rerollCoupon = Math.min(99, (state.rerollCoupon || 0) + 1);
+        giftText = fill('{npc}把一张符纸折成方块递来：「拿去，下次洗练能省一半。」（洗练半价券 ×1）');
+      }
+    } else {
+      const item = grantEquipBox(4, '偶遇之赠');
+      giftText = fill('{npc}从储物袋里取出一件旧物：「合用便拿去，别嫌旧。」（' + (item ? esc(item.name) : '天品装备') + ' ×1）');
+    }
+    const body =
+      '<div class="encounter-row">' + storyPortrait(id, 'enc') +
+      '<div class="encounter-text">' +
+      '<p class="encounter-name" data-c="' + esc(npc.color || '#8a6a2f') + '">' + esc(withPlayerName(npc.name)) + '</p>' +
+      '<p class="map-event-line">' + fill(ENCOUNTER_LINES.open[Math.floor(Math.random() * ENCOUNTER_LINES.open.length)]) + '</p>' +
+      '<p class="map-event-line">' + fill(ENCOUNTER_LINES.tale[Math.floor(Math.random() * ENCOUNTER_LINES.tale.length)]) + '</p>' +
+      '<p class="map-event-line">' + giftText + '</p>' +
+      '</div></div>';
+    showMapEvent('偶遇 · ' + withPlayerName(npc.name), body);
+    pushLog('秘境图偶遇「' + withPlayerName(npc.name) + '」，获赠' +
+      (kind === 'item' ? '天品装备' : kind === 'elixir' ? '丹药' : kind === 'ticket' ? '券' : kind === 'stones' ? '灵石' : '碎屑'), 'special');
+    state.map.looted.push(idx);
+    chime([659, 880]);
   }
 
   // 五行灵脉：身上有克制该格五行的装备时产出 ×1.5
@@ -4990,7 +5576,7 @@
         return;
       }
       const vein = veinBonus(info.el);
-      const loot = Math.max(400, Math.floor(totalPower() * 0.9 * vein));
+      const loot = Math.max(20000, Math.floor(totalPower() * 45 * vein));
       addStones(loot);
       addDust(Math.max(8, Math.floor(totalPower() / 200 * vein)));
       state.bestiary[enemy.base] = (state.bestiary[enemy.base] || 0) + 1;
@@ -4999,10 +5585,11 @@
       state.map.looted.push(idx);
     } else if (!already && info.type === 'stones') {
       const vein = veinBonus(info.el);
-      const gain = Math.max(300, Math.floor(totalPower() * 0.6 * vein));
+      const gain = Math.max(15000, Math.floor(totalPower() * 30 * vein));
       addStones(gain);
       state.map.looted.push(idx);
       pushLog('秘境图：采得灵石矿，+' + fmt(gain) + ' 灵石' + (vein > 1 ? '（灵脉相克）' : ''), 'special');
+      showMapEvent('灵石矿', mapEventHtml('+' + fmt(gain) + ' 灵石' + (vein > 1 ? '（灵脉相克 ×1.5）' : ''), 'stones'));
       beep(700, 0.07);
     } else if (!already && info.type === 'dust') {
       const vein = veinBonus(info.el);
@@ -5010,20 +5597,36 @@
       addDust(gain);
       state.map.looted.push(idx);
       pushLog('秘境图：拾得碎屑堆，+' + gain + ' 碎屑' + (vein > 1 ? '（灵脉相克）' : ''), 'special');
+      showMapEvent('碎屑堆', mapEventHtml('+' + gain + ' 碎屑' + (vein > 1 ? '（灵脉相克 ×1.5）' : ''), 'dust'));
       beep(700, 0.07);
     } else if (!already && info.type === 'shrine') {
       const vein = veinBonus(info.el);
-      const gain = Math.max(1000, Math.floor(totalPower() * 2 * vein));
+      const gain = Math.max(50000, Math.floor(totalPower() * 100 * vein));
       addStones(gain);
       state.map.looted.push(idx);
       pushLog('秘境图：发现藏宝窟！+' + fmt(gain) + ' 灵石', 'special');
+      showMapEvent('藏宝窟', mapEventHtml('+' + fmt(gain) + ' 灵石' + (vein > 1 ? '（灵脉相克 ×1.5）' : ''), 'shrine'));
       chime([659, 784, 1046]);
+    } else if (!already && info.type === 'encounter') {
+      resolveMapEncounter(idx);
     }
 
     state.map.ap--;
     state.map.px = x;
     state.map.py = y;
     revealAround();
+    // 跑满图立即换新图（2026-10-31 用户指定）：探明全图即重置雾图与产出，
+    // 行动力/加购计数不变（仍受每日经济约束），seed 重摇全图重生、回中心点
+    if (state.map.rev.length >= MAP_W * MAP_H) {
+      state.map.seed = Math.floor(Math.random() * 1e9);
+      state.map.px = Math.floor(MAP_W / 2);
+      state.map.py = Math.floor(MAP_H / 2);
+      state.map.rev = [];
+      state.map.looted = [];
+      revealAround();
+      pushLog('秘境图已探明全图！山移路转，一张新图在脚下展开', 'special');
+      chime([659, 784, 1046]);
+    }
     renderMap();
     save();
   }
@@ -5060,6 +5663,7 @@
   }
 
   function sealItem(id) {
+    if (!featureOpen('museum')) { floatText('陈列室境界「合体」后解锁', '#f87171'); return; }
     const item = state.bag.find((x) => x.id === id);
     if (!item) return;
     const stand = state.museum[item.slot];
@@ -5069,8 +5673,22 @@
     }
     if (stand) {
       if (state.bag.length >= bagCap()) {
-        floatText('背包已满，换不下旧展品', '#f87171');
-        return;
+        // 背包满：自动分解背包里最弱的一件（不含本次封存件）腾位，换下旧展品
+        let wi = -1;
+        for (let i = 0; i < state.bag.length; i++) {
+          if (state.bag[i].id === item.id) continue;
+          if (wi < 0 || itemScore(state.bag[i]) < itemScore(state.bag[wi])) wi = i;
+        }
+        if (wi < 0) {
+          floatText('背包已满，换不下旧展品', '#f87171');
+          return;
+        }
+        const victim = state.bag[wi];
+        const v = addStones(salvageValue(victim));
+        addDust(dustValue(victim));
+        if (victim.special) addSouls(SOULS_PER_SPECIAL);
+        state.bag.splice(wi, 1);
+        pushLog('背包已满：自动分解「' + victim.name + '」为旧展品腾位（+' + fmt(v) + ' 灵石）', 'sys');
       }
       state.bag.push(stand);
       bagDirty = true;
@@ -5120,7 +5738,7 @@
     const def = CHAPTERS[realm];
     if (!def || realm > state.realm || state.chapters.includes(realm)) return;
     state.chapters.push(realm);
-    const gain = 2000 * (realm + 1);
+    const gain = CHAPTER_GAIN * (realm + 1);
     addStones(gain);
     pushLog('天道录·' + def.title + '：+' + fmt(gain) + ' 灵石', 'special');
     chime([659, 880, 1046]);
@@ -5130,7 +5748,7 @@
 
   /* ---------------- 第四批：融合 / 符文 / 心魔 / 悬赏 / 天劫 / 道侣 / 战功碑 ---------------- */
 
-  // 宝石三合一：全身上同档同型 ×3 → 当前面板装备空孔 ×1 高一档
+  // 宝石三合一：六槽内同档同型 ×3 → 当前工坊部位空孔 ×1 高一档
   function gemCounts() {
     const counts = {};
     const add = (g) => {
@@ -5139,34 +5757,28 @@
       counts[key] = (counts[key] || 0) + 1;
     };
     for (const s of SLOTS) {
-      const it = state.equipped[s.key];
-      if (it) for (const g of it.gems || []) add(g);
+      for (const g of state.slotGems[s.key] || []) add(g);
     }
-    for (const it of state.bag) for (const g of it.gems || []) add(g);
     return counts;
   }
 
   function takeGems(k, t, n) {
     let left = n;
-    const drain = (it) => {
-      for (let i = 0; i < (it.gems || []).length && left > 0; i++) {
-        if (it.gems[i] && it.gems[i].k === k && it.gems[i].t === t) {
-          it.gems[i] = null;
+    for (const s of SLOTS) {
+      const arr = state.slotGems[s.key];
+      if (!Array.isArray(arr)) continue;
+      for (let i = 0; i < arr.length && left > 0; i++) {
+        if (arr[i] && arr[i].k === k && arr[i].t === t) {
+          arr[i] = null;
           left--;
         }
       }
-    };
-    for (const s of SLOTS) {
-      const it = state.equipped[s.key];
-      if (it) drain(it);
     }
-    for (const it of state.bag) drain(it);
     return left === 0;
   }
 
   function fuseGems(k, t) {
-    const target = forgeTarget();
-    if (!target) return;
+    if (!forgeSlot) return;
     if (t >= GEM_TIERS.length) {
       forgeMsg('已是最高档');
       return;
@@ -5175,42 +5787,49 @@
       forgeMsg('同档同型宝石不足三颗');
       return;
     }
-    const empty = (target.gems || []).includes(null);
-    if (!empty) {
-      forgeMsg('当前装备没有空孔承接');
+    const arr = slotGemList(forgeSlot);
+    const dest = arr.indexOf(null);
+    if (dest < 0) {
+      forgeMsg('当前部位没有空孔承接');
+      return;
+    }
+    // 融合入孔同样按孔位收费：否则三颗低价孔宝石可免费落进高价孔，绕开阶梯费
+    const cost = gemCost(k, t + 1, dest + 1);
+    if (state.dust < cost) {
+      forgeMsg('碎屑不足（本孔需 ' + fmt(cost) + '）');
       return;
     }
     if (!takeGems(k, t, 3)) return;
-    target.gems[target.gems.indexOf(null)] = { k, t: t + 1 };
+    state.dust -= cost;
+    arr[dest] = { k, t: t + 1 };
     equipDirty = true;
     combatDirty = true;
     pushLog('宝石融合：三颗' + GEM_TIERS[t - 1].name + affixDef(k).name + '石化作一颗' +
-      GEM_TIERS[t].name + affixDef(k).name + '石', 'special');
+      GEM_TIERS[t].name + affixDef(k).name + '石（孔费 ' + fmt(cost) + '）', 'special');
     chime([659, 784, 1046]);
     renderForge();
     save();
   }
 
-  // 符文组词
-  function runewordOf(it) {
-    if (!it) return null;
-    const gems = (it.gems || []).filter(Boolean);
-    if (gems.length < 2) return null;
+  // 符文组词（参数为部位孔位数组）
+  function runewordOf(gems) {
+    const list = (gems || []).filter(Boolean);
+    if (list.length < 2) return null;
     for (const w of RUNEWORDS) {
-      if (w.seq.length === gems.length && w.seq.every((k, i) => gems[i].k === k)) return w;
+      if (w.seq.length === list.length && w.seq.every((k, i) => list[i].k === k)) return w;
     }
     return null;
   }
 
   function renderRunes() {
-    const it = forgeTarget();
-    if (!it) return;
-    const w = runewordOf(it);
+    if (!forgeSlot) return;
+    const gems = slotGemList(forgeSlot);
+    const w = runewordOf(gems);
     let html = '<p class="forge-section-title">符文组词（宝石按顺序排列触发）</p>';
     if (w) {
       html += '<div class="affix-row locked"><span class="affix-name">「' + w.name + '」</span>' +
         '<b>' + w.desc + '</b></div>';
-    } else if ((it.gems || []).filter(Boolean).length >= 2) {
+    } else if (gems.filter(Boolean).length >= 2) {
       html += '<p class="forge-empty">当前排列未成词，试试调整组合。</p>';
     } else {
       html += '<p class="forge-empty">镶入两颗以上宝石即可组词。</p>';
@@ -5252,7 +5871,9 @@
     const player = playerCombatStats();
     player.atk *= elementBonus(enemy.el).mult;
     const result = simulateBattle(player, enemy);
-    const demonExp = Math.max(1000, Math.round(realmCostOf(state.realm) * 0.6));
+    // 心魔修为：首斩 1/6 门槛、逐形减半（÷2^已斩形数），50 次合计 ≈ 门槛的 1/3；
+    // 不设硬预算：之后每形照给、越来越少（1 起底不归零），总和收敛于 1/3 不超出
+    const demonExp = Math.max(1, Math.floor(realmCostOf(state.realm + 1) / 6 / Math.pow(2, d.kills)));
     showBattlePopup(enemy, result, {
       title: '心魔劫', playerHp: player.hp,
       closeText: '收下奖励', loseText: '离开',
@@ -5460,6 +6081,11 @@
     }
     const y = new Date(Date.now() - 86400000);
     const ds = dateOf(y.getFullYear(), y.getMonth(), y.getDate());
+    // 补签只补本月：每月 1 日点补签会把上月末日记进本月到勤，白提前一天里程碑
+    if (ds.slice(0, 7) !== monthKey()) {
+      floatText('昨日不在本月，无需补签', '#9aa4b2');
+      return;
+    }
     if (state.month.days.includes(ds)) {
       floatText('昨日已到勤，无需补签', '#9aa4b2');
       return;
@@ -5524,13 +6150,18 @@
     const ids = quizPick();
     const def = QUIZ_BANK[ids[state.quiz.idx]];
     const ok = choice === def.idx;
+    let resultTitle, resultBody;
     if (ok) {
       state.quiz.correct++;
       const gained = addStones(QUIZ_PER_STONES);
       grantExpK(QUIZ_PER_EXP_K, '答题答对');
       floatText('答对 +' + fmt(gained) + ' 灵石', '#4ade80');
+      resultTitle = '✦ 答对了';
+      resultBody = '+' + fmt(gained) + ' 灵石 · 修为提升';
     } else {
       floatText('答错了', '#f87171');
+      resultTitle = '答错了';
+      resultBody = '正确答案：<b>' + esc(def.a[def.idx]) + '</b>';
     }
     state.quiz.idx++;
     if (state.quiz.idx >= QUIZ_N) {
@@ -5543,17 +6174,26 @@
         pushLog('问答全对！连对 ' + state.quiz.streak + ' 天：+' + fmt(b.stones) +
           ' 灵石 · ' + b.dust + ' 碎屑', 'special');
         chime([659, 784, 1046, 1318]);
+        resultBody += '<br>十题全对！连对 ' + state.quiz.streak + ' 天：+' +
+          fmt(b.stones) + ' 灵石 · +' + b.dust + ' 碎屑';
         if (state.quiz.streak >= QUIZ_STREAK_N) {
           state.quiz.streak = 0;
+          resultBody += '<br>满 ' + QUIZ_STREAK_N + ' 天连对，「天品自选箱」已送达！';
           openQuizBoxPick();
         }
       } else {
         if (state.quiz.streak > 0) pushLog('连对中断（' + state.quiz.streak + ' 天）', 'sys');
         state.quiz.streak = 0;
+        resultBody += '<br>十题答对 ' + state.quiz.correct + ' 题 · 连对中断，明日再来';
       }
     }
     renderDailyExt();
     save();
+    if ($('quizResultModal')) {
+      $('quizResultTitle').textContent = resultTitle;
+      $('quizResultBody').innerHTML = resultBody;
+      $('quizResultModal').classList.add('show');
+    }
   }
   // 问答连对 7 天：天品自选箱（选槽位直接生成天品装备）
   function openQuizBoxPick() {
@@ -5869,20 +6509,24 @@
     const npc = DAO_NPCS.find((n) => n.id === npcId);
     const gift = DAO_GIFTS.find((g) => g.id === giftId);
     if (!npc || !gift) return;
-    const affNow = state.daoLv.aff[npcId] || 0;
-    if (affNow >= DAO_MARRY_AT) {
-      floatText('情谊已满', '#9aa4b2');
+    if (daoBonded(npcId)) {
+      floatText('已可结缘', '#9aa4b2');
       return;
     }
     if (gift.stones && state.stones < gift.stones) { floatText('灵石不足', '#f87171'); return; }
     if (gift.dust && state.dust < gift.dust) { floatText('碎屑不足', '#f87171'); return; }
-    if (gift.ticket && state.petTickets < gift.ticket) { floatText('招募券不足', '#f87171'); return; }
     if (gift.stones) state.stones -= gift.stones;
     if (gift.dust) state.dust -= gift.dust;
-    if (gift.ticket) state.petTickets -= gift.ticket;
-    const before = state.daoLv.aff[npcId] || 0;
-    state.daoLv.aff[npcId] = Math.min(DAO_MARRY_AT, before + gift.aff);
-    pushLog('赠「' + gift.name + '」予' + npc.name + '，情谊 +' + gift.aff, 'sys');
+    const sp = daoSpend(npcId);
+    state.daoLv.spend[npcId] = {
+      stones: sp.stones + (gift.stones || 0),
+      dust: sp.dust + (gift.dust || 0),
+    };
+    const now = state.daoLv.spend[npcId];
+    pushLog('赠「' + gift.name + '」予' + npc.name + '（' +
+      (gift.stones
+        ? '灵石礼累计 ' + fmt(now.stones) + ' / ' + fmt(DAO_MARRY_STONES)
+        : '碎屑礼累计 ' + fmt(now.dust) + ' / ' + fmt(DAO_MARRY_DUST)) + '）', 'sys');
     beep(720, 0.07);
     renderDao();
     save();
@@ -5891,7 +6535,7 @@
   function marryNpc(npcId) {
     const npc = DAO_NPCS.find((n) => n.id === npcId);
     if (!npc) return;
-    if ((state.daoLv.aff[npcId] || 0) < DAO_MARRY_AT) return;
+    if (!daoBonded(npcId)) return;
     state.daoLv.married = npcId;
     combatDirty = true;
     pushLog('与' + npc.name + '结为道侣：' + npc.desc, 'special');
@@ -6224,20 +6868,32 @@
     save();
   }
 
-  const immortalCost = () => 1e8 * Math.pow(5, state.immortal || 0);
+  // 仙位阶梯（2026-11-01 用户指定）：上限 10 位；第 1 位 100 亿，第 10 位 50 兆，
+  // 中间按几何阶梯内插：r = (50兆/100亿)^(1/9) = 5000^(1/9) ≈ 2.576，第 k 位价格 = 100亿 × r^(k-1)
+  // （100亿 / 258亿 / 664亿 / 1710亿 / 4400亿 / 1.13兆 / 2.92兆 / 7.52兆 / 19.4兆 / 50兆）
+  const IMMORTAL_MAX = 10;
+  const IMMORTAL_RATIO = Math.pow(50e12 / 1e10, 1 / (IMMORTAL_MAX - 1));
+  const immortalCost = () => state.immortal >= IMMORTAL_MAX ? Infinity
+    : 1e10 * Math.pow(IMMORTAL_RATIO, state.immortal || 0);
 
   function enterImmortal() {
     if (state.ascensions < 1) return;
+    if (state.immortal >= IMMORTAL_MAX) {
+      floatText('仙位已满（' + IMMORTAL_MAX + '/' + IMMORTAL_MAX + '）', '#9aa4b2');
+      return;
+    }
     const cost = immortalCost();
     if (state.stones < cost) {
       floatText('灵石不足', '#f87171');
       return;
     }
-    if (!confirm('入仙界消耗 ' + fmt(cost) + ' 灵石，得 1 仙位：收益 +50%，秘境敌人与产出 ×1.25。确定？')) return;
+    if (!confirm('入仙界消耗 ' + fmt(cost) + ' 灵石，得 1 仙位：收益 +10%，秘境敌人与产出 ×1.05。确定？')) return;
     state.stones -= cost;
     state.immortal++;
     combatDirty = true;
-    pushLog('入仙界成功，仙位 ' + state.immortal + '，收益 +50%', 'special');
+    equipDirty = true;
+    for (const s of SLOTS) slotGemList(s.key); // 孔数 = 2 + 飞升数：飞升后各部位补一个空孔
+    pushLog('入仙界成功，仙位 ' + state.immortal + '，收益 +10%，各部位宝石孔 +1', 'special');
     chime([659, 784, 1046, 1318]);
     render();
     save();
@@ -6526,7 +7182,9 @@
   /* ---------------- 黑市 / 奇遇 / 称号 / 词条继承 ---------------- */
 
   const marketPicks = () => {
-    const day = Math.floor(Date.now() / 86400000);
+    // 日种子用本地日（todayStr）：原 UTC 日在东八区早 8 点才换货，与 buyMarket 的
+    // 本地 0 点限购重置、问答「0 点刷新」的口径都不一致（2026-11-01 修）
+    const day = Number(todayStr().replaceAll('-', '')) || 0;
     return [0, 1, 2].map((i) => MARKET_POOL[(day + i) % MARKET_POOL.length]);
   };
 
@@ -6648,8 +7306,10 @@
     save();
   }
 
-  // 词条继承：消耗材料装备，把它的第一条词条覆盖到目标装备第一条未锁词条
-  const inheritCost = 200;
+  // 词条继承：消耗材料装备，把它的第一条词条覆盖到目标装备第一条未锁词条；
+  // 费用随目标锁定条数指数递增（2026-11-01 用户指定：200 碎屑 ×2^锁数）
+  const inheritCostOf = (it) =>
+    Math.floor(200 * Math.pow(2, ((it && it.affixes) || []).filter((a) => a.lock).length));
 
   function openInherit() {
     const it = forgeTarget();
@@ -6661,10 +7321,10 @@
       return;
     }
     box.innerHTML =
-      '<p class="forge-section-title">词条继承（材料被分解，' + inheritCost + ' 碎屑 / 次）</p>' +
+      '<p class="forge-section-title">词条继承（材料被分解，' + inheritCostOf(it) + ' 碎屑 / 次 · 目标每锁 1 条 ×2）</p>' +
       '<div class="inherit-list">' + materials.slice(0, 6).map((m) =>
         '<div class="affix-row">' +
-          '<span class="affix-name">' + esc(m.name) + (m.lv ? ' +' + m.lv : '') + '</span>' +
+          '<span class="affix-name">' + esc(m.name) + '</span>' +
           '<b>' + affixDef(m.affixes[0].k).name + ' +' + fmtPct(m.affixes[0].v) + '</b>' +
           '<button class="mini" data-act="inherit" data-id="' + m.id + '">转移</button>' +
         '</div>'
@@ -6679,10 +7339,6 @@
     const material = state.bag[idx];
     const src = (material.affixes || [])[0];
     if (!src) return;
-    if (state.dust < inheritCost) {
-      forgeMsg('碎屑不足');
-      return;
-    }
     if (AFFIX_COUNT[target.r] === 0) {
       forgeMsg('该品质没有词条位');
       return;
@@ -6690,6 +7346,17 @@
     const slotIdx = (target.affixes || []).findIndex((a) => !a.lock);
     if (slotIdx < 0) {
       forgeMsg('目标词条已全部锁定');
+      return;
+    }
+    // 同名词条查重：继承进重复 k 会在下次读档被 sanitizeAffixes 静默去重删除，
+    // 碎屑与整件材料装备白花（reroll 侧一直有 used 查重，唯独继承漏了）
+    if ((target.affixes || []).some((a, i) => i !== slotIdx && a.k === src.k)) {
+      forgeMsg('目标已有同类词条，无法继承');
+      return;
+    }
+    const inheritCost = inheritCostOf(target); // 按目标当前锁定数取价（锁定多则指数递增）
+    if (state.dust < inheritCost) {
+      forgeMsg('碎屑不足（需 ' + inheritCost + '）');
       return;
     }
     state.dust -= inheritCost;
@@ -6830,8 +7497,10 @@
       const base = '<p>历时 <b>' + b.result.rounds + '</b> 回合 · 造成 <b>' + fmt(b.result.dealt) +
         '</b> 伤害 · 承受 <b>' + fmt(b.result.taken) + '</b> · 暴击 <b>' + b.result.crits + '</b> 次</p>';
       if (b.win) {
+        // 胜利兜底文案用中性句：不传 rewardText 的特殊战斗（切磋/秘境图等）
+        // 原会顶上「再接再厉」这句败北语气（2026-11-01 修）
         return '<p class="result-title">战斗胜利</p>' + base +
-          '<p class="loot-line">' + (b.rewardText || '再接再厉，道途无涯。') + '</p>';
+          '<p class="loot-line">' + (b.rewardText || '胜名已记，道途无涯。') + '</p>';
       }
       return '<p class="result-title">战斗失败</p>' + base +
         '<p>敌方剩余 <b>' + fmt(b.result.enemyLeft) + '</b> 生命 · 回去打磨一番再来。</p>';
@@ -9967,7 +10636,7 @@
   function storyStateOf(gi) {
     if (state.story.cleared.indexOf(gi) >= 0) return 'cleared';
     const info = storyStageInfo(gi);
-    if (state.realm < info.vol.realm) return 'locked';
+    if (gateRealm() < info.vol.realm) return 'locked';
     if (info.li > 0) {
       // 卷内顺序解锁：先过上一关
       if (state.story.cleared.indexOf(gi - 1) < 0) return 'locked';
@@ -10032,9 +10701,15 @@
   }
 
   function storySetSlot(el, sp, active) {
-    if (!sp) { el.innerHTML = ''; return; }
+    if (!sp) {
+      el.innerHTML = '';
+      delete el.dataset.sp; // 清空必须连标记一起清：否则同一角色下个对话再登场会被旧标记跳过填充，留下空立绘
+      return;
+    }
     const memo = STORY_CAST[sp] || { name: '?', color: '#999' };
-    if (el.dataset.sp !== sp) {
+    // 自愈兜底：标记匹配但内容不在场（任何路径清空/清丢了内容）也强制重填，
+    // 保证「说话人登场 ⇒ 槽内必有立绘」这一不变式，杜绝空立绘复发
+    if (el.dataset.sp !== sp || !el.querySelector('.story-art')) {
       el.dataset.sp = sp;
       el.innerHTML = storyPortrait(sp, 'dlg');
       armStoryArtGuard(el);
@@ -10061,7 +10736,7 @@
       storySetSlot($('storySlotL'), f.partner || null, false);
       storySetSlot($('storySlotR'), 'xiaofan', false);
       $('storyName').textContent = '——';
-      $('storyName').style.color = '#d8b36a';
+      applyStoryNameColor('#d8b36a');
       $('storyText').textContent = withPlayerName(text);
       $('storyText').classList.add('sys');
     } else {
@@ -10076,12 +10751,12 @@
           storySetSlot($('storySlotR'), 'xiaofan', false);
         }
         $('storyName').textContent = withPlayerName(STORY_CAST[speaker].name);
-        $('storyName').style.color = STORY_CAST[speaker].color;
+        applyStoryNameColor(STORY_CAST[speaker].color);
       } else {
         storySetSlot($('storySlotL'), f.partner || null, false);
         storySetSlot($('storySlotR'), 'xiaofan', false);
         $('storyName').textContent = '旁白';
-        $('storyName').style.color = '#8b93a7';
+        applyStoryNameColor('#8b93a7');
       }
       $('storyText').textContent = withPlayerName(text);
       $('storyText').classList.remove('sys');
@@ -10196,11 +10871,12 @@
     showBattlePopup(enemy, result, {
       title: '红尘录 · ' + f.vol.title,
       playerHp: player.hp,
-      closeText: '收下奖励', loseText: '返回故事',
-      rewardText: result.win ? '战后结算灵石 · 碎屑 · 修为' : undefined,
+      // 回顾模式不再发奖（storyGrantRewards 有 rewarded 守卫），弹层文案如实标注
+      closeText: f.review ? '离开' : '收下奖励', loseText: '返回故事',
+      rewardText: result.win && !f.review ? '战后结算灵石 · 碎屑 · 修为' : undefined,
     });
-    state.battleStats.dmg += result.dealt;
-    state.battleStats.taken += result.taken;
+    // 战功口径（2026-11-01）：锋芒/金身只记秘境征战，与「百战」同口径——
+    // 红尘录战斗（尤其回顾模式可无限重刷）不再灌入成就进度
     state.bestiary[enemy.base] = (state.bestiary[enemy.base] || 0) + 1;
 
     if (result.win) {
@@ -10272,7 +10948,7 @@
     const r = f.reward;
     const box = $('storyText');
     $('storyName').textContent = '本关小结';
-    $('storyName').style.color = '#d8b36a';
+    applyStoryNameColor('#d8b36a');
     storySetSlot($('storySlotL'), f.partner || null, false);
     storySetSlot($('storySlotR'), 'xiaofan', true);
     if (f.review || !r) {
@@ -10294,13 +10970,18 @@
   function storySkipAll() {
     const f = storyFlow;
     if (!f) return;
+    // 跳过也把被跳过台词的说话人记入人物志（storyMeet 幂等）：跳过 ≠ 漏收集，
+    // 否则对应卡片停在「？？？/随剧情结识」且玩家无从知晓（2026-11-01 修）
+    const meetAll = (lines) => { (lines || []).forEach((line) => storyMeet(line[0])); };
     if (f.phase === 'pre') {
+      meetAll(f.st.pre);
       if (f.st.type === 'battle') {
         f.idx = f.st.pre.length - 1;
         storyAdvance();
       } else {
         storyGrantRewards();
         if (f.st.post && f.st.post.length) {
+          meetAll(f.st.post); // post 段整体跳过，说话人一并入志
           f.phase = 'post';
           f.idx = f.st.post.length - 1;
           storyFinish();
@@ -10324,8 +11005,11 @@
 
   /* ---------------- 故事面板渲染 ---------------- */
 
-  // 章节折叠：null = 未初始化（默认仅当前进度卷展开）；点击卷首切换
-  let storyOpenVols = null;
+  // 章节折叠（2026-10-31 用户指定）：手风琴式单卷展开——自动展开到「最新章节」
+  //（最深一卷已激活的），激活新章节时自动改展开新卷并合上上一卷；点卷头可临时
+  // 展开/折叠任意卷，最新章节再次变化时重新自动跟随
+  let storyOpenVol = null;   // 当前展开卷（null = 全部折叠）
+  let storyFollowVol = null; // 上次自动跟随的「最新章节」卷号
 
   function storyDefaultVol() {
     let gi = 0;
@@ -10339,6 +11023,20 @@
     return STORY_VOLUMES.length - 1;
   }
 
+  // 「最新章节」：最深一卷已激活（境界达标且上一卷全部通关）；全通后停在末卷
+  function storyLatestVol() {
+    let gi = 0, latest = 0, prevDone = true;
+    for (let vi = 0; vi < STORY_VOLUMES.length; vi++) {
+      const vol = STORY_VOLUMES[vi];
+      const len = vol.stages.length;
+      if (gateRealm() >= vol.realm && (vi === 0 || prevDone)) latest = vi;
+      const done = vol.stages.filter((st, i) => state.story.cleared.indexOf(gi + i) >= 0).length;
+      prevDone = done === len;
+      gi += len;
+    }
+    return latest;
+  }
+
   // 故事小章节方块图标：剧情=书卷、战斗=交叉剑（currentColor 随 ss-icon 金色）
   var SS_ICONS = {
     story: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>',
@@ -10346,16 +11044,21 @@
   };
 
   function renderStory() {
-    if (!storyOpenVols) storyOpenVols = new Set([storyDefaultVol()]);
-    const sig = state.realm + '|' + state.story.cleared.join(',') + '|' + state.story.met.join(',') + '|' + [...storyOpenVols].join('.');
+    const latestVol = storyLatestVol();
+    if (storyFollowVol !== latestVol) {
+      // 激活新章节（或首次进入）：自动展开新卷，其余章节折叠
+      storyFollowVol = latestVol;
+      storyOpenVol = latestVol;
+    }
+    const sig = state.realm + '|' + state.story.cleared.join(',') + '|' + state.story.met.join(',') + '|' + storyOpenVol;
     if (panelSigs.story === sig) return;
     panelSigs.story = sig;
 
     let gi = 0;
     const volHtml = STORY_VOLUMES.map((vol, vi) => {
-      const realmOk = state.realm >= vol.realm;
+      const realmOk = gateRealm() >= vol.realm;
       const done = vol.stages.filter((s, i) => state.story.cleared.indexOf(gi + i) >= 0).length;
-      const open = storyOpenVols.has(vi);
+      const open = storyOpenVol === vi;
       let body = '';
       if (open) {
         let rows = '';
@@ -10414,8 +11117,7 @@
       const head = e.target.closest('.story-vol-head');
       if (head) {
         const vi = Number(head.dataset.vol);
-        if (storyOpenVols.has(vi)) storyOpenVols.delete(vi);
-        else storyOpenVols.add(vi);
+        storyOpenVol = storyOpenVol === vi ? null : vi;
         renderStory();
         return;
       }
@@ -10537,6 +11239,66 @@
       }
     }
 
+    // 扫荡条（2026-10-31）：闯关/爬塔选已通关卡片（野外沿用 zoneStrip 选中区即扫荡目标）
+    const sweepStrip = $('sweepStrip');
+    const sweepCleared = mode === 'tower' ? state.towerCleared : state.stageCleared;
+    // 通关 0 关时没有任何可扫荡目标，不渲染选关条（否则 pick=0 会算出负数关卡组）
+    const sweepable = unlocked && sweepCleared >= 1 && (mode === 'stage' || mode === 'tower');
+    sweepStrip.classList.toggle('hidden', !sweepable);
+    if (sweepable) {
+      const cleared = sweepCleared;
+      const pick = sweepPick[mode] > 0 ? Math.min(sweepPick[mode], cleared) : cleared;
+      const unit = mode === 'tower' ? '层' : '关';
+      // 展示口径与野外对齐（2026-10-31 用户指定）：分组标签恒为真实区间（不随已通关
+      // 收窄，此前会出现「21-11」这类乱码标签），未通关组灰置；展开组内逐关列出，
+      // 未通关的灰置禁点
+      const modeMax = MODES[mode].max;
+      const groupCount = Math.min(WILD_GROUP_COUNT, Math.ceil(modeMax / WILD_GROUP_SIZE));
+      const openIdx = Math.max(0, Math.min(groupCount - 1,
+        sweepGroupOpen >= 0 ? sweepGroupOpen : Math.floor((pick - 1) / WILD_GROUP_SIZE)));
+      const ssig = mode + '|' + cleared + '|' + pick + '|' + openIdx;
+      if (panelSigs.combatSweep !== ssig) {
+        panelSigs.combatSweep = ssig;
+        let html = '<div class="zone-groups">';
+        for (let gi = 0; gi < groupCount; gi++) {
+          const gs = gi * WILD_GROUP_SIZE + 1;
+          const ge = Math.min(modeMax, gs + WILD_GROUP_SIZE - 1);
+          const anyOpen = gs <= cleared;
+          html += '<button class="zone-group' + (anyOpen ? ' has-open' : ' locked') +
+            (gi === openIdx ? ' open' : '') + (pick >= gs && pick <= ge ? ' cur' : '') +
+            '" data-group="' + gi + '"' + (gi === openIdx ? ' aria-pressed="true"' : '') +
+            '>' + gs + '-' + ge + '</button>';
+        }
+        html += '</div><div class="zone-list">';
+        const gs = openIdx * WILD_GROUP_SIZE + 1;
+        const ge = Math.min(modeMax, gs + WILD_GROUP_SIZE - 1);
+        for (let z = gs; z <= ge; z++) {
+          const locked = z > cleared;
+          html += '<button class="zone-chip' + (z === pick ? ' active' : '') + (locked ? ' locked' : '') +
+            '" data-sweep="' + z + '"' + (locked ? ' disabled' : '') + '>' + z + ' ' + unit + '</button>';
+        }
+        sweepStrip.innerHTML = html + '</div>';
+      }
+    }
+
+    // 扫荡按钮：免费额度内显示剩余次数，用完显示加购单价与已购次数
+    const sweepBtn = $('sweepBtn');
+    const sweepOn = unlocked && (mode === 'stage' || mode === 'tower' || mode === 'wild');
+    sweepBtn.classList.toggle('hidden', !sweepOn);
+    if (sweepOn) {
+      ensureDaily();
+      const used = state.daily.sweep[mode] || 0;
+      const bought = state.daily.sweepBought[mode] || 0;
+      const freeLeft = Math.max(0, SWEEP_DAILY_FREE - used);
+      sweepBtn.textContent = freeLeft > 0
+        ? '扫荡 · 剩 ' + freeLeft + '/' + SWEEP_DAILY_FREE
+        : '扫荡 ' + fmt(SWEEP_BUY_COST) + '灵石/次（购 ' + bought + '/' + SWEEP_BUY_MAX + '）';
+      sweepBtn.disabled = freeLeft <= 0 && bought >= SWEEP_BUY_MAX;
+      sweepBtn.title = mode === 'wild'
+        ? '扫荡当前选中区域（需已通关）'
+        : '扫荡选中的已通关' + (mode === 'tower' ? '层' : '关');
+    }
+
     const autoBtn = $('autoBtn');
     autoBtn.textContent = needAscension()
       ? '飞升一次后开启'
@@ -10565,13 +11327,16 @@
       const nextWild = Object.keys(MILESTONES.wild).map(Number)
         .sort((a, b) => a - b)
         .find((z) => !state.wildCleared.includes(z));
+      ensureDaily(); // 跨日后未触发任何战斗时，保证额度显示即时重置（惰性重置的显示层兜底）
+      const wildLeft = Math.max(0, WILD_REPEAT_DAILY - (state.daily.wildRepeat || 0));
       progress = '已解锁 ' + wildMaxUnlocked() + ' / ' + WILD_MAX + ' 区域 · 本区击杀 ' +
-        fmt(kills) + ' · 每 12 杀必掉荒狩套装' +
-        (nextWild ? ' · 首通 ' + nextWild + ' 区必掉部件' : '');
+        fmt(kills) + ' · 每 ' + WILD_SET_PITY + ' 杀必掉荒狩套装' +
+        (nextWild ? ' · 首通 ' + nextWild + ' 区必掉部件' : '') +
+        ' · 已胜怪挑战剩 ' + wildLeft + '/' + WILD_REPEAT_DAILY + '（扫荡不计）';
     } else if (mode === 'endless') {
       const aff = ENCHANTS[(level - 1) % ENCHANTS.length];
       progress = '无尽最高 ' + state.endlessBest + ' 层 · 本层词缀「' + aff.name + '」' + aff.desc +
-        ' · 8% 概率掉镇塔套装';
+        ' · ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉镇塔套装';
     } else {
       progress = '已通关 ' + cleared + ' / ' + cfg.max + ' ' + unit +
         (replay ? ' · 再战最终' + unit + '奖励减半' : '');
@@ -10685,17 +11450,19 @@
     equipDirty = false;
     $('equipGrid').innerHTML = SLOTS.map((slotDef) => {
       const item = state.equipped[slotDef.key];
+      const enhLv = state.enh[slotDef.key] || 0;
       if (!item) {
         return (
           '<div class="equip-slot empty" data-slot="' + slotDef.key + '">' +
             '<div class="slot-head"><span class="slot-icon">' + slotIcon(slotDef.key) + '</span>' +
-            '<span class="slot-name">' + slotDef.name + '</span></div>' +
-            '<p class="slot-empty">未装备</p>' +
+            '<span class="slot-name">' + slotDef.name + '</span>' +
+            (enhLv ? '<span class="slot-lv">+' + enhLv + '</span>' : '') + '</div>' +
+            '<p class="slot-empty">未装备' + (enhLv ? ' · 部位强化 +' + enhLv + ' 保留' : '') + '</p>' +
           '</div>'
         );
       }
 
-      const maxed = item.lv >= MAX_ENHANCE;
+      const maxed = enhLv >= MAX_ENHANCE;
       const setCls = item.setKey ? ' item-special ' + SETS[item.setKey].cls : '';
       const elDef = ELEMENTS.find((e) => e.key === item.el);
       const meta = (elDef ? '<b class="' + item.el + '">' + elDef.name + '</b> · ' : '') +
@@ -10703,23 +11470,24 @@
       const affixText = (item.affixes || [])
         .map((a) => SHORT_NAME[a.k] + ' +' + fmtPct(a.v))
         .join(' · ');
-      const gemText = (item.gems || []).length
-        ? '石：' + item.gems.map((g) => (g ? GEM_TIERS[g.t - 1].name + SHORT_NAME[g.k] + '石' : '空孔')).join(' · ')
+      const gems = slotGemList(slotDef.key);
+      const gemText = gems.filter(Boolean).length
+        ? '宝石：' + gems.map((g) => (g ? GEM_TIERS[g.t - 1].name + SHORT_NAME[g.k] + '石' : '空孔')).join(' · ')
         : '';
       return (
         '<div class="equip-slot item-r' + item.r + setCls + '" data-slot="' + slotDef.key + '">' +
           '<div class="slot-head"><span class="slot-icon">' + slotIcon(slotDef.key) + '</span>' +
-          '<span class="slot-name">' + slotDef.name + '</span>' +
-          '<span class="slot-lv">+' + item.lv + '</span></div>' +
+            '<span class="slot-name">' + slotDef.name + '</span>' +
+            '<span class="slot-lv">+' + enhLv + '</span></div>' +
           '<p class="slot-item-name">' + esc(item.name) + '</p>' +
           '<p class="slot-power">战力 <b>' + fmt(itemPower(item)) + '</b> · ' + meta + '</p>' +
           (affixText ? '<p class="slot-affix">' + affixText + '</p>' : '') +
           (gemText ? '<p class="slot-gems">' + gemText + '</p>' : '') +
           '<div class="slot-actions">' +
             '<button class="mini" data-act="enhance" data-slot="' + slotDef.key + '"' +
-              ' data-cost="' + enhanceCost(item) + '"' + (maxed ? ' data-max="1"' : '') + '>' +
-              (maxed ? '已满级' : '强化 ' + fmt(enhanceCost(item)) + resIcon('stones')) + '</button>' +
-            '<button class="mini ghost" data-act="forge" data-id="' + item.id + '">工坊</button>' +
+              ' data-cost="' + enhanceCost(enhLv) + '"' + (maxed ? ' data-max="1"' : '') + '>' +
+              (maxed ? '已满级' : '强化 ' + fmt(enhanceCost(enhLv)) + resIcon('stones')) + '</button>' +
+            '<button class="mini ghost" data-act="forge" data-slot="' + slotDef.key + '">工坊</button>' +
             '<button class="mini ghost" data-act="unequip" data-slot="' + slotDef.key + '">卸下</button>' +
           '</div>' +
         '</div>'
@@ -10755,7 +11523,7 @@
       return (
         '<div class="set-row ' + set.cls + (count ? ' on' : '') + '">' +
           '<div class="set-head"><span class="set-name">' + set.name + '套</span>' +
-          '<span class="set-count">' + count + ' / 6</span></div>' +
+          '<span class="set-count">' + count + ' / ' + Object.keys(set.pieces).length + '</span></div>' +
           '<p class="set-desc">' + desc + tail + '</p>' +
         '</div>'
       );
@@ -10802,8 +11570,6 @@
         ? '秘境 · ' + SETS[item.setKey].name + '套装'
         : RARITIES[item.r].name;
       const extra = (item.affixes || []).map((a) => SHORT_NAME[a.k] + (a.v * 100).toFixed(1) + '%');
-      const gemN = (item.gems || []).filter(Boolean).length;
-      if (gemN) extra.push('石×' + gemN);
       const elName = ELEMENTS.find((e) => e.key === item.el);
       const elHtml = elName ? '<b class="' + item.el + '">' + elName.name + '</b> · ' : '';
       const cur = state.equipped[item.slot];
@@ -10811,18 +11577,24 @@
       const cmpHtml = cmp === null ? '' :
         '<b class="bi-cmp ' + (cmp > 0 ? 'up' : cmp < 0 ? 'down' : 'eq') +
         '" title="与已穿戴同部位装备对比">' + (cmp > 0 ? '▲' : cmp < 0 ? '▼' : '＝') + '</b>';
+      // 封存按钮按陈列室已封存状态判断（2026-10-31 用户指定）：空位或比展品强才可封存；
+      // 陈列室未解锁（境界未到合体）一律禁用
+      const stand = state.museum[item.slot];
+      const canSeal = featureOpen('museum') && (!stand || itemScore(item) > itemScore(stand));
       return (
         '<li class="bag-item item-r' + item.r + setCls + '" data-id="' + item.id + '">' +
           '<div class="bi-main">' +
-            '<span class="bi-name">' + esc(item.name) + (item.lv ? ' <em>+' + item.lv + '</em>' : '') + '</span>' +
+            '<div class="bi-headline">' +
+              '<span class="bi-name">' + esc(item.name) + '</span>' +
+              '<span class="bi-power">' + cmpHtml + fmt(itemPower(item)) + '</span>' +
+            '</div>' +
             '<span class="bi-meta">' + elHtml + meta + ' · ' + SLOT_MAP[item.slot].name + '</span>' +
             (extra.length ? '<span class="bi-affix">' + extra.join(' · ') + '</span>' : '') +
           '</div>' +
-          '<span class="bi-power">' + cmpHtml + fmt(itemPower(item)) + '</span>' +
           '<div class="bi-actions">' +
             '<button class="mini" data-act="wear" data-id="' + item.id + '">穿戴</button>' +
             '<button class="mini ghost" data-act="salvage" data-id="' + item.id + '">分解</button>' +
-            '<button class="mini ghost" data-act="seal" data-id="' + item.id + '">封存</button>' +
+            '<button class="mini ghost" data-act="seal" data-id="' + item.id + '"' + (canSeal ? '' : ' disabled') + '>封存</button>' +
           '</div>' +
         '</li>'
       );
@@ -10861,8 +11633,13 @@
     const perSec = e.stone * (1 + critChance() * (CRIT_MULT - 1)) * buffMult() / interval();
     $('perSec').textContent = fmtRate(perSec);
     const power = totalPower();
-    $('powerTotal').textContent = fmt(power);
-    $('powerPanel').textContent = fmt(power);
+    // 总战力统一实战口径 realPower（2026-10-31）：与顶栏徽章 / 战力榜上报一致；
+    // 装备战力（纯装备分，收益加成的计算基数）降为面板次要信息展示
+    const realP = fmt(realPower());
+    $('powerTotal').textContent = realP;
+    $('powerPanel').textContent = realP;
+    const gearEl = $('powerGear');
+    if (gearEl) gearEl.textContent = '装备战力 ' + fmt(power);
     $('powerBonus').textContent = '收益 ×' + powerMult().toFixed(2);
 
     renderUpgrade('speed', 'speedLv', 'speedDesc', 'buySpeed',
@@ -10892,7 +11669,7 @@
       $('breakBtn').textContent = '突破至 ' + REALMS[state.realm + 1];
       $('breakBtn').disabled = !enough;
     }
-    // 境界 hero 卡（newui 风格）附加字段
+    // 境界 hero 卡（卡牌风）附加字段
     $('heroTag').textContent = (state.immortal > 0 ? '仙位 ' + state.immortal + ' · ' : '') + '修士';
     $('heroAscPill').textContent = '✦ 仙缘 ×' + (state.ascensions | 0);
     $('heroOpens').textContent = fmt(state.opens);
@@ -10908,7 +11685,7 @@
 
     let hint = '';
     if (state.ascensions > 0) {
-      hint = '仙缘 ×' + state.ascensions + ' · 永久收益 +' + state.ascensions * 25 +
+      hint = '仙缘 ×' + state.ascensions + ' · 永久收益 +' + state.ascensions * 5 +
         '% · 境界门槛 ×' + fmt(Math.pow(2.5, state.ascensions));
     }
     if (maxRealm) {
@@ -10946,6 +11723,7 @@
     renderResonance();
     renderSteward();
     renderCraft();
+    renderMelt();
     renderMirror();
     renderMap();
     renderOrdeal();
@@ -11016,17 +11794,22 @@
 
   // 角色状态总览：人物 / 资源 / 进度 / 装备四组，内容不变不重绘；仙盟名复用天下页缓存，未加载时异步拉一次
   let statusGuildAsked = false;
+  let statusGuildRetryAt = 0; // 失败退避：renderStatus 随渲染循环 ~10Hz 调用，接口持续
+  // 失败时不退避会变成每秒约 10 次的无限重试风暴（每个请求还各挂 15s AbortController）
   let achvEls = new Map();   // 成就 id → { prog, btn, row }，壳重建时重建，补丁循环免查全文档
   function renderStatus() {
     const el = $('statusGrid');
     if (!el) return;
-    if (!WORLD.guild && !statusGuildAsked) {
+    if (!WORLD.guild && !statusGuildAsked && Date.now() >= statusGuildRetryAt) {
       statusGuildAsked = true;
+      statusGuildRetryAt = Date.now() + 60 * 1000;
       worldFetch('/api/guild').then((out) => {
         WORLD.guild = out;
         panelSigs.status = '';
         renderStatus();
-      }).catch(() => { statusGuildAsked = false; }); // 失败允许重试，勿永久卡「查询中」
+      }).catch(() => {
+        statusGuildAsked = false; // 失败允许重试（勿永久卡「查询中」），但至少隔 60s
+      });
     }
     const g = WORLD.guild && WORLD.guild.guild;
     const eq = state.equipped || {};
@@ -11038,7 +11821,7 @@
     // 这些高频数值改走下方 data-st 文本补丁，DOM 结构不动
     const eqKey = SLOTS.map((s) => {
       const it = eq[s.key];
-      return it ? it.name + ',' + (it.r || 0) + ',' + (it.lv || 0) + ',' + (it.star || 0) : '-';
+      return (it ? it.name + ',' + (it.r || 0) : '-') + ',' + (state.enh[s.key] || 0);
     }).join(';');
     const sig = [cloudUser || '', asc, state.realm, state.immortal, state.title,
       g ? g.name + '|' + g.level : (WORLD.guild ? 'none' : 'loading'),
@@ -11051,7 +11834,7 @@
         const rn = it ? ((RARITIES[it.r] || RARITIES[0]).name) : '';
         return '<div><dt>' + slotIcon(s.key) + s.name + '</dt><dd>' + (it
           ? esc(it.name) + '<br><span class="muted">' + rn +
-            ' +' + (it.lv || 0) + (it.star ? ' · ★' + it.star : '') + '</span>'
+            ' +' + (state.enh[s.key] || 0) + (it.star ? ' · ★' + it.star : '') + '</span>'
           : '<span class="muted">空缺</span>') + '</dd></div>';
       }).join('');
       const name = (cloudUser || '—') + (asc > 0 ? '+' + asc : '');
@@ -11149,7 +11932,7 @@
       return (
         '<div class="set-row ' + set.cls + (n ? ' on' : '') + '">' +
           '<div class="set-head"><span class="set-name">' + set.name + '图鉴</span>' +
-          '<span class="set-count">' + n + ' / 6</span></div>' +
+          '<span class="set-count">' + Math.min(n, 6) + ' / 6</span></div>' +
           '<p class="set-desc">' + (bonus.length ? '收集加成：' + bonus.join(' · ') : '集齐 2 / 4 / 6 件激活') + '</p>' +
         '</div>'
       );
@@ -11197,8 +11980,11 @@
       const coreLv = state.petCores[p.id] | 0;
       const coreMaxed = coreLv >= CORE_MAX;
       const traits = (CORE_TRAITS[p.id] || []).filter((t) => coreLv >= t.lv).map((t) => t.name).join('·');
-      const bonusText = (p.per * lv * 100).toFixed(1).replace(/\.0$/, '') + '%' +
-        (tokenLv ? ' · 信物 +' + (tokenLv * 0.5).toFixed(1).replace(/\.0$/, '') + '%' : '') +
+      // 战斗向加成消费端过 GROWTH_SCALE（×0.25，见 playerCombatStats 的 petBonus 折算），
+      // 灵石收益（gain）不折算——展示口径与实际效果对齐（2026-11-01 修）
+      const shownScale = p.stat === 'gain' ? 1 : GROWTH_SCALE;
+      const bonusText = (p.per * shownScale * lv * 100).toFixed(1).replace(/\.0$/, '') + '%' +
+        (tokenLv ? ' · 信物 +' + (tokenLv * 0.5 * shownScale).toFixed(1).replace(/\.0$/, '') + '%' : '') +
         (coreLv ? ' · 内丹 ' + coreLv + ' 级' + (traits ? '（' + traits + '）' : '') : '');
       return (
         '<div class="pet-row' + (active ? ' active' : '') + '">' +
@@ -11212,7 +11998,7 @@
               (maxed ? '已满级' : '喂养 ' + fmt(cost)) + '</button>' +
             '<button class="mini" data-pet="token" data-id="' + p.id + '"' +
               (tokenLv >= TOKEN_MAX || state.dust < TOKEN_COST(tokenLv) ? ' disabled' : '') + '>' +
-              (tokenLv >= TOKEN_MAX ? '信物满' : '信物 ' + TOKEN_COST(tokenLv)) + '</button>' +
+              (tokenLv >= TOKEN_MAX ? '信物满' : '信物 ' + TOKEN_COST(tokenLv) + ' ' + resIcon('dust')) + '</button>' +
             '<button class="mini" data-pet="core" data-id="' + p.id + '"' +
               (coreMaxed || state.beastBones < coreCost(coreLv) ? ' disabled' : '') + '>' +
               (coreMaxed ? '内丹满' : '内丹 ' + coreCost(coreLv) + ' 骨') + '</button>' +
@@ -11383,10 +12169,10 @@
           label + ' (<span data-count="' + key + '">' + countMapShell[key] + '</span>)</button>').join('');
       const titles = states.filter((s2) => s2.claimed && s2.a.title).map((s2) => s2.a.title);
       $('titleRow').innerHTML = titles.length
-        ? '<span class="title-label">称号</span>' + titles.map((t) =>
+        ? titles.map((t) =>
             '<button class="bag-chip' + (state.title === t ? ' active' : '') + '" data-title="' + t + '">' + t + '</button>'
           ).join('')
-        : '<span class="title-label">称号</span><span class="title-empty">达成标杆成就解锁称号</span>';
+        : '<span class="title-empty">达成标杆成就解锁称号</span>';
       // 一次性收集本壳的行元素引用：补丁循环每帧 61×3 次全文档 querySelector 太贵
       achvEls = new Map();
       $('achvList').querySelectorAll('[data-arow]').forEach((rowEl) => {
@@ -11449,10 +12235,16 @@
       btn.classList.remove('hidden');
       $('immortalHint').classList.remove('hidden');
       const cost = immortalCost();
-      const can = state.stones >= cost;
-      btn.textContent = '入仙界（' + fmt(cost) + resIcon('stones') + '）';
-      btn.disabled = !can;
-      $('immortalHint').textContent = '仙位 ' + state.immortal + ' · 每位收益 +50%，秘境敌人与产出 ×1.25';
+      if (state.immortal >= IMMORTAL_MAX) {
+        btn.innerHTML = '仙位已满（' + IMMORTAL_MAX + '/' + IMMORTAL_MAX + '）';
+        btn.disabled = true;
+      } else {
+        const can = state.stones >= cost;
+        btn.innerHTML = '入仙界（' + fmt(cost) + resIcon('stones') + '）';
+        btn.disabled = !can;
+      }
+      $('immortalHint').textContent = '仙位 ' + state.immortal + ' / ' + IMMORTAL_MAX +
+        ' · 每位收益 +10%，秘境敌人与产出 ×1.05';
     }
   }
 
@@ -11461,7 +12253,10 @@
     const bucket = c ? Math.ceil(Math.max(0, c.doneAt - Date.now()) / 1000) : 0;
     const activeBucket = elixirOn(state.elixir.id) ? Math.ceil((state.elixir.until - Date.now()) / 1000) : 0;
     const afford = ELIXIRS.map((e) => state.stones >= e.cost ? 1 : 0).join(',');
-    const sig = JSON.stringify(state.elixir.owned) + '|' + bucket + '|' + activeBucket + '|' + afford +
+    // 合丹按钮阈值是四成价（1200/2400），与全价桶（3000/6000）不重合——须单独入签名，
+    // 否则灵石跨过四成线时按钮保持错误的禁用/可点（2026-11-01 修）
+    const affordHerb = ELIXIRS.map((e) => state.stones >= Math.ceil(e.cost * 0.4) ? 1 : 0).join(',');
+    const sig = JSON.stringify(state.elixir.owned) + '|' + bucket + '|' + activeBucket + '|' + afford + '|' + affordHerb +
       (c ? c.id : '') + '|' + Math.floor(state.gather.herb / HERB_ELIXIR_NEED) + '|' +
       Math.floor(state.stones / 2000);
     if (panelSigs.elixir === sig) return;
@@ -11563,6 +12358,19 @@
   }
 
   function renderMarket() {
+    // 璞玉按钮带当日剩余次数：必须在市场签名检查之前更新——
+    // 开璞玉不改市场货单，签名不变会被 early-return 跳过（2026-10-31 实测踩坑）
+    ensureDaily();
+    const gmLeft = Math.max(0, GAMBLE_DAILY_MAX - (state.daily.gamble | 0));
+    const gmBtn = $('gambleBtn'), gm10 = $('gamble10Btn');
+    if (gmBtn) {
+      gmBtn.textContent = '开璞玉（20 万灵石）· 今日剩 ' + gmLeft;
+      gmBtn.disabled = gmLeft <= 0 || state.stones < GAMBLE_COST;
+    }
+    if (gm10) {
+      gm10.textContent = '连开 10 次（200 万灵石）· 今日剩 ' + gmLeft;
+      gm10.disabled = gmLeft < 10 || state.stones < GAMBLE_COST * 10;
+    }
     if (ensureDated(state.market)) state.market.sold = [];
     const picks = marketPicks();
     const sig = state.market.date + '|' + state.market.sold.join('+') + '|' +
@@ -11583,6 +12391,52 @@
     }).join('');
   }
 
+  // 怪物出处检索（2026-11-01 用户指定：点图鉴名称弹详情）——按名字匹配各玩法怪物表
+  function beastHabitat(name) {
+    const out = [];
+    const wi = WILD_ZONES.findIndex((z) => z.monster === name);
+    if (wi >= 0) out.push('野外 · ' + WILD_ZONES[wi].name + ' · 危险度 ' + (wi + 1));
+    if (TOWER_MONSTERS.some((m) => m.name === name)) out.push('爬塔 / 无尽秘境 · 常规守卫');
+    if (TOWER_BOSSES.some((b) => b.name === name)) out.push('爬塔 · 每 10 层镇塔主');
+    const ci = STAGE_CHAPTERS.findIndex((c) => c.boss === name || c.monsters.includes(name));
+    if (ci >= 0) out.push('闯关 · ' + STAGE_CHAPTERS[ci].name +
+      (STAGE_CHAPTERS[ci].boss === name ? ' · 关底首领' : ''));
+    if (name === '心魔') out.push('试炼 · 心魔劫');
+    if (CHAPTER_BOSSES.includes(name.replace(/·.*$/, ''))) out.push('天下 · 世界妖王');
+    if (!out.length) out.push('秘境征战与各类事件');
+    return out;
+  }
+
+  // 详情行小图标（currentColor 随主题）：剑=击杀，罗盘=出处（图标旁配汉字标签）
+  const BEAST_ICONS = {
+    kill: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
+      '<path d="M2.2 13.8l.6-2.6 7.4-7.4 2 2-7.4 7.4-2.6.6z" fill="currentColor"/>' +
+      '<path d="M11.2 2.4l2.4 2.4.9-.9a.8.8 0 0 0 0-1.1l-1.3-1.3a.8.8 0 0 0-1.1 0l-.9.9z" fill="currentColor" opacity=".65"/></svg>',
+    pin: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
+      '<path d="M8 1.2a4.8 4.8 0 0 1 4.8 4.8c0 3.4-4.8 8.8-4.8 8.8S3.2 9.4 3.2 6A4.8 4.8 0 0 1 8 1.2z" fill="currentColor"/>' +
+      '<circle cx="8" cy="6" r="1.8" fill="rgba(0,0,0,.4)"/></svg>',
+  };
+
+  function openBeast(name) {
+    const kills = state.bestiary[name] || 0;
+    $('beastTitle').textContent = name;
+    const wi = WILD_ZONES.find((z) => z.monster === name);
+    const ti = TOWER_MONSTERS.find((m) => m.name === name) || TOWER_BOSSES.find((b) => b.name === name);
+    const icon = wi ? wi.icon : (ti ? ti.icon : (name === '心魔' ? '魔' : '妖'));
+    // 头像：有 AI 立绘用立绘（monsterImgOf 剥词缀前缀匹配），无则徽记 SVG 兜底
+    const habitats = beastHabitat(name);
+    $('beastBody').innerHTML =
+      '<div class="beast-detail">' +
+        '<div class="inspect-line">' +
+          '<div class="beast-avatar">' + monsterAvatarHtml(name, icon) + '</div>' +
+          '<span class="inspect-power">' + BEAST_ICONS.kill + ' 击杀 ' + fmt(kills) + '</span>' +
+        '</div>' +
+        habitats.map((h) =>
+          '<div class="beast-row">' + BEAST_ICONS.pin + '<i>出处</i><span>' + esc(h) + '</span></div>').join('') +
+      '</div>';
+    $('beastModal').classList.add('show');
+  }
+
   function renderBestiary() {
     const species = Object.keys(state.bestiary).length;
     const sig = JSON.stringify(state.bestiary);
@@ -11593,7 +12447,7 @@
     const entries = Object.keys(state.bestiary).sort((a, b) => state.bestiary[b] - state.bestiary[a]);
     $('bestiaryList').innerHTML = entries.length
       ? entries.map((name) =>
-          '<span class="beast-chip" title="击杀 ' + fmt(state.bestiary[name]) + '">' +
+          '<span class="beast-chip" data-beast="' + esc(name) + '" title="查看怪物详情">' +
           esc(name) + ' <i>' + fmt(state.bestiary[name]) + '</i></span>'
         ).join('')
       : '<span class="title-empty">尚无击杀记录，去秘境开张。</span>';
@@ -11632,12 +12486,6 @@
       chip('autoSalvage', 0, '关', st.autoSalvage === 0) +
       chip('autoSalvage', 1, '分凡灵', st.autoSalvage === 1) +
       chip('autoSalvage', 2, '分到玄品', st.autoSalvage === 2);
-    $('stewardEnhance').innerHTML =
-      chip('autoEnhance', 0, '关', st.autoEnhance === 0) +
-      chip('autoEnhance', 25, '+25', st.autoEnhance === 25) +
-      chip('autoEnhance', 50, '+50', st.autoEnhance === 50) +
-      chip('autoEnhance', 100, '+100', st.autoEnhance === 100) +
-      chip('autoEnhance', 200, '+200', st.autoEnhance === 200);
     $('stewardMarket').innerHTML = marketPicks().map((p) =>
       chip('market', p.id, p.name + (st.autoMarket.includes(p.id) ? '：自动' : ''), st.autoMarket.includes(p.id))
     ).join('');
@@ -11656,6 +12504,21 @@
     }).join('') +
       '<button class="mini" data-oreforge="1"' + (state.gather.ore >= ORE_SOUL_NEED ? '' : ' disabled') + '>' +
       '矿石锻魂 ' + ORE_SOUL_NEED + ' → 器魂 3（存矿 ' + fmt(state.gather.ore) + '）</button>';
+  }
+
+  // 装备熔铸面板：两档各一行（天→仙 / 仙→仙升星），材料实时盘点不入档
+  function renderMelt() {
+    const sig = state.bag.length + '|' + Math.floor(state.stones / 10);
+    if (panelSigs.melt === sig) return;
+    panelSigs.melt = sig;
+    $('meltList').innerHTML = [4, 5].map((r) => {
+      const n = meltStock(r);
+      const can = n >= MELT_NEED && state.stones >= meltFee(r);
+      const out = r === 4 ? '仙品' : '仙品 ★+1';
+      return '<button class="mini" data-melt="' + r + '"' + (can ? '' : ' disabled') + '>' +
+        RARITIES[r].name + ' ×' + n + ' → ' + out +
+        '（成功率 10%±5% · ' + fmt(meltFee(r)) + ' 灵石/件）</button>';
+    }).join('');
   }
 
   function renderMirror() {
@@ -11806,7 +12669,7 @@
       '<p class="side-title">天道录 · ' + def.title +
         (claimed ? ' <span class="title-empty">已参悟</span>' : '') + '</p>' +
       '<p class="chapter-text">' + def.text + '</p>' +
-      (claimed ? '' : '<button class="btn tiny" id="chapterBtn">参悟（+' + fmt(2000 * (realm + 1)) + ' 灵石）</button>');
+      (claimed ? '' : '<button class="btn tiny" id="chapterBtn">参悟（+' + fmt(CHAPTER_GAIN * (realm + 1)) + ' 灵石）</button>');
     const btn = document.getElementById('chapterBtn');
     if (btn) btn.addEventListener('click', () => claimChapter(realm));
   }
@@ -11863,7 +12726,7 @@
       return (
         '<div class="pet-row' + (sl.claimed ? ' claimed' : '') + '">' +
           '<div class="pet-main"><span class="pet-name">' +
-            '<i style="color:' + tier.color + '">【' + tier.name + '】</i> ' + bountyDesc(sl) + '</span>' +
+            '<i class="bounty-tier bounty-' + sl.tier + '">【' + tier.name + '】</i> ' + bountyDesc(sl) + '</span>' +
           '<p class="pet-desc">' + fmt(Math.min(sl.prog, sl.target)) + ' / ' + fmt(sl.target) +
             ' · ' + rewardText + '</p></div>' +
           '<div class="pet-actions">' +
@@ -11937,7 +12800,7 @@
         '<div class="pet-main"><span class="pet-name">仙道问答 · ' +
           (quizDone ? '今日已毕 ' + state.quiz.correct + ' / ' + QUIZ_N : '第 ' + (state.quiz.idx + 1) + ' / ' + QUIZ_N + ' 题') +
           ' · 连对 ' + state.quiz.streak + ' 天</span>' +
-          '<p class="pet-desc">' + (quizDone
+          '<p class="quiz-q">' + (quizDone
             ? (state.quiz.correct >= QUIZ_N
               ? '全对！连对 ' + state.quiz.streak + ' 天' + (state.quiz.streak === 0 ? '（七日连对已得天品自选箱）' : '，满 ' + QUIZ_STREAK_N + ' 天得「天品自选箱」') + ' · 明日再来'
               : '答对 ' + state.quiz.correct + ' 题 · 连对中断，明日再来')
@@ -11994,31 +12857,47 @@
     if (panelSigs.dao === sig) return;
     panelSigs.dao = sig;
     $('daoList').innerHTML = DAO_NPCS.map((npc) => {
-      const aff = state.daoLv.aff[npc.id] || 0;
+      const aff = daoAffOf(npc.id);
+      const sp = daoSpend(npc.id);
+      const bonded = daoBonded(npc.id);
       const married = state.daoLv.married === npc.id;
       return (
         '<div class="pet-row' + (married ? ' active' : '') + '">' +
           '<span class="pet-icon dao-avatar-box">' + daoAvatar(npc.id) + '</span>' +
           '<div class="pet-main"><span class="pet-name">' + npc.name +
             (married ? ' <em>道侣</em>' : '') + '</span>' +
-          '<p class="pet-desc">情谊 ' + aff + ' / ' + DAO_MARRY_AT + ' · ' + npc.desc + '</p></div>' +
-          (aff >= DAO_MARRY_AT && !married
+          '<p class="pet-desc">结缘进度 ' + daoAffText(aff) + '% / 100%' +
+            ' · 灵石礼 ' + fmt(sp.stones) + ' / ' + fmt(DAO_MARRY_STONES) +
+            ' · 碎屑礼 ' + fmt(sp.dust) + ' / ' + fmt(DAO_MARRY_DUST) +
+            ' · ' + npc.desc + '</p></div>' +
+          (bonded && !married
             ? '<button class="mini" data-dao-marry="' + npc.id + '">结为道侣</button>'
             : '<button class="mini" disabled>' + (married ? '相伴中' : '未结缘') + '</button>') +
         '</div>' +
         '<div class="dao-gifts">' +
           DAO_GIFTS.map((g) => {
             const can = (g.stones && state.stones >= g.stones) ||
-              (g.dust && state.dust >= g.dust) || (g.ticket && state.petTickets >= g.ticket);
+              (g.dust && state.dust >= g.dust);
             const costStr = (g.stones ? fmt(g.stones) + resIcon('stones') : '') +
-              (g.dust ? fmt(g.dust) + resIcon('dust') : '') +
-              (g.ticket ? g.ticket + resIcon('petTickets') : '');
-            return '<button class="mini" data-dao-gift="' + npc.id + ':' + g.id + '" title="好感 +' + g.aff + '"' +
-              (can && aff < DAO_MARRY_AT ? '' : ' disabled') + '>' + g.name + ' ' + costStr + '</button>';
+              (g.dust ? fmt(g.dust) + resIcon('dust') : '');
+            // title 写真实增量：结缘进度按累计线折算（单次灵石礼 +2.5% / 碎屑礼 +0.2%），
+            // 旧版 aff 字段已废弃，不得再显示「好感 +2」误导
+            const perAff = daoAffText(Math.min(DAO_MARRY_AT, (g.stones || g.dust) /
+              (g.stones ? DAO_MARRY_STONES : DAO_MARRY_DUST) * DAO_MARRY_AT));
+            const tip = !can
+              ? (g.stones ? '灵石不足，无法赠礼' : '碎屑不足，无法赠礼')
+              : (bonded ? '已可结缘' : '结缘进度 +' + perAff + '%');
+            return '<button class="mini" data-dao-gift="' + npc.id + ':' + g.id + '" title="' + tip + '"' +
+              (can && !bonded ? '' : ' disabled') + '>' + g.name + ' ' + costStr + '</button>';
           }).join('') +
         '</div>'
       );
     }).join('');
+    // 头像加载失败回退字标：CSP 禁内联 onerror，渲染后统一挂 error 监听
+    // （error 事件异步派发，innerHTML 后同步挂上必能接到）
+    $('daoList').querySelectorAll('img.dao-face').forEach((im) => {
+      im.addEventListener('error', () => im.classList.add('dao-face-bad'), { once: true });
+    });
   }
 
   function renderBattleStats() {
@@ -12034,7 +12913,12 @@
 
   function updateTimer() {
     const p = Math.min(1, acc / interval());
-    $('timerFill').style.width = (p * 100).toFixed(1) + '%';
+    // 变化才写（2026-11-01 手机降载）：主循环 20Hz 调用，宽度每 1% 才落一次样式，
+    // 省掉无变化的强制样式失效（配合触屏端停常驻动画，压低手机端主线程占用）
+    const step = Math.round(p * 100);
+    if (step === updateTimer.last) return;
+    updateTimer.last = step;
+    $('timerFill').style.width = (step) + '%';
   }
 
   /* ---------------- 主循环 ---------------- */
@@ -12059,7 +12943,9 @@
       opened++;
     }
 
-    if (opened > 0 && now - lastSave > 3000) {
+    // 自动保存节流 60s（2026-11-01 用户指定，由 30s 上调）：开箱产出攒 60 秒落一次盘，
+    // 关键动作（送礼/熔铸/突破等）各自即时 save() 不受此节流影响
+    if (opened > 0 && now - lastSave > 60000) {
       save();
       lastSave = now;
     }
@@ -12102,9 +12988,9 @@
 
     if (state.autoHunt && unlockedMode(uiMode) && !needAscension()) {
       huntAcc += dt;
-      if (huntAcc >= 3) {
+      if (huntAcc >= HUNT_INTERVAL_S) {
         huntAcc = 0;
-        doBattle(uiMode, { auto: true });
+        doBattle(uiMode, { auto: true }); // 每场（含异步扣点）结束后由下个间隔重计
       }
     } else {
       huntAcc = 0;
@@ -12120,6 +13006,7 @@
     paintBag(false);
     paintResources();
     updateTimer();
+    updateStaminaChip(); // 体力量展示插值（文本变化才写 DOM）
   }
 
   /* ---------------- 天下玩法（排行 / 竞技场 / 妖王 / 仙盟） ---------------- */
@@ -12129,7 +13016,12 @@
     rank: null, pvp: null, boss: null, guild: null, guildList: null, ladder: null,
     bossBusy: false, arenaBusy: {}, gBossBusy: false,
   };
-  const GUILD_CREATE_COST = 50000;
+  // 立盟门槛（2026-11-01 用户指定）：境界「化神」+ 1000 万灵石 + 2 万修为（服务端同口径校验）
+  const GUILD_CREATE_COST = 10000000;
+  const GUILD_CREATE_EXP_COST = 20000;
+  const GUILD_CREATE_REALM = 4;
+  // 基金阶梯（与服务端 fundNeed 同口径）：升到第 N 级累计需 20万×N(N-1)/2——首次 20 万，每级 +20 万
+  const guildFundNeed = (lv) => 200000 * lv * (lv - 1) / 2;
 
   const guildBuffLevel = () => (WORLD.guild && WORLD.guild.guild ? WORLD.guild.guild.level : 0);
   const realmName = (n) => REALMS[Math.max(0, Math.min(REALMS.length - 1, Number(n) | 0))];
@@ -12150,7 +13042,11 @@
     clearTimeout(timer);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
-    if (!res.ok) throw new Error((body && body.error) || ('请求失败 ' + res.status));
+    if (!res.ok) {
+      const err = new Error((body && body.error) || ('请求失败 ' + res.status));
+      err.status = res.status; // 调用方按状态码分流（如 409 快照未就绪 → 立即补推快照）
+      throw err;
+    }
     return body;
   }
 
@@ -12184,7 +13080,9 @@
     const rows = WORLD.rank.top.map((r) =>
       '<div class="rank-row' + (r.rank <= 3 ? ' top3' : '') + '">' +
       '<span class="rk">' + r.rank + '</span>' +
-      '<span class="nm">' + esc(r.name) + (r.guild ? ' <i class="gd">『' + esc(r.guild) + '』</i>' : '') + '</span>' +
+      '<span class="nm"><b class="rk-name" data-inspect="' + r.id + '" title="点击查看装备">' + esc(r.name) + '</b>' +
+      ' <i class="gd">' + realmName(r.realm) + '</i>' +
+      (r.guild ? ' <i class="gd">『' + esc(r.guild) + '』</i>' : '') + '</span>' +
       '<span class="pw">' + realmName(r.realm) + ' · 战力 ' + fmt(r.power) + '</span></div>'
     ).join('');
     $('rankList').innerHTML = rows || '<p class="hint">榜上无人，速去修炼。</p>';
@@ -12192,6 +13090,45 @@
     $('rankMe').textContent = me.rank > 0
       ? '我的排名：第 ' + me.rank + ' 名 · 战力 ' + fmt(me.power)
       : '尚未上榜：战力不为零后自动入榜。';
+  }
+
+  // 装备查验：点战力榜名字拉对方穿戴六件（服务端只回展示字段），弹层展示
+  async function inspectPlayer(id) {
+    try {
+      const out = await worldFetch('/api/rank/inspect', { method: 'POST', body: JSON.stringify({ id }) });
+      $('inspectTitle').textContent =
+        (out.name || '这位修士') + ' · ' + realmName(out.realm) + ' · 战力 ' + fmt(out.power);
+      const rows = SLOTS.map((s) => {
+        const it = out.equipped && out.equipped[s.key];
+        if (!it) return '<div class="inspect-row"><span class="nm">' + s.name +
+          '<span class="inspect-empty">（未穿戴）</span></span></div>';
+        const rar = RARITIES[it.r] || RARITIES[0];
+        const stars = it.star ? ' ★' + it.star : '';
+        const setName = it.setKey && SETS[it.setKey] ? ' · ' + SETS[it.setKey].name + '套装' : '';
+        const elName = ELEMENTS.find((e) => e.key === it.el);
+        const affixes = (it.affixes || []).map((a) =>
+          (SHORT_NAME[a.k] || a.k) + (a.v * 100).toFixed(1) + '%').join(' · ');
+        // 三行布局（2026-11-01 手机竖屏修复）：原单行里 meta 被 long 词条挤成省略号，
+        // 战力根本看不到——行1 名字+星级 …… 战力（右对齐）；行2 品质·套装·五行·部位；行3 词条
+        return '<div class="inspect-row">' +
+          '<div class="inspect-line">' +
+            '<span class="nm"><b data-c="' + rar.color + '">' + esc(it.name) + '</b>' + stars + '</span>' +
+            '<span class="inspect-power">战力 ' + fmt(it.power) + '</span>' +
+          '</div>' +
+          '<div class="inspect-sub">' +
+            '<span class="inspect-meta">' + rar.name + setName +
+            (elName ? ' · ' + elName.name : '') + ' · ' + s.name + '</span>' +
+            (affixes ? '<span class="pw">' + esc(affixes) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+      $('inspectBody').innerHTML = rows;
+      // 品质色经 CSSOM 落地：CSP style-src 'self' 拦内联 style 属性；明色按 themeInk 压暗
+      $('inspectBody').querySelectorAll('[data-c]').forEach((el) => { el.style.color = themeInk(el.dataset.c); });
+      $('inspectModal').classList.add('show');
+    } catch (e) {
+      floatText(e.message, '#f87171');
+    }
   }
 
   // ---- 天梯榜（假人「剑影」常驻，真人打满一场入榜） ----
@@ -12324,7 +13261,13 @@
       renderArena();
       ladderLoad(); // 天梯榜名次随本场刷新
     } catch (e) {
-      floatText(e.message, '#f87171');
+      if (e && e.status === 409) {
+        // 快照未就绪（存量档快照列回填前）：persist 重打包 pvpSnap 并立即上推，几秒后可再战
+        persist();
+        floatText('快照同步中，几秒后再战', '#f87171');
+      } else {
+        floatText(e.message, '#f87171');
+      }
     }
     WORLD.arenaBusy[id] = false;
   }
@@ -12416,7 +13359,7 @@
     const b = WORLD.boss;
     if (!b || !b.defeated || !(b.myDamage > 0) || state.boss.claimed === b.day) return;
     let stones = Math.min(200000, 8000 + Math.floor(b.myDamage / 50));
-    const dust = Math.min(5000, 20 + Math.floor(b.myDamage / 5000));
+    let dust = Math.min(5000, 20 + Math.floor(b.myDamage / 5000));
     let extra = '';
     if (b.killer === 'me') {
       stones *= 2;
@@ -12452,9 +13395,10 @@
     if (!g) {
       const list = (WORLD.guildList && WORLD.guildList.list) || [];
       $('guildBox').innerHTML =
-        '<p class="hint">立盟需 ' + fmt(GUILD_CREATE_COST) + ' 灵石，每盟至多 ' +
+        '<p class="hint">立盟需境界「化神」· ' + fmt(GUILD_CREATE_COST) + ' 灵石 + ' +
+        fmt(GUILD_CREATE_EXP_COST) + ' 修为，每盟至多 ' +
         ((WORLD.guildList && WORLD.guildList.list[0] && WORLD.guildList.list[0].cap) || 30) +
-        ' 员；基金每 ' + fmt(200000) + ' 升一级，每级全局收益 +2%。</p>' +
+        ' 员；基金阶梯升级——首次 20 万，之后每级 +20 万，每级全局收益 +0.5%。</p>' +
         '<div class="guild-row-input"><input id="guildName" maxlength="8" placeholder="盟名（2-8 字）" autocomplete="off">' +
         '<button class="btn primary" data-act="guildCreate">立盟</button></div>' +
         '<p class="side-title">仙盟名录</p>' +
@@ -12483,6 +13427,7 @@
         : '');
     $('guildBox').innerHTML =
       '<div class="guild-head"><b>' + esc(g.name) + '</b><span>Lv.' + g.level + ' · 基金 ' + fmt(g.fund) +
+      (g.level < 10 ? ' · 下级基金 ' + fmt(guildFundNeed(g.level + 1)) : '') +
       ' · ' + g.members.length + '/' + g.memberCap + ' 员 · 我的贡献 ' + fmt(g.myContribution) + '</span></div>' +
       '<p class="hint">公告：' + (g.notice ? esc(g.notice) : '（暂无）') + '</p>' +
       (leader
@@ -12558,6 +13503,14 @@
     const input = $('guildName');
     const name = ((input && input.value) || '').trim();
     if (!name) { floatText('先想好盟名', '#f87171'); return; }
+    if (state.realm < GUILD_CREATE_REALM) {
+      floatText('立盟需境界「化神」', '#f87171');
+      return;
+    }
+    if (state.exp < GUILD_CREATE_EXP_COST) {
+      floatText('立盟需 ' + fmt(GUILD_CREATE_EXP_COST) + ' 修为', '#f87171');
+      return;
+    }
     if (state.stones < GUILD_CREATE_COST) {
       floatText('立盟需 ' + fmt(GUILD_CREATE_COST) + ' 灵石', '#f87171');
       return;
@@ -12565,6 +13518,7 @@
     try {
       const out = await worldFetch('/api/guild/create', { method: 'POST', body: JSON.stringify({ name }) });
       state.stones -= GUILD_CREATE_COST;
+      state.exp -= GUILD_CREATE_EXP_COST;
       WORLD.guild = { guild: out.guild };
       pushLog('仙盟「' + out.guild.name + '」立！广纳同门吧。', 'special');
       chime([523, 659, 784]);
@@ -12602,6 +13556,8 @@
   }
 
   async function guildKick(id) {
+    const m = ((WORLD.guild || {}).guild || {}).members?.find((x) => x.id === id);
+    if (!confirm('确定将同门「' + (m ? m.name : '该成员') + '」移出仙盟？此操作不可撤销。')) return;
     try {
       const out = await worldFetch('/api/guild/kick', { method: 'POST', body: JSON.stringify({ userId: id }) });
       WORLD.guild = { guild: out.guild };
@@ -12625,11 +13581,16 @@
     }
   }
 
+  // 捐献/传功/赠礼带在途锁：双击连发两个请求会被服务端都受理（捐献双倍扣款），
+  // 或第二个被日限拒绝弹红字（2026-11-01 修，比照 arenaBusy/gBossBusy 口径）
+  let guildDonateBusy = false;
   async function guildDonate() {
+    if (guildDonateBusy) return;
     const input = $('guildDonate');
     const amount = Math.floor(Number(input && input.value));
     if (!Number.isFinite(amount) || amount <= 0) { floatText('输入有效数额', '#f87171'); return; }
     if (state.stones < amount) { floatText('灵石不足', '#f87171'); return; }
+    guildDonateBusy = true;
     try {
       const out = await worldFetch('/api/guild/donate', { method: 'POST', body: JSON.stringify({ amount }) });
       state.stones -= out.accepted;
@@ -12640,10 +13601,13 @@
       }
       pushLog('为仙盟捐献 ' + fmt(out.accepted) + ' 灵石，基金升至 ' + fmt(out.fund) + '（Lv.' + out.level + '），贡献 +' + fmt(Math.floor(out.accepted / 2000)), 'sys');
       floatText('+' + fmt(out.accepted) + ' 基金', '#facc15');
+      if (input) input.value = '';
       persist();
       guildLoad(); // 顺带刷新盟任务进度
     } catch (e) {
       floatText(e.message, '#f87171');
+    } finally {
+      guildDonateBusy = false;
     }
   }
 
@@ -12700,7 +13664,7 @@
     const b = g.boss;
     if (state.guildBoss.claimed === b.day) return;
     let stones = Math.min(80000, 4000 + Math.floor(b.myDamage / 40));
-    const dust = Math.min(1500, 10 + Math.floor(b.myDamage / 4000));
+    let dust = Math.min(1500, 10 + Math.floor(b.myDamage / 4000));
     let extra = '';
     if (b.killer === 'me') {
       stones *= 2;
@@ -12715,7 +13679,10 @@
 
   // ---- 盟任务领取 / 贡献商店 ----
 
+  const guildTaskBusy = {};
   async function guildTaskClaim(taskId) {
+    if (guildTaskBusy[taskId]) return; // 连点防抖：同一任务在途请求只放行一次
+    guildTaskBusy[taskId] = true;
     const g = WORLD.guild && WORLD.guild.guild;
     const task = (g && g.tasks.find((x) => x.id === taskId)) || null;
     const taskName = task ? task.name : taskId;
@@ -12734,8 +13701,17 @@
       persist();
       guildLoad();
     } catch (e) {
-      floatText(e.message, '#f87171');
+      if (e && e.status === 409) {
+        // 409 = 今日已领取（连点竞态 / 多端先领）：不算错误，本地对账刷新即可
+        if (g && task) task.claimed = true;
+        renderGuild();
+        guildLoad();
+        floatText('该任务今日已领取', '#9aa4b2');
+      } else {
+        floatText(e.message, '#f87171');
+      }
     }
+    guildTaskBusy[taskId] = false;
   }
 
   const GUILD_SHOP_REWARD_TEXT = {
@@ -12743,7 +13719,11 @@
   };
 
   // 同门互助：传功（双方各 300 万灵石 + 境界缩放修为）/ 赠礼（双方各 20 碎屑），每日各一次
+  const guildAidBusy = {};
   async function guildAid(type, targetId) {
+    const busyKey = type + ':' + targetId;
+    if (guildAidBusy[busyKey]) return;
+    guildAidBusy[busyKey] = true;
     try {
       const out = await worldFetch('/api/guild/aid', {
         method: 'POST', body: JSON.stringify({ type, targetId }),
@@ -12763,6 +13743,8 @@
       renderGuild();
     } catch (e) {
       floatText(e.message, '#f87171');
+    } finally {
+      guildAidBusy[busyKey] = false;
     }
   }
 
@@ -12821,6 +13803,7 @@
 
   function useBagToken() {
     if (!(state.bagTokens > 0)) { floatText('没有扩容符', '#f87171'); return; }
+    bagDirty = true; // 用符只改容量/符数、不动背包内容，不置脏 paintBag 会提前返回
     if (state.bagExtra >= BAG_EXTRA_MAX) {
       floatText('已达 300 格上限', '#f87171');
       paintBag(true); // 刷新按钮隐藏态
@@ -12839,6 +13822,7 @@
   function rollBagToken(kind) {
     if (Math.random() >= BAG_TOKEN_CHANCE[kind]) return;
     state.bagTokens = Math.min(99, state.bagTokens + 1);
+    bagDirty = true; // 按钮显隐/文案随符数变化，不置脏 paintBag 不重绘（与 useBagToken 同因）
     pushLog('拾得「乾坤扩容符」！背包面板可使用（+20 格）', 'special');
     chime([784, 988, 1318]);
   }
@@ -12880,10 +13864,37 @@
     save();
   }
 
+  // 剧情角色名配色按主题加深（2026-10-31）：STORY_CAST 色板为暗底调校，
+  // 浅金/浅蓝系内联色在亮色纸底不可读；乘法压暗保留各角色色相，暗色主题原样使用。
+  let storyNameRawColor = '';
+  // 明色主题下把暗底调校的强调色统一压暗（×0.6）：CSP 拦内联 style，
+  // data-c / 故事名这类经 CSSOM 落地的内联色无法被 CSS 主题覆盖，必须 JS 折算
+  function themeInk(color) {
+    if (state.theme !== 'light' || !color || color[0] !== '#') return color;
+    const hex = color.length === 4
+      ? '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3]
+      : color;
+    const n = parseInt(hex.slice(1), 16);
+    const f = 0.6;
+    const r = Math.round(((n >> 16) & 255) * f);
+    const g = Math.round(((n >> 8) & 255) * f);
+    const b = Math.round((n & 255) * f);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  function applyStoryNameColor(color) {
+    storyNameRawColor = color || '';
+    const el = $('storyName');
+    if (el) el.style.color = themeInk(color) || '';
+  }
+
   function applyTheme() {
     document.body.classList.toggle('theme-light', state.theme === 'light');
     const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.setAttribute('content', state.theme === 'light' ? '#f2e9d5' : '#07090f');
+    if (metaTheme) metaTheme.setAttribute('content', state.theme === 'light' ? '#ccd2c0' : '#101614');
+    // 主题提示键：正题在云端档里，这里只留一个非存档的本地 hint 供 theme-boot 防首帧闪烁
+    try { localStorage.setItem(THEME_KEY, state.theme === 'light' ? 'light' : 'dark'); } catch (e) { /* 忽略 */ }
+    if (storyNameRawColor) applyStoryNameColor(storyNameRawColor);
     const sun = $('themeIconSun'), moon = $('themeIconMoon');
     if (sun && moon) {
       const light = state.theme === 'light';
@@ -12905,158 +13916,57 @@
     save();
   }
 
+  // 功能页序列（滑动切页 / 点标签的方向动画共用）：左右滑动按此顺序翻页
+  const SWIPE_TABS = ['equip', 'richang', 'zhan', 'xiu', 'gushi', 'world', 'xian'];
+
+  // 目标页相对当前页的方向：'next' | 'prev' | undefined（同页不动画）
+  function pageDir(name) {
+    const cur = document.querySelector('.tab-page.active');
+    const from = SWIPE_TABS.indexOf(cur ? cur.dataset.page : '');
+    const to = SWIPE_TABS.indexOf(name);
+    return to > from ? 'next' : to < from ? 'prev' : undefined;
+  }
+
   // 顶部功能标签：修炼 / 征战 / 闲趣
-  function setTopTab(name) {
+  // dir = 'next' | 'prev'：给新激活页加方向平移淡入（滑动与点标签共用）；缺省不动画（首屏）
+  function setTopTab(name, dir) {
     document.querySelectorAll('#topTabs .top-tab').forEach((btn) =>
       btn.classList.toggle('active', btn.dataset.tab === name));
-    document.querySelectorAll('.tab-page').forEach((page) =>
-      page.classList.toggle('active', page.dataset.page === name));
-  }
-
-  /* ---------------- 存档导出 / 导入（AES-256-GCM 加密） ---------------- */
-
-  // 导出档加密（2026-10-30）：防记事本改档。PBKDF2(310k) 从「内嵌 pepper + 每次导出
-  // 随机盐」派生 AES-256 密钥，GCM 认证标签保证密文一个字节都改不动（改了整个解密失败）。
-  // 安全边界（诚实备案）：钥匙随游戏下发，决心足够者逆向 JS 可抠出 pepper 自行伪造——
-  // 实效是伪档成本从「记事本」提到「逆向工程」；要真正不可伪造需服务端签字（私钥不出服）。
-  const LX_PEPPER_OBF = [251,88,96,204,51,30,123,55,180,157,89,251,167,127,235,252,
-    225,196,218,11,212,85,23,18,196,161,2,142,139,245,43,86]; // 原值 XOR 0x5A 落码
-  const LX_SAVE_MAGIC = "LXS1";
-  const LX_PBKDF2_ROUNDS = 310000;
-
-  const subtleAvailable = () => !!(window.crypto && window.crypto.subtle);
-
-  async function deriveSaveKey(saltBytes) {
-    const pepper = new Uint8Array(LX_PEPPER_OBF.map((c) => c ^ 0x5a));
-    const material = new Uint8Array(pepper.length + saltBytes.length);
-    material.set(pepper, 0);
-    material.set(saltBytes, pepper.length);
-    const base = await crypto.subtle.importKey("raw", material, "PBKDF2", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt: saltBytes, iterations: LX_PBKDF2_ROUNDS, hash: "SHA-256" },
-      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  }
-
-  const bytesToB64 = (bytes) => {
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    }
-    return btoa(bin);
-  };
-  const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-
-  // 导出：LXS1.<base64(salt|iv|ciphertext+GCM tag)>，纯文本便于传输
-  async function encryptSaveText(plain) {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveSaveKey(salt);
-    const ct = new Uint8Array(await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv }, key, new TextEncoder().encode(plain)));
-    const pack = new Uint8Array(salt.length + iv.length + ct.length);
-    pack.set(salt, 0);
-    pack.set(iv, salt.length);
-    pack.set(ct, salt.length + iv.length);
-    return LX_SAVE_MAGIC + "." + bytesToB64(pack);
-  }
-
-  // 导入：非法头/被篡改/版本不符一律抛错，由调用方统一提示
-  async function decryptSaveText(pack) {
-    if (typeof pack !== "string" || !pack.startsWith(LX_SAVE_MAGIC + ".")) {
-      throw new Error("bad-magic");
-    }
-    const raw = b64ToBytes(pack.slice(LX_SAVE_MAGIC.length + 1));
-    if (raw.length < 16 + 12 + 16) throw new Error("too-short"); // 盐+IV+最短密文(含16B认证标签)
-    const salt = raw.slice(0, 16);
-    const iv = raw.slice(16, 28);
-    const ct = raw.slice(28);
-    const key = await deriveSaveKey(salt);
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
-    return new TextDecoder().decode(plain);
-  }
-
-  async function exportSaveFile() {
-    if (!subtleAvailable()) {
-      floatText("当前环境不支持加密导出", "#f87171");
-      return;
-    }
-    try {
-      const text = localStorage.getItem(SAVE_KEY) || JSON.stringify(state);
-      const pack = await encryptSaveText(text);
-      const blob = new Blob([pack], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "lingxia_save_" + todayStr().replace(/-/g, "") + ".lxsave";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      pushLog("存档已加密导出（.lxsave）", "sys");
-    } catch (e) {
-      floatText("导出失败", "#f87171");
-    }
-  }
-
-  function importSaveFile(file) {
-    if (!file) return;
-    if (!subtleAvailable()) {
-      floatText("当前环境不支持加密存档", "#f87171");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const raw = String(reader.result).trim();
-      if (raw.startsWith("{")) {
-        floatText("旧版明文存档已停用：请从当前版本重新导出", "#f87171");
-        return;
+    document.querySelectorAll('.tab-page').forEach((page) => {
+      const on = page.dataset.page === name;
+      page.classList.remove('slide-next', 'slide-prev');
+      page.classList.toggle('active', on);
+      if (on && dir) {
+        void page.offsetWidth; // 先移类再强排，连续切页也能重新触发动画
+        page.classList.add(dir === 'next' ? 'slide-next' : 'slide-prev');
       }
-      let data = null;
-      try {
-        data = JSON.parse(await decryptSaveText(raw));
-      } catch (e) {
-        // 明文 JSON/被篡改/损坏/他游戏文件在此统一拦截
-        floatText("解密失败：文件已损坏或被修改", "#f87171");
-        return;
-      }
-      if (!data || typeof data !== "object" || Array.isArray(data)) {
-        floatText("不是有效的灵匣纪元存档", "#f87171");
-        return;
-      }
-      // 与服务端 / load() 同口径的量级校验：拦下明显改过数值的档，
-      // 否则推云端会被 400，客户端陷入无限重试
-      const bounds = [
-        ["stones", 0, 1e18], ["totalStones", 0, 1e18], ["dust", 0, 1e15],
-        ["dustTotal", 0, 1e15], ["opens", 0, 1e15], ["exp", 0, 1e12],
-      ];
-      const sane = bounds.every(([k, lo, hi]) => {
-        const v = data[k];
-        return typeof v === "number" && isFinite(v) && v >= lo && v <= hi;
-      }) && Number.isInteger(data.realm) && data.realm >= 0 && data.realm <= 9 &&
-        data.stones <= data.totalStones;
-      if (!sane) {
-        floatText("存档数值异常，拒绝导入", "#f87171");
-        return;
-      }
-      if (!confirm("导入将覆盖当前全部进度（不可撤销）；之后游戏同步时，云端存档也会被这份导入覆盖。确定导入？")) return;
-      try { sessionStorage.setItem('lx_force_push', '1'); } catch (e) { /* 导入档以 lastSeen 竞争也能胜出，标记只是加速 */ }
-      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-      await opfsWrite(JSON.stringify(data)); // 先落防清除备份再刷新，避免 reload 打断写入
-      location.reload();
-    };
-    reader.readAsText(file);
+    });
   }
 
   function bind() {
     $('topTabs').addEventListener('click', (e) => {
       const btn = e.target.closest('.top-tab');
       if (!btn) return;
-      setTopTab(btn.dataset.tab);
+      setTopTab(btn.dataset.tab, pageDir(btn.dataset.tab));
       if (btn.dataset.tab === 'world') worldActivate();
     });
 
     // 天下页：排行刷新 / 竞技场切磋 / 妖王出手 / 仙盟（列表内按钮走委托）
     $('rankRefresh').addEventListener('click', loadRank);
+    // 战力榜点名字查装备：事件委托 + 查验弹层开关
+    $('rankList').addEventListener('click', (e) => {
+      const el = e.target.closest('[data-inspect]');
+      if (el) inspectPlayer(Number(el.dataset.inspect));
+    });
+    $('inspectBtn').addEventListener('click', () => $('inspectModal').classList.remove('show'));
+    // 查看装备：仅按钮关闭（2026-11-01 用户指定：除设置外弹窗一律禁点遮罩关闭）
+    // 怪物图鉴：点名称弹详情，仅按钮关闭
+    $('bestiaryList').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-beast]');
+      if (!chip) return;
+      openBeast(chip.dataset.beast);
+    });
+    $('beastCloseBtn').addEventListener('click', () => $('beastModal').classList.remove('show'));
     // 新手教程的「直达修行指南」提示行：关弹层并滚到修炼页指南面板
     $('guideModal').addEventListener('click', (e) => {
       if (e.target.id !== 'guideTipJump') return;
@@ -13069,12 +13979,28 @@
       enqueueFirstTimeTutorial();
       floatText('玩法指南已打开', '#d8b36a');
     });
-    // 整体玩法说明弹层：按钮开、✕/遮罩/知道了关
+    // 整体玩法说明弹层：按钮开、✕/知道了关（2026-11-01 起禁点遮罩关闭）
     $('gameplayGuideBtn').addEventListener('click', () => $('helpModal').classList.add('show'));
     $('helpClose').addEventListener('click', () => $('helpModal').classList.remove('show'));
-    $('helpModal').addEventListener('click', (e) => {
-      if (e.target === $('helpModal')) $('helpModal').classList.remove('show');
-    });
+    // 资源图例（图标:名称）注入玩法说明：图标与 RES_ICONS 同源，图标更新自动同步；
+    // 一次性构建（幂等防重复插入），插在「核心循环」一节之后
+    (() => {
+      const helpBody = document.querySelector('#helpModal .help-body');
+      if (!helpBody || helpBody.querySelector('.res-legend')) return;
+      const RES_LEGEND = [
+        ['stones', '灵石'], ['exp', '修为'], ['dust', '碎屑'], ['souls', '器魂'],
+        ['petTickets', '招募券'], ['rerollCoupon', '洗练券'], ['talismans', '护体符'],
+        ['towerMarks', '塔印'], ['warMerits', '战功'], ['beastBones', '兽骨'],
+      ];
+      const sec = document.createElement('div');
+      sec.className = 'res-legend';
+      sec.innerHTML = '<h3>资源图例</h3><div class="res-legend-list">' +
+        RES_LEGEND.map(([k, n]) => '<span class="res-legend-item">' + resIcon(k) + n + '</span>').join('') +
+        '</div>';
+      const h3s = [...helpBody.querySelectorAll('h3')];
+      const core = h3s.find((h) => h.textContent.indexOf('核心循环') >= 0);
+      helpBody.insertBefore(sec, core && core.nextElementSibling ? core.nextElementSibling.nextElementSibling : null);
+    })();
     // 顶栏明暗切换：点按在亮/暗之间来回
     $('themeToggleBtn').addEventListener('click', () => {
       state.theme = state.theme === 'light' ? 'dark' : 'light';
@@ -13090,7 +14016,7 @@
     });
     $('mapBuyBtn').addEventListener('click', buyMapAp);
     $('wanderGo').addEventListener('click', () => {
-      setTopTab('xian');
+      setTopTab('xian', pageDir('xian'));
       const panel = document.querySelector('.panel.wander');
       if (panel) panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
@@ -13134,14 +14060,6 @@
     $('themeLight').addEventListener('click', () => setTheme('light'));
 
 
-    $('exportSave').addEventListener('click', exportSaveFile);
-    $('importSaveBtn').addEventListener('click', () => $('importFile').click());
-    $('importFile').addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      importSaveFile(file);
-    });
-
     $('boxBtn').addEventListener('click', () => manualOpen(1));
     $('open1').addEventListener('click', () => manualOpen(1));
     $('open10').addEventListener('click', () => {
@@ -13171,7 +14089,7 @@
       const slot = btn.dataset.slot;
       if (act === 'enhance') enhanceSlot(slot);
       else if (act === 'unequip') unequipSlot(slot);
-      else if (act === 'forge') openForge(Number(btn.dataset.id));
+      else if (act === 'forge') openForge(slot);
     });
 
     $('bagList').addEventListener('click', (e) => {
@@ -13225,7 +14143,7 @@
         return;
       }
       state.autoHunt = !state.autoHunt;
-      huntAcc = 0;
+      huntAcc = 0; // 首场也吃 1 分钟间隔：开启后由主循环节奏发起，连点开关不产生额外战斗
       combatDirty = true;
       save();
       renderCombat();
@@ -13243,6 +14161,23 @@
       const chip = e.target.closest('.zone-chip');
       if (!chip || chip.disabled) return;
       selectWildZone(Number(chip.dataset.zone));
+    });
+
+    // 扫荡（2026-10-31）：闯关/爬塔选已通关卡片 + 扫荡按钮
+    $('sweepBtn').addEventListener('click', sweepBattle);
+    $('sweepStrip').addEventListener('click', (e) => {
+      const groupBtn = e.target.closest('.zone-group');
+      if (groupBtn) {
+        const gi = Number(groupBtn.dataset.group);
+        sweepGroupOpen = (gi === sweepGroupOpen) ? -1 : gi; // 独立于野外选区条的展开组
+        renderCombat();
+        return;
+      }
+      const chip = e.target.closest('.zone-chip[data-sweep]');
+      if (!chip || chip.disabled) return;
+      sweepPick[uiMode] = Number(chip.dataset.sweep);
+      combatDirty = true;
+      renderCombat();
     });
 
     $('trainingList').addEventListener('click', (e) => {
@@ -13334,6 +14269,9 @@
       takeQuizBox(btn.dataset.quizbox);
     });
 
+    // 问答结果弹层：仅按钮关闭（2026-11-01 起禁点遮罩关闭）
+    $('quizResultBtn').addEventListener('click', () => $('quizResultModal').classList.remove('show'));
+
     $('marketList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-market]');
       if (!btn || btn.disabled) return;
@@ -13347,10 +14285,7 @@
     });
 
     $('adventureModal').addEventListener('click', (e) => {
-      if (e.target === $('adventureModal')) {
-        $('adventureModal').classList.remove('show');
-        return;
-      }
+      /* 奇遇弹窗不允许点遮罩关闭（2026-10-31）：误触空白会错过奇遇，必须点弹窗按钮 */
       const btn = e.target.closest('button[data-adv]');
       if (!btn) return;
       adventureAction(btn.dataset.adv);
@@ -13372,7 +14307,6 @@
     };
     $('stewardWear').addEventListener('click', stewardHandler('autoWear'));
     $('stewardSalvage').addEventListener('click', stewardHandler('autoSalvage'));
-    $('stewardEnhance').addEventListener('click', stewardHandler('autoEnhance'));
     $('stewardMarket').addEventListener('click', stewardHandler('market'));
 
     // 炼器 / 赌石 / 秘境图 / 修行 / 灵田 / 升星
@@ -13384,10 +14318,19 @@
       craftItem(btn.dataset.craft);
     });
 
+    $('meltList').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-melt]');
+      if (!btn || btn.disabled) return;
+      meltItem(Number(btn.dataset.melt));
+    });
+
     $('gambleBtn').addEventListener('click', () => doGamble(1));
     $('gamble10Btn').addEventListener('click', () => doGamble(10));
     $('gambleModalClose').addEventListener('click', () => $('gambleModal').classList.remove('show'));
     $('gambleModalAgain').addEventListener('click', (e) => doGamble(Number(e.target.dataset.times) || 1));
+
+    // 秘境图事件弹层（2026-10-31）：仅按钮关闭（2026-11-01 起禁点遮罩关闭）
+    $('mapEventBtn').addEventListener('click', () => $('mapEventModal').classList.remove('show'));
 
     $('wanderList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-wander]');
@@ -13522,30 +14465,33 @@
       $('battleSpeed').textContent = '倍速 ×' + state.battleSpeed;
       save();
     });
-    $('battleModal').addEventListener('click', (e) => {
-      if (e.target === $('battleModal')) closeBattleModal();
-    });
+    // 战斗弹层：仅按钮关闭（2026-11-01 起禁点遮罩关闭，防误触丢战报）
 
     $('forgeModal').addEventListener('click', (e) => {
-      if (e.target === $('forgeModal')) {
-        closeForge();
-        return;
-      }
+      // 工坊弹层：仅按钮关闭（2026-11-01 起禁点遮罩关闭）
       const btn = e.target.closest('button[data-act]');
       if (!btn || btn.disabled) return;
-      const it = forgeTarget();
-      if (!it) return;
       const act = btn.dataset.act;
-      if (act === 'lock') toggleForgeLock(it, Number(btn.dataset.idx));
-      else if (act === 'reroll') forgeReroll(it);
-      else if (act === 'picker') {
+      // 宝石类操作走部位（forgeSlot），词条/升星/继承走穿戴件
+      if (act === 'picker') {
+        if (!forgeSlot) return;
         forgePickerOpen = !forgePickerOpen;
         renderForge();
-      } else if (act === 'socket') forgeSocket(it, btn.dataset.k, Number(btn.dataset.t));
-      else if (act === 'unsocket') forgeUnsocket(it, Number(btn.dataset.idx));
+        return;
+      }
+      if (act === 'socket' || act === 'unsocket' || act === 'fuse') {
+        if (!forgeSlot) return;
+        if (act === 'socket') forgeSocket(forgeSlot, btn.dataset.k, Number(btn.dataset.t));
+        else if (act === 'unsocket') forgeUnsocket(forgeSlot, Number(btn.dataset.idx));
+        else fuseGems(btn.dataset.k, Number(btn.dataset.t));
+        return;
+      }
+      const it = forgeTarget();
+      if (!it) return;
+      if (act === 'lock') toggleForgeLock(it, Number(btn.dataset.idx));
+      else if (act === 'reroll') forgeReroll(it);
       else if (act === 'inherit') doInherit(Number(btn.dataset.id));
       else if (act === 'star') feedStar(it.id, Number(btn.dataset.id));
-      else if (act === 'fuse') fuseGems(btn.dataset.k, Number(btn.dataset.t));
     });
     $('forgeClose').addEventListener('click', closeForge);
 
@@ -13555,11 +14501,20 @@
       save();
     });
 
-    $('resetBtn').addEventListener('click', () => {
-      if (!confirm('确定重置全部进度？此操作不可撤销。')) return;
-      state = defaults();
-      save();
-      location.reload();
+    $('resetBtn').addEventListener('click', async () => {
+      if (!confirm('确定重置全部进度？云端存档与账本一并清除，此操作不可撤销。')) return;
+      try {
+        const res = await fetch('/api/reset', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'fetch' },
+        });
+        if (!res.ok) { floatText('重置失败，请稍后再试', '#f87171'); return; }
+      } catch (e) { floatText('重置失败，请稍后再试', '#f87171'); return; }
+      authSignedOut = true; // 停 persist / 关页兜底 / flushCloud：reload 前不得把重置前的内存档推回云端
+      cloudPending = null;
+      if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = 0; }
+      location.reload();  // 云端已清空，重新启动按全新档开局
     });
 
     $('offlineClose').addEventListener('click', () => {
@@ -13574,12 +14529,43 @@
       manualOpen(1);
     });
 
+    // 左右滑动手势切换功能页（2026-10-31）：向左滑 = 下一页（如修炼→故事），
+    // 向右滑 = 上一页。只认横向主导位移（|dx|≥60px 且 ≥1.5×|dy|），不与纵向滚动
+    // 和列表滑动抢手势；弹层开启 / 触点在输入控件上时不触发。桌面鼠标无此手势。
+    // （2026-10-31：SWIPE_TABS 上移到 setTopTab 旁共用；切页带方向平移淡入）
+    let swipeX = 0, swipeY = 0, swipeOk = false;
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { swipeOk = false; return; }
+      const t = e.touches[0];
+      swipeX = t.clientX;
+      swipeY = t.clientY;
+      swipeOk = !(e.target.closest && e.target.closest('input, textarea, select'));
+    }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+      if (!swipeOk) return;
+      swipeOk = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - swipeX;
+      const dy = t.clientY - swipeY;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      if (document.querySelector('.modal.show')) return;
+      const page = document.querySelector('.tab-page.active');
+      const cur = SWIPE_TABS.indexOf(page ? page.dataset.page : '');
+      const next = cur + (dx < 0 ? 1 : -1);
+      if (cur < 0 || next < 0 || next >= SWIPE_TABS.length) return;
+      setTopTab(SWIPE_TABS[next], dx < 0 ? 'next' : 'prev');
+      if (SWIPE_TABS[next] === 'world') worldActivate();
+      floatText(document.querySelector('.top-tab.active').textContent.trim(), '#f0d9a8');
+    }, { passive: true });
+
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         state.lastSeen = Date.now();
         persist();
+        cloudFlushNow(); // 本地不再落盘：切后台立即用 beacon 把最新 lastSeen 推上云端（离线结算起点）
       } else {
         awardOffline();
+        staminaRefresh(); // 切回前台顺带同步体力（离线恢复折算以服务端为准）
         acc = 0;
         last = performance.now();
         render();
@@ -13600,14 +14586,14 @@
           headers: { 'X-Requested-With': 'fetch' },
         });
       } catch (e) { /* 即使请求失败也回登录页 */ }
-      // 清本地档再走（2026-10-31 复审）：登出不清档会让同浏览器下一个账号继承本账号
-      // 存档，云端按增速账本拒收、双向脱钩（冒烟实测复现）。云端是正本，重新登录即恢复。
+      authSignedOut = true; // 停 persist / flushCloud，防登出瞬间在途推送把旧档推回新会话
+      cloudPending = null;
+      if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = 0; }
+      // 清推送锁与会话标记再走：本地不再落盘（云端唯一存档），换账号登录自然从云端恢复
       try {
-        localStorage.removeItem(SAVE_KEY);
         localStorage.removeItem(TAB_LOCK_KEY);
         sessionStorage.clear();
       } catch (e) { /* 忽略 */ }
-      opfsClear();
       location.replace('/login.html');
     });
   }
@@ -13620,9 +14606,10 @@
     window.LX = {
       state: () => state,
       stats: () => playerCombatStats(),
+      enemy: (m, l) => enemyFor(m, l),          // 同源断言用（scripts/parity-check.mjs）
+      req: (m, l) => contentReq(m, l),          // 同源断言用
       open: (n) => manualOpen(Math.max(1, Math.min(10000, n | 0))),
       offline: () => awardOffline(),
-      recover: () => recoverSaveIfNeeded(),
       refresh: () => {
         equipDirty = combatDirty = bagDirty = logDirty = true;
         render();
@@ -13633,12 +14620,10 @@
 
   // 启动：脚本若被提前（如 head 中）执行，等 DOM 就绪再初始化，避免元素查不到
   async function start() {
-  if (!(await authGate())) return; // 登录门禁：未登录 / 无后端不进入游戏
-  await cloudRestore();            // 云端存档先行合并，再走本地 load
-  load();
-  recoverSaveIfNeeded(); // 主存档被门户/外部清掉时，从 OPFS 备份自愈（异步，恢复后自动离线结算）
-  setTimeout(() => { bootSettled = true; }, 5000); // 恢复异常时的兜底解锁
+  if (!(await authGate())) return;    // 登录门禁：未登录 / 无后端不进入游戏
+  if (!(await cloudRestore())) return; // 云端唯一存档：拉取失败/档损坏不进入游戏（见 cloudRestore）
   awardOffline();
+  staminaRefresh(); // 征战体力展示快照（服务端裁定，见 doBattle 体力闸门）
   ensureDaily();
   syncFeatureUnlocks(false); // 存档里已满足的解锁静默记账，只有此后新达成的才播报
   bind();

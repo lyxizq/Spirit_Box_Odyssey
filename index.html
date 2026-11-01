@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#07090f">
+  <meta name="theme-color" content="#101614">
   <title>灵匣纪元 · Spirit Box Odyssey</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="180x180" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="newui.css">
 </head>
 <body>
+  <script src="theme-boot.js"></script>
   <div class="bg-glow" aria-hidden="true"></div>
   <div class="event-banner hidden" id="wanderBanner" role="status">
     <span id="wanderBannerText">✦ 奇遇降临</span>
@@ -86,7 +86,7 @@
       </div>
     </div>
     <div class="top-badges">
-      <div class="realm-badge">当前境界 <strong id="realmName">炼气</strong></div>
+      <div class="realm-badge">境界 <strong id="realmName">炼气</strong></div>
       <span class="shichen-badge" id="shichenBadge">子时</span>
       <span class="shichen-badge hidden" id="skyBadge">晴空万里</span>
       <span class="title-badge hidden" id="titleBadge"></span>
@@ -107,7 +107,7 @@
       </button>
       <button class="btn tiny ghost" id="setOpenBtn" title="设置"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.72 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
       <span class="btn tiny" id="userChip" title="江湖称呼">…</span>
-      <button class="btn tiny" id="logoutBtn">退出登录</button>
+      <button class="btn tiny" id="logoutBtn">退出</button>
     </div>
   </header>
 
@@ -149,16 +149,19 @@
       <p class="side-title">赌石</p>
       <p class="hint">2000 灵石开一块璞玉：多为石屑，也可能开出碎屑、灵石，甚至天品装备。</p>
       <div class="btn-row">
-        <button class="btn" id="gambleBtn">开璞玉（2000 灵石）</button>
-        <button class="btn" id="gamble10Btn">连开 10 次（2 万灵石）</button>
+        <button class="btn" id="gambleBtn">开璞玉（20 万灵石）</button>
+        <button class="btn" id="gamble10Btn">连开 10 次（200 万灵石）</button>
       </div>
       <p class="gamble-result" id="gambleResult" hidden></p>
 </section>
       </div>
+<section class="panel panel-wide titles" aria-label="称号">
+      <h2>称号</h2>
+      <div class="chip-row title-row" id="titleRow"></div>
+</section>
 <section class="panel panel-wide achv" aria-label="成就">
       <h2>成就 <span class="count" id="achvCount">0 / 0</span></h2>
       <div class="chip-row" id="achvFilterRow"></div>
-      <div class="chip-row title-row" id="titleRow"></div>
       <div id="achvList"></div>
 </section>
     </div>
@@ -336,11 +339,6 @@
         <div class="chip-row" id="stewardSalvage"></div>
       </div>
       <div class="rogue-box">
-        <div class="rogue-head"><span class="side-title">自动强化</span></div>
-        <p class="hint">已穿戴装备自动强化到指定星级为止，灵石充足时自动进行。</p>
-        <div class="chip-row" id="stewardEnhance"></div>
-      </div>
-      <div class="rogue-box">
         <div class="rogue-head"><span class="side-title">黑市代购</span></div>
         <div class="chip-row" id="stewardMarket"></div>
         <p class="hint">点亮后每日自动购买该商品。</p>
@@ -350,14 +348,14 @@
 
     <div class="tab-page" data-page="equip">
 <section class="panel equipment" aria-label="装备">
-      <h2>装备</h2>
+      <h2>装备<span class="h2-actions"><button class="btn tiny" id="autoEquip">一键穿戴</button></span></h2>
       <div class="power-line">
         <div class="power-main">
           <span class="power-label">总战力</span>
           <strong class="power-num" id="powerPanel">0</strong>
           <span class="power-bonus" id="powerBonus">收益 ×1.00</span>
+          <span class="power-gear" id="powerGear">装备战力 0</span>
         </div>
-        <button class="btn" id="autoEquip">一键穿戴</button>
       </div>
       <div class="equip-grid" id="equipGrid"></div>
       <div class="set-list" id="setList"></div>
@@ -368,12 +366,17 @@
         <p class="hint"><span id="soulCount">器魂 0</span> · 分解专属件与探幽通关可得器魂</p>
         <div class="chip-row" id="craftList"></div>
       </div>
-      <p class="hint">强化只作用于已穿戴装备，最高 +200。战力越高，灵石收益越快。</p>
+      <div id="meltSec">
+        <p class="side-title">熔铸（五件同品质 → 更高一品）</p>
+        <p class="hint">取背包中最弱五件熔铸，部位随机：天品 ×5 → 仙品；仙品 ×5 → 星级更高的仙品（封顶 ★5）。手续费按档位计。</p>
+        <div class="chip-row" id="meltList"></div>
+      </div>
+      <p class="hint">强化只作用于已穿戴装备，最高 +200。装备战力决定灵石收益；总战力为实战口径（含境界 / 时辰 / 灵宠 / 功法等加成），与顶栏和战力榜一致。</p>
 <section class="panel bag" aria-label="背包">
       <h2>背包 <span class="count" id="bagCount">0 / 100</span>
         <button class="btn tiny hidden" id="bagExpandBtn">使用扩容符</button></h2>
       <div class="bag-tools">
-        <button class="btn tiny" id="salvageLow">分解凡 / 灵</button>
+        <button class="btn tiny" id="salvageLow">分解 凡/灵/玄</button>
         <button class="btn tiny" id="salvageAll">清空分解</button>
       </div>
       <div class="bag-filters">
@@ -428,9 +431,9 @@
               <div class="enemy-title">
                 <p class="enemy-kicker" id="enemyKicker">第 1 关</p>
                 <h3 id="enemyName">山贼</h3>
+                <span class="enemy-el el-jin" id="enemyEl">金</span>
                 <span class="diff" id="difficultyBadge">势均力敌</span>
               </div>
-              <span class="enemy-el el-jin" id="enemyEl">金</span>
               <span class="enemy-tag hidden" id="enemyTag">首领</span>
             </div>
             <dl class="enemy-stats">
@@ -447,12 +450,16 @@
             <span>生命 <b id="combatHp">0</b></span>
             <span>防御 <b id="combatDef">0</b></span>
             <span>五行 <b id="combatEl">持平</b></span>
+            <span>体力 <b id="combatStamina">…</b></span>
           </div>
 
           <div class="zone-strip hidden" id="zoneStrip"></div>
 
+          <div class="zone-strip hidden" id="sweepStrip"></div>
+
           <div class="combat-actions">
             <button class="btn primary" id="combatBtn">挑战第 1 关</button>
+            <button class="btn ghost hidden" id="sweepBtn">扫荡</button>
             <button class="btn ghost" id="autoBtn">连续挑战：关</button>
           </div>
 
@@ -544,7 +551,7 @@
       <h2>秘境图 <span class="count" id="mapAp">行动力 0 / 12</span>
         <span class="h2-actions"><button class="btn tiny" id="mapBuyBtn">加购 1 行动力（1 万灵石）</button></span></h2>
       <div class="map-grid" id="mapGrid"></div>
-      <p class="hint">每日 +6 行动力；点相邻的「+」格探雾前进，可采矿、拾尘、斩妖、闯藏宝窟。妖物越远越强。</p>
+      <p class="hint">每日 +6 行动力；点相邻的「+」格探雾前进，可采矿、拾尘、斩妖、闯藏宝窟，或与故人偶遇。妖物越远越强。</p>
       <div id="treasureBox"></div>
     </section>
     </div>
@@ -649,16 +656,13 @@
       <div class="col col-b">
 <section class="panel set-save" aria-label="存档与版本">
       <h2>存档与版本</h2>
-      <p class="hint">存档云端同步 · 浏览器本地留有离线缓存</p>
+      <p class="hint">进度云端保存 · 换设备登录同一账号自动恢复</p>
       <p><span class="ver-chip" id="serverTime">服务器时间 …</span>
       <span class="ver-chip" id="gameVersion">版本 …</span></p>
       <div class="set-row">
-        <button class="btn tiny" id="exportSave">导出存档</button>
-        <button class="btn tiny" id="importSaveBtn">导入存档</button>
-        <input type="file" id="importFile" accept=".lxsave,.json,application/json" hidden>
         <button class="btn tiny" id="resetBtn">重置存档</button>
       </div>
-      <p class="hint">导出为加密 .lxsave 文件；导入将覆盖当前进度并同步覆盖云端；重置前请先导出备份。</p>
+      <p class="hint">重置存档会清空本地与云端进度，且不可恢复。</p>
 </section>
       </div>
       </div>
@@ -714,7 +718,7 @@
     </section>
     <section class="panel dao" aria-label="道侣">
       <h2>道侣</h2>
-      <p class="hint">赠礼积攒情谊，情谊满百可结为道侣，得永久常驻加成与一段往事。</p>
+      <p class="hint">赠礼积攒情谊：单个道侣累计灵石礼满 20 亿或碎屑礼满 500 万可结为道侣，得永久常驻加成与一段往事。</p>
       <div id="daoList"></div>
     </section>
 <section class="panel wander" aria-label="云游奇遇">
@@ -742,6 +746,37 @@
         <button class="btn primary" id="gambleModalAgain">再开一次</button>
       </div>
     </div>
+  </div>
+
+  <div class="modal" id="mapEventModal" role="dialog" aria-modal="true" aria-labelledby="mapEventTitle">
+    <div class="modal-card">
+      <h3 id="mapEventTitle">秘境奇遇</h3>
+      <div id="mapEventBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="mapEventBtn">继续 ▸</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="inspectModal" role="dialog" aria-modal="true" aria-labelledby="inspectTitle">
+    <div class="modal-card">
+      <h3 id="inspectTitle">查看装备</h3>
+      <div id="inspectBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="inspectBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="beastModal" role="dialog" aria-modal="true" aria-labelledby="beastTitle">
+    <div class="modal-card">
+      <h3 id="beastTitle">怪物详情</h3>
+      <div id="beastBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="beastCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
   </div>
 
   <div class="modal battle-modal" id="battleModal" role="dialog" aria-modal="true" aria-labelledby="battleTitle">
@@ -814,6 +849,14 @@
       <h3 id="rogueTitle">神物加持</h3>
       <p>择一随身，继续深入。</p>
       <div class="rogue-choices" id="rogueChoices"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="quizResultModal" role="dialog" aria-modal="true" aria-labelledby="quizResultTitle">
+    <div class="modal-card">
+      <h3 id="quizResultTitle">——</h3>
+      <p id="quizResultBody"></p>
+      <button class="btn primary wide" id="quizResultBtn">继续 ▸</button>
     </div>
   </div>
 
@@ -905,7 +948,7 @@
         <h3>战斗规则</h3>
         <p>回合制自动对战：伤害 = 攻 − 防×(1−破甲)，暴击 ×1.75，吸血按伤害回血，120 回合未分胜负判超时。战败不损失进度。</p>
         <h3>存档</h3>
-        <p>本地 + 云端双存档按时间取新；设置页可导出加密存档文件 / 导入恢复 / 重置。</p>
+        <p>进度保存在云端，换设备登录同一账号自动恢复；设置页可重置存档。</p>
       </div>
       <button class="btn primary wide" id="helpClose">知道了</button>
     </div>

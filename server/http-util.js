@@ -1,14 +1,43 @@
 // HTTP 小工具：JSON 响应、请求体读取、IP / Cookie / 同源判定（零依赖）
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 
 export function sendJSON(res, status, obj, extraHeaders = {}) {
-  const text = JSON.stringify(obj);
+  const buf = Buffer.from(JSON.stringify(obj));
+  // 压缩只做成功大响应（错误体都很小）；Accept-Encoding 协商见 acceptsGzip。
+  // res.req 自 Node 15.7 起可用，免改全部调用点签名。
+  const gz = status === 200 && buf.length >= GZIP_MIN_SIZE && acceptsGzip(res.req);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    // 声明缓存键：防中间层（EdgeOne 等）把压缩版错发给不接收压缩的客户端
+    'Vary': 'Accept-Encoding',
+    ...(gz ? { 'Content-Encoding': 'gzip' } : {}),
     ...extraHeaders,
   });
-  res.end(text);
+  res.end(gz ? gzipBody(buf) : buf);
+}
+
+// ---------- gzip 内容协商（源站压缩；EdgeOne 回源带 Accept-Encoding，浏览器侧自动解压） ----------
+
+// 小于该值的响应体 gzip 后可能不降反升，直接明文
+export const GZIP_MIN_SIZE = 1024;
+
+// 请求是否接受 gzip：显式 q=0（「声明不接受」）不算接受，其余 q 值与省略 q 一律按接受
+export function acceptsGzip(req) {
+  const ae = req && req.headers ? req.headers['accept-encoding'] : null;
+  if (typeof ae !== 'string') return false;
+  return ae.split(',').some((part) => {
+    const [enc, ...params] = part.trim().toLowerCase().split(';');
+    if (enc !== 'gzip' && enc !== '*') return false;
+    const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
+    return !q || Number(q.slice(2)) > 0;
+  });
+}
+
+// 同步压缩（payload 均为 MB 级以下文本；level 6 平衡 CPU 与体积——API 每请求现压，静态有 mtime 缓存）
+export function gzipBody(buf) {
+  return zlib.gzipSync(buf, { level: 6 });
 }
 
 // 读取请求体，超过 limit 视为超大（返回 { tooLarge: true }），否则返回字符串

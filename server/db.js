@@ -194,6 +194,21 @@ CREATE TABLE IF NOT EXISTS save_ledger (
   grants       INTEGER NOT NULL DEFAULT 1,   -- 离线补结豁免次数（种子=1，用掉即清；防调钟每窗刷离线额度）
   updated_at   INTEGER NOT NULL
 );
+-- 动作授权日志（2026-11-01 全量服务端校验迁移）：服务端动作端点发放的每一笔收益
+-- （征战奖励/离线结算/兑换码…）都记一行，checkVelocity 的授权收益统计从「只认
+-- 兑换码」扩为「读本表」——服务端发的收益不再触发客户端存档的「余额跳变」误拒。
+CREATE TABLE IF NOT EXISTS action_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day        TEXT    NOT NULL,
+  kind       TEXT    NOT NULL,
+  stones     REAL    NOT NULL DEFAULT 0,
+  dust       REAL    NOT NULL DEFAULT 0,
+  tickets    REAL    NOT NULL DEFAULT 0,
+  exp        REAL    NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_action_log_user_time ON action_log(user_id, created_at);
 `;
 
 // 老库补列：SCHEMA 里的 CREATE IF NOT EXISTS 不会给已存在的表加新列，这里按需 ALTER。
@@ -217,6 +232,24 @@ const USER_COLUMNS = [
   ['pvp_buys',     'INTEGER NOT NULL DEFAULT 0'],
   ['pvp_buy_day',  "TEXT    NOT NULL DEFAULT ''"],
   ['last_pvp_at',  'INTEGER NOT NULL DEFAULT 0'],
+  // 征战体力（2026-11-01 用户指令，服务端裁定）：一场 1 点、每日 300 点、5 分钟回 1 点。
+  // 数值只存服务端，客户端仅持有最近一次同步的展示快照；stamina_day 为上次每日回满的本地日
+  ['stamina',      'INTEGER NOT NULL DEFAULT 300'],
+  ['stamina_ts',   'INTEGER NOT NULL DEFAULT 0'],
+  ['stamina_day',  "TEXT    NOT NULL DEFAULT ''"],
+];
+
+// 账本权威进度/计数列（2026-11-01 全量服务端校验迁移）：征战进度与每日计数以服务端
+// 为准（JSON 列存野外已探区列表 / 每区击杀数 / 扫荡每日计数），存档镜像仅作展示。
+export const LEDGER_COLUMNS = [
+  ['wild_cleared',   "TEXT    NOT NULL DEFAULT '[]'"],
+  ['wild_kills',     "TEXT    NOT NULL DEFAULT '{}'"],
+  ['wild_repeat_day', "TEXT   NOT NULL DEFAULT ''"],
+  ['wild_repeat_used', 'INTEGER NOT NULL DEFAULT 0'],
+  ['sweep_day',      "TEXT    NOT NULL DEFAULT ''"],
+  ['sweep_used',     "TEXT    NOT NULL DEFAULT '{}'"],
+  ['sweep_bought',   "TEXT    NOT NULL DEFAULT '{}'"],
+  ['offline_at',     'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 // 账本表迁移（2026-10-31 复审）：早版把 stones 等建成 INTEGER，node:sqlite 读 >2^53 的
@@ -272,10 +305,22 @@ export function openDb(dbPath) {
   db.exec(`PRAGMA journal_mode = ${DB_JOURNAL};`);
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA synchronous = NORMAL;');
+  // 写锁等待：codes.js 等 CLI 与常驻服务共用同一个库文件，不设 busy_timeout
+  // 时撞上服务端写入会直接抛 SQLITE_BUSY 使命令失败
+  db.exec('PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
   migrateLedger(db); // 必须在 SCHEMA 之后：账本表外键引用 users，users 先建好迁移才不炸
   for (const [col, ddl] of USER_COLUMNS) ensureColumn(db, 'users', col, ddl);
   ensureColumn(db, 'guilds', 'fund', 'INTEGER NOT NULL DEFAULT 0');
+  // 兑换码软删（2026-10-31）：rm 不再物理删行——redeemSince 统计授权收益靠 LEFT JOIN
+  // reward，硬删会让已兑换玩家后续存档被增速校验误拒多日
+  ensureColumn(db, 'redeem_codes', 'deleted', 'INTEGER NOT NULL DEFAULT 0');
+  // 连点器检测（2026-10-31 服务端判定）：累计手动点击数 + 点击封禁截止时间
+  ensureColumn(db, 'save_ledger', 'clicks', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'save_ledger', 'click_ban_until', 'INTEGER NOT NULL DEFAULT 0');
+  // 权威进度/计数列（2026-11-01 全量服务端校验迁移）：必须排在 migrateLedger 之后
+  // ——旧 INTEGER 表重建后新列才不会丢
+  for (const [col, ddl] of LEDGER_COLUMNS) ensureColumn(db, 'save_ledger', col, ddl);
   ensureColumn(db, 'guild_members', 'contribution', 'INTEGER NOT NULL DEFAULT 0');
   // 同门互助（2026-10-31）：传功 / 赠礼记账——发起方记日期，受赠方记来源（领取后清除）
   ensureColumn(db, 'guild_members', 'aid_day',        "TEXT    NOT NULL DEFAULT ''");
@@ -284,8 +329,14 @@ export function openDb(dbPath) {
   ensureColumn(db, 'guild_members', 'aid_from_type',  "TEXT    NOT NULL DEFAULT ''");
   ensureColumn(db, 'guild_members', 'aid_from_name',  "TEXT    NOT NULL DEFAULT ''");
   ensureColumn(db, 'guild_members', 'aid_from_day',   "TEXT    NOT NULL DEFAULT ''");
-  // 显示名唯一（可空）；老账号回填 display_name = username，只跑一次由 NULL 判定自然幂等
+  // 显示名唯一（可空）；老账号回填 display_name = username，只跑一次由 NULL 判定自然幂等。
+  // 回填兜底 try/catch：历史库若已有 display_name 恰等于某 NULL 行 username 的组合，
+  // 回填会撞唯一索引抛错把 openDb 打崩（服务起不来）；撞了记日志跳过，留给人工对账
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display ON users(display_name) WHERE display_name IS NOT NULL');
-  db.prepare("UPDATE users SET display_name = username WHERE display_name IS NULL").run();
+  try {
+    db.prepare("UPDATE users SET display_name = username WHERE display_name IS NULL").run();
+  } catch (e) {
+    console.error('[db] display_name 回填撞唯一索引（历史数据冲突，跳过）：' + e.message);
+  }
   return db;
 }

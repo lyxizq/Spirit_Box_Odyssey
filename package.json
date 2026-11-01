@@ -1,14 +1,19 @@
 {
   "name": "spirit-box-odyssey",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "license": "MIT",
   "private": true,
   "type": "module",
   "description": "灵匣纪元 · 放置开箱 H5 游戏（Node 零依赖服务端 + SQLite 账号/云存档）",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "build:deploy": "node scripts/build-deploy.mjs"
   },
   "engines": {
     "node": ">=22.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "javascript-obfuscator": "^5.9.0"
   }
 }

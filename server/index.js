@@ -9,7 +9,9 @@ import { openDb } from './db.js';
 import { createAuthService } from './auth.js';
 import { createSaveService } from './saves.js';
 import { createSocialService } from './social.js';
-import { sendJSON, readBody, getIp, isSecure, sameOrigin } from './http-util.js';
+import { createStaminaService } from './stamina.js';
+import { createCombatService } from './combat.js';
+import { sendJSON, readBody, getIp, isSecure, sameOrigin, acceptsGzip, gzipBody, GZIP_MIN_SIZE } from './http-util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 8080);
@@ -22,6 +24,8 @@ const db = openDb(DB_PATH);
 const auth = createAuthService(db);
 const saves = createSaveService(db);
 const social = createSocialService(db);
+const stamina = createStaminaService(db);
+const combat = createCombatService(db, stamina);
 
 const SESSION_COOKIE = 'lx_session';
 const AUTH_BODY_LIMIT = 32 * 1024;    // 登录 / 注册请求体上限
@@ -51,6 +55,8 @@ const BASE_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'same-origin',
+  // HTTPS 部署下强制后续走 TLS（HTTP 明文响应里按规范被浏览器忽略，无害）
+  'Strict-Transport-Security': 'max-age=15552000',
 };
 
 // 登录页与游戏页同一份严格 CSP：两页均无内联脚本、无内联事件（game.js 生成的 HTML 亦然）
@@ -61,29 +67,39 @@ function redirect(res, location) {
   res.end();
 }
 
-// 页面文件内存缓存：按 mtime 失效，免去每请求 readFileSync
+// 页面文件内存缓存：按 mtime 失效，免去每请求 readFileSync；gz 惰性压缩并缓存（首遇 gzip 请求才算）
 const htmlCache = new Map();
-function sendHtml(res, file, headers = {}) {
+function sendHtml(req, res, file, headers = {}) {
   const full = path.join(ROOT, file);
   let entry = htmlCache.get(full);
   try {
     const mtime = fs.statSync(full).mtimeMs;
     if (!entry || entry.mtime !== mtime) {
-      entry = { mtime, body: fs.readFileSync(full) };
+      entry = { mtime, body: fs.readFileSync(full), gz: null };
       htmlCache.set(full, entry);
     }
   } catch (e) {
     return notFound(res);
   }
+  const gz = acceptsGzip(req) && entry.body.length >= GZIP_MIN_SIZE;
+  if (gz && !entry.gz) entry.gz = gzipBody(entry.body);
   res.writeHead(200, {
     'Content-Type': MIME['.html'],
     // 页面完全不缓存：杜绝 EdgeOne 等边缘节点留存旧版页面
     'Cache-Control': 'no-store',
+    'Vary': 'Accept-Encoding',
+    ...(gz ? { 'Content-Encoding': 'gzip' } : {}),
     ...BASE_HEADERS,
     ...headers,
   });
-  res.end(entry.body);
+  res.end(gz ? entry.gz : entry.body);
 }
+
+// gzip 压缩的文本扩展（jpg/png/webp/gif/mp3 等本已压缩格式一律流式透传不压）
+const GZIP_TEXT = new Set(['.html', '.css', '.js', '.json', '.svg', '.txt']);
+// 静态文本压缩缓存：full -> { mtime, body, gz }（本项目文本静态仅个位数文件，防膨胀上限仅作纵深）
+const staticTextCache = new Map();
+const STATIC_TEXT_CACHE_MAX = 64;
 
 // 静态文件：白名单根目录约束 + 扩展名 MIME，路径穿越直接 403
 function serveStatic(req, res, urlPath) {
@@ -107,15 +123,38 @@ function serveStatic(req, res, urlPath) {
   const ext = path.extname(full).toLowerCase();
   const mime = MIME[ext];
   if (!mime) return forbidden(res); // 只发文本/图片/音频等已知类型，防误发任意文件
-  res.writeHead(200, {
+  if (ext === '.md') return notFound(res); // 文档一律不对外（.md 有 MIME 映射，防 assets 误放文档泄露）
+  const cacheHeaders = {
     'Content-Type': mime,
     // html/js/css 三件套必须同版本且无版本号查询串：no-store 完全不缓存，
     // 杜绝 EdgeOne 等边缘节点留存旧版脚本/样式造成的前后端版本错配；
     // 图片类资源内容不变，允许边缘缓存 1 小时
     'Cache-Control': ext === '.html' || ext === '.js' || ext === '.css' ? 'no-store' : 'public, max-age=3600',
     ...BASE_HEADERS,
-  });
-  fs.createReadStream(full).pipe(res);
+  };
+  if (GZIP_TEXT.has(ext)) {
+    // 文本静态：读全量进缓存 + gzip 惰性压缩（文本文件均 MB 级以下）
+    let entry = staticTextCache.get(full);
+    if (!entry || entry.mtime !== stat.mtimeMs) {
+      if (staticTextCache.size >= STATIC_TEXT_CACHE_MAX) staticTextCache.clear();
+      entry = { mtime: stat.mtimeMs, body: fs.readFileSync(full), gz: null };
+      staticTextCache.set(full, entry);
+    }
+    const gz = acceptsGzip(req) && entry.body.length >= GZIP_MIN_SIZE;
+    if (gz && !entry.gz) entry.gz = gzipBody(entry.body);
+    res.writeHead(200, {
+      ...cacheHeaders,
+      'Vary': 'Accept-Encoding',
+      ...(gz ? { 'Content-Encoding': 'gzip' } : {}),
+    });
+    return res.end(gz ? entry.gz : entry.body);
+  }
+  res.writeHead(200, cacheHeaders);
+  // 流错误必须自接：pipe 不处理源流 error，statSync 之后文件被替换/删除（部署竞态）、
+  // EACCES/EIO 等错误事件会在异步回调里抛成 uncaughtException，整个进程退出。
+  const stream = fs.createReadStream(full);
+  stream.on('error', () => { res.destroy(); });
+  stream.pipe(res);
 }
 
 function notFound(res) {
@@ -213,6 +252,14 @@ async function handleApi(req, res, pathname) {
     return saves.store(req, res, { user, rawBody: text });
   }
 
+  // 存档重置（2026-10-31 云端唯一存档）：清云端档 + 账本 + 排行档案，下次进游戏全新开局
+  if (pathname === '/api/reset' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req)) return sendJSON(res, 403, { error: '请求被拒绝' });
+    return saves.reset(req, res, { user });
+  }
+
   // 账号资料：改显示名（写接口同源 + JSON + 32KB 体）
   if (pathname === '/api/profile/name' && method === 'POST') {
     const user = auth.getSessionUser(req);
@@ -223,6 +270,47 @@ async function handleApi(req, res, pathname) {
     let body = null;
     try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
     return auth.setDisplayName(req, res, { body });
+  }
+
+  // 征战体力（2026-11-01，服务端裁定）：一场 1 点、每日 300、5 分钟回 1。
+  // 客户端每场战斗前 POST spend 扣点，扣不动（429）就打不了；GET 供展示同步。
+  if (pathname === '/api/stamina' && method === 'GET') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    return stamina.get(req, res, { user });
+  }
+  if (pathname === '/api/stamina/spend' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+    const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+    if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+    let body = null;
+    try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    return stamina.spend(req, res, { user, body });
+  }
+
+  // 征战战斗（2026-11-01 全量服务端校验迁移 P1）：胜负/奖励/进度/掉落全部服务端裁定，
+  // 体力扣点内嵌在 fight 事务里；offline 服务端按上次结算时间复算离线收益
+  if (pathname === '/api/combat/fight' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+    const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+    if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+    let body = null;
+    try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    return combat.fight(req, res, { user, body });
+  }
+  if (pathname === '/api/combat/offline' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+    const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+    if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+    let body = null;
+    try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    return combat.offline(req, res, { user, body });
   }
 
   // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 兑换码（social.js 内再按方法分发）
@@ -257,19 +345,19 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/' || pathname === '/index.html') {
     if (!loggedIn(req)) return redirect(res, '/login.html');
-    return sendHtml(res, 'index.html', { 'Content-Security-Policy': PAGE_CSP });
+    return sendHtml(req, res, 'index.html', { 'Content-Security-Policy': PAGE_CSP });
   }
 
   if (pathname === '/login' || pathname === '/login.html') {
     if (loggedIn(req)) return redirect(res, '/');
-    return sendHtml(res, 'login.html', { 'Content-Security-Policy': PAGE_CSP });
+    return sendHtml(req, res, 'login.html', { 'Content-Security-Policy': PAGE_CSP });
   }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') return notFound(res);
     if (pathname.startsWith('/assets/') || pathname === '/favicon.ico') {
       return serveStatic(req, res, pathname === '/favicon.ico' ? '/favicon.png' : pathname);
     }
-    const PUBLIC_FILES = new Set(['/styles.css', '/game.js', '/login.js', '/newui.html', '/newui.css', '/favicon.svg', '/favicon.png', '/cover.png', '/cover.svg']);
+    const PUBLIC_FILES = new Set(['/styles.css', '/game.js', '/login.js', '/theme-boot.js', '/favicon.svg', '/favicon.png', '/cover.png', '/cover.svg']);
     if (PUBLIC_FILES.has(pathname)) return serveStatic(req, res, pathname);
 
     return notFound(res);

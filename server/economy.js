@@ -6,13 +6,16 @@
 // 宁可放过小作弊也不误伤真玩家；硬保证是单调性、开箱速率与仙位/轮回限速。
 // 上游数值若改动，本文件的包络口径需同步复核。
 
-// —— 开箱：interval() 下限 0.05s（game.js:2196）→ 20 次/秒封顶 ——
+// —— 开箱：interval() 下限 2026-11-01 起为 0.2s（2.5s×0.95^50，game.js interval()）→
+// 5 次/秒实际封顶；OPEN_RATE_PER_S 保留 20 作包络上界（客户端变慢只松不紧，
+// 服务端校验无需收紧，避免未来回调节奏时误拒真玩家） ——
 const OPEN_RATE_PER_S = 20;
-// —— 战斗：自动巡猎冷却 450ms（game.js:3685 附近）→ 约 2.2 场/秒，取 3 留余量 ——
+// —— 战斗：自动战斗 2026-11-01 起每场间隔 1 分钟 + 体力一场 1 点（每日 300）双闸，
+// 实际远低于本包络；OPEN/BATTLE 速率只松不紧，保留历史宽松值防未来回调节奏误拒真玩家 ——
 const BATTLE_RATE_PER_S = 3;
 // —— 离线结算（game.js:14-15 awardOffline）：4 小时 × 50% 效率 ——
 // 离线收益相对「服务端账本时长」是凭空跳变（离线发生在上次入库之前）。常规窗口的离线
-// 额度按 elapsed 折算（elapsed × 12 ≈ 20 次/秒 × 效率 0.5 × 1.2 余量）；整份 4h 额度
+// 额度按 elapsed 折算（elapsed × 12 ≈ 包络 20 次/秒 × 效率 0.5 × 1.2 余量；实际客户端 5 次/秒，包络只松不紧）；整份 4h 额度
 // （OFFLINE_OPENS）只作为 grants 豁免发给种基线后的第一次校验推，防调钟每窗重刷。
 const OFFLINE_OPENS = Math.floor(4 * 3600 * OPEN_RATE_PER_S * 0.5);      // ≤ 144000 次
 
@@ -66,7 +69,7 @@ function perOpenCap(d, powerEq, critFactor, miscFactor) {
     * miscFactor;
 }
 const PER_OPEN_WORST_CRIT = 10;      // CRIT_MULT 最坏（game.js:17，逐次全暴击）
-const PER_OPEN_WORST_MISC = 250;     // 称号×1.02 · 陈列×1.12 · 时辰/天象/灵潮×~16 · 仙盟×1.2 · 丹药×1.3×2 等杂乘区兜底
+const PER_OPEN_WORST_MISC = 250;     // 称号×1.02 · 陈列×1.12 · 时辰/天象/灵潮×~16 · 仙盟×1.05（2026-11-01 每级 0.5%） · 丹药×1.3×2 等杂乘区兜底
 const PER_OPEN_EXPECTED_CRIT = 5.5;  // 离线期望：1 + 暴击率上限0.5×(10-1)
 const PER_OPEN_EXPECTED_MISC = 6;    // 离线期望：增益类平均叠加远达不到逐次最坏
 function perOpenGainCap(d, powerEq) {
@@ -89,28 +92,36 @@ function perBattleGainCap(immortal, powerEq) {
     * Math.max(1, powerEq);
 }
 
-// 穿戴六件重算战力（itemPower，game.js:2199）：power×(1+0.18lv)×(1+0.1star) 求和。
-// 深度校验已钳制逐件 power/lv/star，此处只为收益包络提供基准。
+// 穿戴十二件重算战力（itemPower×部位强化乘区，game.js totalPower 同源）：
+// 装备自身 power×(1+0.1star)，再乘部位强化 (1+0.18×enh[槽])——2026-10-31 部位化，
+// 强化等级从装备 lv 移到 state.enh[槽]（0..200，深度校验已钳），旧档无 enh 按 0 计。
+// 2026-11-01 槽位扩容：加入手镯/戒指/护腕/护腿/发箍/翅膀，与客户端 SLOTS 同步。
 export function equipPowerOf(data) {
   const eq = data && data.equipped && typeof data.equipped === 'object' ? data.equipped : {};
+  const enh = data && data.enh && typeof data.enh === 'object' && !Array.isArray(data.enh) ? data.enh : {};
   let p = 0;
-  for (const k of ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman']) {
+  for (const k of ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
+    'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings']) {
     const it = eq[k];
     if (!it || typeof it !== 'object') continue;
     const pw = Number(it.power);
     if (!Number.isFinite(pw) || pw <= 0) continue;
-    p += pw * (1 + 0.18 * (Number(it.lv) || 0)) * (1 + 0.1 * (Number(it.star) || 0));
+    const lv = Number(enh[k]);
+    const enhMult = 1 + 0.18 * (Number.isFinite(lv) ? Math.max(0, Math.min(200, lv)) : 0);
+    p += pw * (1 + 0.1 * (Number(it.star) || 0)) * enhMult;
   }
   return Math.floor(Math.max(0, p));
 }
 
 // 野外已探最深区（wildCleared 只增不减，取最大值做单调观测；game.js:2691 wildMaxUnlocked）
+// 元素钳到 0..200（与 saves.js validateDeep 的 wildCleared 校验同口径）：不钳的话
+// 一份 [1e300] 的档会把 wild_max 基线种到天文数字，此后真实进度全被「回退」误拒。
 function wildMaxOf(data) {
   const arr = data && Array.isArray(data.wildCleared) ? data.wildCleared : [];
   let m = 0;
   for (const v of arr) {
     const n = Math.floor(Number(v));
-    if (Number.isFinite(n) && n > m) m = n;
+    if (Number.isFinite(n) && n > m) m = Math.min(n, 200);
   }
   return m;
 }
@@ -178,7 +189,7 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned) {
     return '自报战力与装备不符（' + num(next.power).toExponential(2) + ' / 装备 ' + equipP.toExponential(2) + '）';
   }
 
-  // —— 2) 开箱增速：interval 下限 0.05s → 20 次/秒，×1.2 余量容忍节流合批；
+  // —— 2) 开箱增速：interval 下限 2026-11-01 起 0.2s（实际 5 次/秒），包络沿用 20 次/秒上界，×1.2 余量容忍节流合批；
   // 离线部分只给豁免额度（见 grant）——
   if (dOpens > elapsedS * OPEN_RATE_PER_S * 1.2 + grant + 2000) {
     return '开箱次数增速异常（+' + dOpens + ' / ' + Math.round(elapsedS) + 's）';
@@ -258,6 +269,7 @@ export function ledgerOf(data, now) {
     stageCleared: clampInt(data.stageCleared, 0, 200),
     endlessBest: clampInt(data.endlessBest, 0, 200),
     wildMax: wildMaxOf(data),
+    clicks: clampInt(data.clickCount, 0, 1e12),
     updatedAt: now,
   };
 }

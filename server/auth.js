@@ -213,6 +213,12 @@ export function createAuthService(db) {
       return sendJSON(res, 401, { error: '道号或口令错误' });
     }
 
+    // 封禁/停用账号不放行登录：密码对了也 403，不给「登录成功但后续请求全 401」的
+    // 误导态（getSessionUser 只认 active，此处口径对齐）
+    if (user.status !== 'active') {
+      return sendJSON(res, 403, { error: '该账号已被停用' });
+    }
+
     stmts.resetFails.run(Date.now(), ip, user.id);
     logAttempt(db, username, ip, true);
     // 单会话互踢：清掉该账号全部旧会话，旧设备/旧窗口的下一个请求即 401 下线

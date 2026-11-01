@@ -3,3 +3,6 @@ data/
 .claude/
 .research/
 .zcode/
+node_modules/
+dist/
+package-lock.json

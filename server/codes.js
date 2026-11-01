@@ -27,7 +27,12 @@ function add(args) {
     console.error('至少要给一项奖励：--stones / --dust / --tickets');
     process.exit(1);
   }
-  const maxUses = Math.max(0, argNum(args, '--max') || 0);
+  const rawMax = argNum(args, '--max');
+  if (rawMax !== null && (!Number.isFinite(rawMax) || rawMax < 0)) {
+    console.error('--max 需为非负整数（0 = 不限次）');
+    process.exit(1);
+  }
+  const maxUses = Math.max(0, rawMax || 0);
   const days = argNum(args, '--days');
   const expiresAt = days && days > 0 ? Date.now() + days * 24 * 3600 * 1000 : null;
   const noteIdx = args.indexOf('--note');
@@ -45,20 +50,22 @@ function add(args) {
 
 function list() {
   const rows = db.prepare(
-    'SELECT code, reward, max_uses, used_count, expires_at, note FROM redeem_codes ORDER BY created_at DESC').all();
+    'SELECT code, reward, max_uses, used_count, expires_at, note, deleted FROM redeem_codes ORDER BY created_at DESC').all();
   if (!rows.length) return console.log('（还没有兑换码）');
   for (const r of rows) {
     const expired = r.expires_at && r.expires_at < Date.now();
     console.log(
       `${r.code}  ${r.reward}  已用 ${r.used_count}${r.max_uses ? '/' + r.max_uses : ''}` +
       (r.expires_at ? (expired ? '  [已过期]' : `  至 ${new Date(r.expires_at).toISOString().slice(0, 10)}`) : '') +
+      (r.deleted ? '  [已删除]' : '') +
       (r.note ? `  # ${r.note}` : ''));
   }
 }
 
 function rm(args) {
   const code = (args[0] || '').trim().toUpperCase();
-  const info = db.prepare('DELETE FROM redeem_codes WHERE code = ?').run(code);
+  // 软删：保留 reward 供 redeemSince 补结授权收益；删除后不可再兑（codeGet 过滤 deleted=0）
+  const info = db.prepare('UPDATE redeem_codes SET deleted = 1 WHERE code = ?').run(code);
   console.log(info.changes ? `已删除 ${code}` : `没有 ${code} 这个码`);
 }
 
