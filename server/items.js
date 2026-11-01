@@ -11,7 +11,7 @@ export const RARITIES = [
   { name: '玄品', color: '#60a5fa', weight: 100, stone: 10, exp: 3 },
   { name: '地品', color: '#2dd4bf', weight: 25, stone: 35, exp: 8 },
   { name: '天品', color: '#fbbf24', weight: 2, stone: 150, exp: 20 },
-  { name: '仙品', color: '#f87171', weight: 0.4, stone: 800, exp: 50 },
+  { name: '仙品', color: '#f87171', weight: 0.6, stone: 800, exp: 50 }, // 2026-11-01 0.4→0.6，与 game.js 同源
 ];
 
 export const SLOTS = [
@@ -106,9 +106,7 @@ export const SETS = {
     name: '镇塔', cls: 'set-tower',
     pieces: {
       weapon: '镇塔·斩妖剑', armor: '镇塔·玄鳞甲', helm: '镇塔·观星冠',
-      boots: '镇塔·踏云履', artifact: '镇塔·镇魂印', talisman: '镇塔·封魔符',
-      bracelet: '镇塔·缚灵镯', ring: '镇塔·定星戒', wrist: '镇塔·玄铁腕',
-      legs: '镇塔·盘龙腿', band: '镇塔·绾云簪', wings: '镇塔·凌霄翼',
+      boots: '镇塔·踏云履', wrist: '镇塔·玄铁腕', legs: '镇塔·盘龙腿',
     },
     bonuses: [
       { need: 2, text: '防御 +15%', apply: (b) => { b.def *= 1.15; } },
@@ -120,9 +118,7 @@ export const SETS = {
     name: '征伐', cls: 'set-stage',
     pieces: {
       weapon: '征伐·破阵刀', armor: '征伐·百战袍', helm: '征伐·将军盔',
-      boots: '征伐·疾风靴', artifact: '征伐·虎符', talisman: '征伐·帅旗',
-      bracelet: '征伐·擒龙镯', ring: '征伐·点将戒', wrist: '征伐·伏虎腕',
-      legs: '征伐·追电腿', band: '征伐·束发箍', wings: '征伐·掠风翼',
+      boots: '征伐·疾风靴', wrist: '征伐·伏虎腕', legs: '征伐·追电腿',
     },
     bonuses: [
       { need: 2, text: '攻击 +10%', apply: (b) => { b.atk *= 1.1; } },
@@ -134,9 +130,7 @@ export const SETS = {
     name: '荒狩', cls: 'set-wild',
     pieces: {
       weapon: '荒狩·噬骨矛', armor: '荒狩·兽皮甲', helm: '荒狩·狼首冠',
-      boots: '荒狩·追风靴', artifact: '荒狩·兽王骨', talisman: '荒狩·猎魂幡',
-      bracelet: '荒狩·兽牙镯', ring: '荒狩·狼瞳戒', wrist: '荒狩·熊筋腕',
-      legs: '荒狩·猎风腿', band: '荒狩·兽骨箍', wings: '荒狩·鹰翎翼',
+      boots: '荒狩·追风靴', wrist: '荒狩·熊筋腕', legs: '荒狩·猎风腿',
     },
     bonuses: [
       { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },

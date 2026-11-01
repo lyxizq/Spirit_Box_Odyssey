@@ -15,7 +15,7 @@
   const OFFLINE_EFF = 0.5;           // 离线效率 50%
   const CRIT_CHANCE = 0.05;          // 暴击率
   const CRIT_MULT = 10;              // 暴击倍率
-  const EQUIP_CHANCE = 0.01;         // 每次开箱掉装备的概率（品质在掉落内按权重另掷）
+  const EQUIP_CHANCE = 0.25;         // 每次开箱掉装备的概率（2026-11-01 用户指定 20-30% 档取 25%，原 1%；品质在掉落内按权重另掷）
   const DUST_CHANCE = 0.1;           // 开箱未掉装备时掉碎屑的概率（1~3 枚，补偿空开）
   const BUFF_CHANCE = 0.008;         // 每次开箱掉丹药的概率（未生效时）
   const BUFF_MS = 30000;             // 丹药持续时间
@@ -113,14 +113,7 @@
   // 灵石/碎屑/兽骨等其余奖励不动；只降不涨，服务端经济包络无需放宽
   const MODE_EXP_MULT = 1 / 50;
 
-  // 首通里程碑：沿用原节奏（塔 10 / 关 5 / 野 2 一档）循环十二部位，一直铺到 200
-  // （2026-11-01 槽位扩容：加入手镯/戒指/护腕/护腿/发箍/翅膀，轮转取模随数组长度走）
-  const MILESTONE_SLOTS = ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
-    'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings'];
-  const MILESTONES = { tower: {}, stage: {}, wild: {} };
-  for (let lv = 10; lv <= TOWER_MAX; lv += 10) MILESTONES.tower[lv] = MILESTONE_SLOTS[(lv / 10 - 1) % MILESTONE_SLOTS.length];
-  for (let lv = 5; lv <= STAGE_MAX; lv += 5) MILESTONES.stage[lv] = MILESTONE_SLOTS[(lv / 5 - 1) % MILESTONE_SLOTS.length];
-  for (let lv = 1; lv <= WILD_MAX; lv += 2) MILESTONES.wild[lv] = MILESTONE_SLOTS[((lv - 1) / 2) % MILESTONE_SLOTS.length];
+  // 里程碑必掉已移除（2026-11-01 用户指定）：套装件全部按概率掉落（服务端 rollSpecialDrop 权威）
 
   // 扫荡（2026-10-31）：已通关关卡 instant 重打；每日每玩法免费 10 次，用完可
   // 灵石加购 20 万/次、每日至多加购 10 次。奖励口径：闯关/爬塔按「再战」5 折、
@@ -141,15 +134,15 @@
     return out;
   };
 
+  // 套装（2026-11-01 用户指定收窄为 6 部位）：武器/衣袍/冠冕/云靴/护腕/护腿——
+  // 法宝/灵符/手镯/戒指/发箍/翅膀不再属于套装（仅出不同品质的普通装备）；
+  // 存量已掉落的移除槽位套装件保留为普通仙品，不再计入套装效果与图鉴
   const SETS = {
     tower: {
       name: '镇塔', cls: 'set-tower',
       pieces: {
         weapon: '镇塔·斩妖剑', armor: '镇塔·玄鳞甲', helm: '镇塔·观星冠',
-        boots: '镇塔·踏云履', artifact: '镇塔·镇魂印', talisman: '镇塔·封魔符',
-        // 第七批槽位（2026-11-01）：套装补齐 12 部位，与 MILESTONE_SLOTS / 服务端白名单对齐
-        bracelet: '镇塔·缚灵镯', ring: '镇塔·定星戒', wrist: '镇塔·玄铁腕',
-        legs: '镇塔·盘龙腿', band: '镇塔·绾云簪', wings: '镇塔·凌霄翼',
+        boots: '镇塔·踏云履', wrist: '镇塔·玄铁腕', legs: '镇塔·盘龙腿',
       },
       bonuses: [
         { need: 2, text: '防御 +15%', apply: (b) => { b.def *= 1.15; } },
@@ -161,9 +154,7 @@
       name: '征伐', cls: 'set-stage',
       pieces: {
         weapon: '征伐·破阵刀', armor: '征伐·百战袍', helm: '征伐·将军盔',
-        boots: '征伐·疾风靴', artifact: '征伐·虎符', talisman: '征伐·帅旗',
-        bracelet: '征伐·擒龙镯', ring: '征伐·点将戒', wrist: '征伐·伏虎腕',
-        legs: '征伐·追电腿', band: '征伐·束发箍', wings: '征伐·掠风翼',
+        boots: '征伐·疾风靴', wrist: '征伐·伏虎腕', legs: '征伐·追电腿',
       },
       bonuses: [
         { need: 2, text: '攻击 +10%', apply: (b) => { b.atk *= 1.1; } },
@@ -175,9 +166,7 @@
       name: '荒狩', cls: 'set-wild',
       pieces: {
         weapon: '荒狩·噬骨矛', armor: '荒狩·兽皮甲', helm: '荒狩·狼首冠',
-        boots: '荒狩·追风靴', artifact: '荒狩·兽王骨', talisman: '荒狩·猎魂幡',
-        bracelet: '荒狩·兽牙镯', ring: '荒狩·狼瞳戒', wrist: '荒狩·熊筋腕',
-        legs: '荒狩·猎风腿', band: '荒狩·兽骨箍', wings: '荒狩·鹰翎翼',
+        boots: '荒狩·追风靴', wrist: '荒狩·熊筋腕', legs: '荒狩·猎风腿',
       },
       bonuses: [
         { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },
@@ -280,7 +269,7 @@
     { name: '玄品', color: '#60a5fa', weight: 100, stone: 10, exp: 3 },
     { name: '地品', color: '#2dd4bf', weight: 25, stone: 35, exp: 8 },
     { name: '天品', color: '#fbbf24', weight: 2, stone: 150, exp: 20 },
-    { name: '仙品', color: '#f87171', weight: 0.4, stone: 800, exp: 50 },
+    { name: '仙品', color: '#f87171', weight: 0.6, stone: 800, exp: 50 }, // 权重 2026-11-01 用户指定 0.4→0.6：25% 掉率下约 1 万箱/件
   ];
 
   const SLOTS = [
@@ -2790,7 +2779,7 @@
     { id: 'box', name: '灵匣开箱', where: '修炼', cond: '开局即启',
       desc: '点击灵匣或等自动开箱，得装备、灵石与修为；淬炼提速提收益，空格键手动开。' },
     { id: 'stage', name: '闯关', where: '征战 · 秘境征战', cond: '开局即启',
-      desc: '秘境征战的起点，逐关推进，逢 5 关有首领，首通奖励闯关套装部件。' },
+      desc: '秘境征战的起点，逐关推进，逢 5 关有首领，征伐套装按概率掉落。' },
     { id: 'wild', name: '野外巡猎', where: '征战 · 秘境征战', cond: '闯关通过第 3 关',
       check: () => state.stageCleared >= 3,
       desc: '两百片野外刷战利品，离线也能估算收入；自动巡猎需飞升一次后开启。' },
@@ -2950,7 +2939,8 @@
     const counts = { tower: 0, stage: 0, wild: 0 };
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
-      if (it && it.setKey && counts[it.setKey] !== undefined) counts[it.setKey]++;
+      // 只计「当前仍属套装」的部位（2026-11-01 收窄后，移除槽位的存量件不计）
+      if (it && it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[s.key] && counts[it.setKey] !== undefined) counts[it.setKey]++;
     }
     return counts;
   }
@@ -3524,70 +3514,114 @@
 
   function autoEquip(silent) {
     let vowSkipped = 0; // 凡衣修行戒律跳过的「确比穿戴件强」的专属件数（用于诚实提示）
+    const fanYi = state.ordeal.active === 'fanYi';
 
-    // 第一步：逐槽按单品分选候选，只收集不落袋——整体评估后再决定
-    const swaps = []; // { slotKey, bagIdx }
-    const picked = new Set();
-    for (const slotDef of SLOTS) {
-      let best = -1;
-      for (let i = 0; i < state.bag.length; i++) {
-        if (picked.has(i)) continue;
-        if (state.bag[i].slot !== slotDef.key) continue;
-        // 凡衣修行期间自动穿戴不碰专属件：破戒是玩家的显式选择（手动穿仍照常判破戒），
-        // 不能让道童/一键穿戴替玩家默默破戒
-        if (state.ordeal.active === 'fanYi' && state.bag[i].special) {
-          if (itemScore(state.bag[i]) > itemScore(state.equipped[slotDef.key] || { power: -1, r: -1 })) vowSkipped++;
-          continue;
+    // 试穿评估器（整体评估，2026-11-01）：临时换装算 realPower（实战口径，含套装凑件
+    // /词条/强化全部加成），评估完还原。一键穿戴与道童自动穿戴共用，永不落地低战力组合
+    const evalLoadout = (assign) => {
+      const olds = assign.map((a) => state.equipped[a.slotKey]);
+      for (const a of assign) if (a.item) state.equipped[a.slotKey] = a.item;
+      const p = realPower();
+      for (let i = 0; i < assign.length; i++) state.equipped[assign[i].slotKey] = olds[i];
+      return p;
+    };
+
+    // 候选一：逐槽单品分最优（原逻辑）
+    const scoreLoadout = [];
+    {
+      const picked = new Set();
+      for (const slotDef of SLOTS) {
+        let best = -1;
+        for (let i = 0; i < state.bag.length; i++) {
+          if (picked.has(i)) continue;
+          if (state.bag[i].slot !== slotDef.key) continue;
+          if (fanYi && state.bag[i].special) {
+            if (itemScore(state.bag[i]) > itemScore(state.equipped[slotDef.key] || { power: -1, r: -1 })) vowSkipped++;
+            continue;
+          }
+          if (best < 0 || itemScore(state.bag[i]) > itemScore(state.bag[best])) best = i;
         }
-        if (best < 0 || itemScore(state.bag[i]) > itemScore(state.bag[best])) best = i;
+        if (best < 0) continue;
+        const current = state.equipped[slotDef.key];
+        if (current && itemScore(current) >= itemScore(state.bag[best])) continue;
+        picked.add(best);
+        scoreLoadout.push({ slotKey: slotDef.key, item: state.bag[best] });
       }
-      if (best < 0) continue;
-
-      const current = state.equipped[slotDef.key];
-      if (current && itemScore(current) >= itemScore(state.bag[best])) continue;
-      picked.add(best);
-      swaps.push({ slotKey: slotDef.key, bagIdx: best });
     }
 
-    if (!swaps.length) {
+    // 候选二（2026-11-01 用户指定）：已获取的套装组合——每套按「包内该套装件逐槽最优」
+    // 组一套试穿；槽位无该套装件或现穿同套装件更强则保留现穿
+    const setLoadouts = [];
+    for (const setKey of Object.keys(SETS)) {
+      const assign = [];
+      let pieces = 0;
+      for (const slotDef of SLOTS) {
+        let best = null;
+        for (const it of state.bag) {
+          if (it.slot !== slotDef.key || it.setKey !== setKey) continue;
+          if (fanYi && it.special) continue;
+          if (!best || itemScore(it) > itemScore(best)) best = it;
+        }
+        const current = state.equipped[slotDef.key];
+        if (current && current.setKey === setKey &&
+          (!best || itemScore(current) >= itemScore(best))) best = null; // 现穿同套更强 → 保留
+        if (best) pieces++;
+        assign.push({ slotKey: slotDef.key, item: best });
+      }
+      if (pieces) setLoadouts.push({ setKey, assign, pieces });
+    }
+
+    // 择优：基线（现穿）vs 单品组合 vs 各套装组合，取实战战力最高者
+    const before = realPower();
+    const candidates = [];
+    if (scoreLoadout.length) candidates.push({ name: '单品最优', assign: scoreLoadout });
+    for (const s of setLoadouts) candidates.push({ name: SETS[s.setKey].name + '套装组合', assign: s.assign });
+    if (!candidates.length) {
       if (!silent) {
         floatText(vowSkipped ? '凡衣修行中：更强的专属件不自动穿（手动穿戴会破戒）' : '没有更强的装备', '#9aa4b2');
       }
       return 0;
     }
+    let bestPlan = null;
+    let bestPower = before;
+    for (const c of candidates) {
+      const p = evalLoadout(c.assign);
+      if (p > bestPower) {
+        bestPower = p;
+        bestPlan = c;
+      }
+    }
 
-    // 第二步：整体评估（2026-11-01 用户指定）——套装凑件等联动可能让单品分合计升高而
-    // 实战战力反降。先试穿算 realPower（实战口径，含套装/词条/强化加成），低于穿前则
-    // 整体回滚不执行；一键穿戴与道童自动穿戴共用此闸门，永不降战力
-    const before = realPower();
-    const chosen = swaps.map((s) => state.bag[s.bagIdx]);
-    const oldEquipped = swaps.map((s) => state.equipped[s.slotKey]);
-    for (let i = 0; i < swaps.length; i++) state.equipped[swaps[i].slotKey] = chosen[i];
-    const after = realPower();
-    if (after < before) {
-      for (let i = 0; i < swaps.length; i++) state.equipped[swaps[i].slotKey] = oldEquipped[i];
-      if (!silent) floatText('整体评估：该组合战力更低（' + fmt(before) + ' → ' + fmt(after) + '），未执行', '#f87171');
+    if (!bestPlan) {
+      if (!silent) {
+        floatText(vowSkipped ? '凡衣修行中：更强的专属件不自动穿（手动穿戴会破戒）'
+          : '整体评估：单品与套装组合都不会更高（现穿 ' + fmt(before) + '）', '#9aa4b2');
+      }
       return 0;
     }
 
-    // 第三步：提交——新件离包、换下旧件回包（引用操作，避免下标位移）
-    for (let i = 0; i < swaps.length; i++) {
-      state.bag.splice(state.bag.indexOf(chosen[i]), 1);
-      if (oldEquipped[i]) state.bag.push(oldEquipped[i]);
+    // 提交最优组合：新件离包、换下旧件回包（引用操作，避免下标位移）
+    let changed = 0;
+    for (const a of bestPlan.assign) {
+      if (!a.item || state.equipped[a.slotKey] === a.item) continue;
+      state.bag.splice(state.bag.indexOf(a.item), 1);
+      if (state.equipped[a.slotKey]) state.bag.push(state.equipped[a.slotKey]);
+      state.equipped[a.slotKey] = a.item;
+      changed++;
     }
 
     state.bagWarned = false;
     bagDirty = true;
     equipDirty = true;
     combatDirty = true;
-    const delta = after - before;
-    pushLog((silent ? '道童自动' : '一键') + '穿戴完成，更换 ' + swaps.length +
-      ' 件装备 · 战力 ' + (delta >= 0 ? '+' : '') + fmt(delta), 'sys');
+    const delta = bestPower - before;
+    pushLog((silent ? '道童自动' : '一键') + '穿戴完成（' + bestPlan.name + '），更换 ' + changed +
+      ' 件装备 · 战力 +' + fmt(delta), 'sys');
     if (!silent) beep(820, 0.1);
     render();
     paintBag(true);
     save();
-    return swaps.length;
+    return changed;
   }
 
   /* ---------------- 核心：开箱 ---------------- */
@@ -3857,7 +3891,7 @@
         '获得 <b>' + fmt(stones) + '</b> 灵石 · <b>' + fmt(exp) + '</b> 修为' +
         (huntText ? '<br>' + huntText : '') +
         (idleParts.length ? '<br>' + idleParts.join(' · ') : '') +
-        '<br><span class="offline-note">离线只结算灵石与修为（巡猎除外），套装里程碑需要在线首通</span>';
+        '<br><span class="offline-note">离线只结算灵石与修为（巡猎含套装掉落）</span>';
       $('offlineModal').classList.add('show');
       pushLog('离线收益已结算：+' + fmt(stones) + ' 灵石', 'sys');
     }
@@ -3991,13 +4025,21 @@
     const el = document.getElementById('combatStamina');
     if (!el) return;
     const s = staminaDisplay();
+    // 未同步过快照（syncedAt=0 → s 为 null）：先于 nextAt 读取判空，
+    // 否则启动早期 / 同步失败一次就每帧 TypeError（2026-11-01 线上报错修复）
+    if (!s) {
+      if (staminaChipText !== '…') {
+        staminaChipText = '…';
+        el.textContent = '…';
+      }
+      return;
+    }
     // 倒计时只到分钟（向上取整，≤5 分钟一格）：不显示秒
     const remainMin = Math.ceil(Math.max(0, s.nextAt - Date.now()) / 60000);
-    const text = !s ? '…'
-      : s.nextAt ? s.v + ' / ' + s.cap + '（' + (remainMin >= 60
-        ? Math.floor(remainMin / 60) + ' 小时 ' + (remainMin % 60) + ' 分'
-        : remainMin + ' 分钟') + '）'
-        : s.v + ' / ' + s.cap;
+    const text = s.nextAt ? s.v + ' / ' + s.cap + '（' + (remainMin >= 60
+      ? Math.floor(remainMin / 60) + ' 小时 ' + (remainMin % 60) + ' 分'
+      : remainMin + ' 分钟') + '）'
+      : s.v + ' / ' + s.cap;
     if (text !== staminaChipText) {
       staminaChipText = text;
       el.textContent = text;
@@ -5044,12 +5086,15 @@
     let cls = 'g-none';
     if (tier.big) {
       cls = 'g-item';
-      if (Math.random() < 0.6) {
-        const item = makeItem(4);
+      // 2026-11-01 用户指定：50% 天品 / 10% 仙品 / 40% +30000 灵石
+      const gift = Math.random();
+      if (gift < 0.6) {
+        const xian = gift >= 0.5; // 0.5~0.6 区间出仙品
+        const item = makeItem(xian ? 5 : 4);
         addItem(item);
         bagDirty = true;
-        text = '「' + tier.name + '」化形赠宝：' + item.name + '（天品）';
-        floatText('灵龙鱼化形！「' + item.name + '」', '#ffd479');
+        text = '「' + tier.name + '」化形赠宝：' + item.name + '（' + (xian ? '仙品' : '天品') + '）';
+        floatText('灵龙鱼化形！「' + item.name + '」', xian ? '#f87171' : '#ffd479');
         chime([659, 784, 1046, 1318]);
       } else {
         addStones(30000);
@@ -5897,9 +5942,13 @@
     const player = playerCombatStats();
     player.atk *= elementBonus(enemy.el).mult;
     const result = simulateBattle(player, enemy);
-    // 心魔修为：首斩 1/6 门槛、逐形减半（÷2^已斩形数），50 次合计 ≈ 门槛的 1/3；
-    // 不设硬预算：之后每形照给、越来越少（1 起底不归零），总和收敛于 1/3 不超出
-    const demonExp = Math.max(1, Math.floor(realmCostOf(state.realm + 1) / 6 / Math.pow(2, d.kills)));
+    // 心魔修为：首斩 = 下一境界门槛的 1/6，往后逐形减半（÷2^已斩形数）；
+    // 保底分层（2026-11-01 用户指定）：首斩 >1w 的档位往后每形保底 1w，
+    // 首斩 ≤1w 的保底 1000——收益不再无限衰减归 1。首形始终按公式原值
+    const firstKill = Math.max(1, Math.floor(realmCostOf(state.realm + 1) / 6));
+    const demonFloor = firstKill > 10000 ? 10000 : 1000;
+    const natural = Math.max(1, Math.floor(firstKill / Math.pow(2, d.kills)));
+    const demonExp = d.kills === 0 ? natural : Math.max(demonFloor, natural);
     showBattlePopup(enemy, result, {
       title: '心魔劫', playerHp: player.hp,
       closeText: '收下奖励', loseText: '离开',
@@ -7160,11 +7209,13 @@
     save();
   }
 
-  function runTrial(id) {
+  // 条件试炼（2026-11-01 上收服务端）：胜负、通关标记与奖励防重全部服务端裁定；
+  // 失败免费重试，通关当日锁定。客户端只发 id，拿战报渲染、按响应入账
+  async function runTrial(id) {
     const def = TRIALS.find((t) => t.id === id);
     if (!def) return;
-    if (!unlockedMode(def.enemy)) {
-      floatText('对应秘境未解锁', '#f87171');
+    if (!featureOpen('trials')) {
+      floatText('境界「化神」解锁', '#f87171');
       return;
     }
     if (ensureDated(state.trials)) state.trials.done = [];
@@ -7172,33 +7223,43 @@
       floatText('今日已达成', '#9aa4b2');
       return;
     }
-    const enemy = enemyFor(def.enemy, currentLevel(def.enemy));
-    const player = Object.assign({}, playerCombatStats());
-    player.atk *= elementBonus(enemy.el).mult;
-    if (def.noLs) player.lifesteal = 0;
-    const result = simulateBattle(player, enemy);
-    showBattlePopup(enemy, result, {
-      title: '条件试炼 · ' + def.name, playerHp: player.hp,
+    let out;
+    try {
+      out = await worldFetch('/api/trial/run', { method: 'POST', body: JSON.stringify({ id }) });
+    } catch (e) {
+      floatText(e.message, '#f87171');
+      return;
+    }
+    // 服务端判定今日已通关（多端/重复请求）：同步 done、不发奖励
+    if (out.already) {
+      state.trials = { date: todayStr(), done: out.done };
+      floatText('今日已达成', '#9aa4b2');
+      renderTrials();
+      save();
+      return;
+    }
+    // 防御兜底：响应缺 enemy 时以试炼名补齐，弹层绝不出现 undefined
+    const enemy = Object.assign({
+      name: def.name, base: def.name, icon: '试', kicker: '条件试炼', boss: true,
+    }, out.enemy || {});
+    showBattlePopup(enemy, out.result, {
+      title: '条件试炼 · ' + def.name, playerHp: out.playerHp,
       closeText: '收下奖励', loseText: '离开',
-      rewardText: result.win ? '+' + fmt(TRIAL_REWARD.stones) + ' 灵石 · +' + TRIAL_REWARD.dust + ' 碎屑' : undefined,
+      rewardText: out.pass && out.reward ? '+' + fmt(out.reward.stones) + ' 灵石 · +' + out.reward.dust + ' 碎屑' : undefined,
     });
-    let pass = result.win;
-    if (id === 'swift') pass = result.win && result.rounds <= 5;
-    if (id === 'wall') pass = result.win && result.taken <= player.hp * 0.3;
-    if (pass) {
-      state.trials.done.push(id);
+    if (out.pass) {
+      state.trials = { date: todayStr(), done: out.done };
       state.trialWins = (state.trialWins || 0) + 1;
-      addStones(TRIAL_REWARD.stones);
-      addDust(TRIAL_REWARD.dust);
-      pushLog('通过「' + def.name + '」，+' + fmt(TRIAL_REWARD.stones) + ' 灵石 · ' + TRIAL_REWARD.dust + ' 碎屑', 'special');
+      addStones(out.reward.stones);
+      addDust(out.reward.dust);
+      pushLog('通过「' + def.name + '」，+' + fmt(out.reward.stones) + ' 灵石 · ' + out.reward.dust + ' 碎屑', 'special');
       chime([784, 988]);
-      if (state.trials.done.length >= TRIALS.length) {
+      if (out.reward.allClear) {
         addDust(60);
         pushLog('三项试炼全通：额外 60 碎屑', 'special');
       }
     } else {
-      const why = !result.win ? '战斗失败' : id === 'swift' ? '耗时 ' + result.rounds + ' 回合（需 ≤5）' : '承伤超限';
-      pushLog('「' + def.name + '」未通过：' + why, 'sys');
+      pushLog('「' + def.name + '」未通过：' + (out.reason || '战斗失败'), 'sys');
       beep(220, 0.1);
     }
     renderTrials();
@@ -11362,14 +11423,11 @@
           : '通关闯关第 3 关后解锁（当前 ' + state.stageCleared + ' 关）';
     } else if (mode === 'wild') {
       const kills = state.wildKills[level] || 0;
-      const nextWild = Object.keys(MILESTONES.wild).map(Number)
-        .sort((a, b) => a - b)
-        .find((z) => !state.wildCleared.includes(z));
       ensureDaily(); // 跨日后未触发任何战斗时，保证额度显示即时重置（惰性重置的显示层兜底）
       const wildLeft = Math.max(0, WILD_REPEAT_DAILY - (state.daily.wildRepeat || 0));
       progress = '已解锁 ' + wildMaxUnlocked() + ' / ' + WILD_MAX + ' 区域 · 本区击杀 ' +
-        fmt(kills) + ' · 每 ' + WILD_SET_PITY + ' 杀必掉荒狩套装' +
-        (nextWild ? ' · 首通 ' + nextWild + ' 区必掉部件' : '') +
+        fmt(kills) + ' · 每 ' + WILD_SET_PITY + ' 杀必掉荒狩套装（另有 ' +
+        Math.round(WILD_SET_RATE * 1000) / 10 + '%/场）' +
         ' · 已胜怪挑战剩 ' + wildLeft + '/' + WILD_REPEAT_DAILY + '（扫荡不计）';
     } else if (mode === 'endless') {
       const aff = ENCHANTS[(level - 1) % ENCHANTS.length];
@@ -11377,12 +11435,8 @@
         ' · ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉镇塔套装';
     } else {
       progress = '已通关 ' + cleared + ' / ' + cfg.max + ' ' + unit +
-        (replay ? ' · 再战最终' + unit + '奖励减半' : '');
-      const nextMs = Object.keys(MILESTONES[mode])
-        .map(Number)
-        .sort((a, b) => a - b)
-        .find((n) => n > cleared);
-      if (nextMs) progress += ' · 下个套装部件：第 ' + nextMs + ' ' + unit;
+        (replay ? ' · 再战最终' + unit + '奖励减半' : '') +
+        ' · ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉' + (mode === 'tower' ? '镇塔' : '征伐') + '套装';
     }
     $('combatProgress').textContent = progress;
 
@@ -11393,9 +11447,9 @@
           ? '无尽秘境是终局玩法：通关爬塔 60 层后开启。'
           : '野外是中期玩法：先通关闯关第 3 关，再来狩猎。';
     } else if (mode === 'tower') {
-      $('combatHint').textContent = '每 10 层一主；每 10 层首通都掉镇塔套装部件，一路铺到 ' + TOWER_MAX + ' 层。';
+      $('combatHint').textContent = '每 10 层一主；镇塔套装件全程 ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉落，铺到 ' + TOWER_MAX + ' 层。';
     } else if (mode === 'stage') {
-      $('combatHint').textContent = '每 5 关首领；每 5 关首通都掉征伐套装部件，一路铺到 ' + STAGE_MAX + ' 关。';
+      $('combatHint').textContent = '每 5 关首领；征伐套装件全程 ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉落，铺到 ' + STAGE_MAX + ' 关。';
     } else if (mode === 'endless') {
       $('combatHint').textContent = '无尽没有终点：每层词缀轮换、难度无限攀升，塔印产出最高。';
     } else {
@@ -11585,7 +11639,14 @@
     bagDirty = false;
 
     const base = bagFilter === 'all' ? state.bag : state.bag.filter((it) => it.slot === bagFilter);
-    const sorted = base.slice().sort(BAG_SORTS[bagSort] || BAG_SORTS.power);
+    // 分组（2026-11-01 用户指定）：套装件永远在上，非套装件在下，组内按所选排序
+    const isSetPiece = (it) => it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[it.slot];
+    const sorted = base.slice().sort((a, b) => {
+      const ga = isSetPiece(a) ? 0 : 1;
+      const gb = isSetPiece(b) ? 0 : 1;
+      if (ga !== gb) return ga - gb;
+      return (BAG_SORTS[bagSort] || BAG_SORTS.power)(a, b);
+    });
     const list = $('bagList');
     const keepScroll = list.scrollTop;
     $('bagCount').textContent = state.bag.length + ' / ' + bagCap();
@@ -12798,7 +12859,7 @@
       const nextWin = open ? '进行中' : (h < w.s ? '今日 ' + w.s + ':00 开启' : '已结束');
       return (
         '<div class="pet-row' + (claimed ? ' claimed' : '') + '">' +
-          '<div class="pet-main"><span class="pet-name">灵潮 · ' + w.s + ':00 – ' + w.e + ':00</span>' +
+          '<div class="pet-main"><span class="pet-name">仙豆 · ' + w.s + ':00 – ' + w.e + ':00</span>' +
           '<p class="pet-desc">' + nextWin + ' · 领符 +' + fmt(TIDE_CLAIM) + ' 灵石 · 窗口内产出 ×' + TIDE_MULT + '</p></div>' +
           '<button class="mini" data-tide="' + i + '"' +
             (!open || claimed ? ' disabled' : '') + '>' + (claimed ? '已领' : '领符') + '</button>' +
@@ -13119,7 +13180,7 @@
       '<div class="rank-row' + (r.rank <= 3 ? ' top3' : '') + '">' +
       '<span class="rk">' + r.rank + '</span>' +
       '<span class="nm"><b class="rk-name" data-inspect="' + r.id + '" title="点击查看装备">' + esc(r.name) + '</b>' +
-      ' <i class="gd">' + realmName(r.realm) + '</i>' +
+      // 境界不再缀在用户名后（2026-11-01 用户指定）：右侧战力列已带境界
       (r.guild ? ' <i class="gd">『' + esc(r.guild) + '』</i>' : '') + '</span>' +
       '<span class="pw">' + realmName(r.realm) + ' · 战力 ' + fmt(r.power) + '</span></div>'
     ).join('');

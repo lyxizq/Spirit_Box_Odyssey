@@ -429,22 +429,31 @@ export function createSaveService(db) {
         return sendJSON(res, 400, { error: '存档增速异常，已保留上次云端进度' });
       }
     } else if (ctx.user.createdAt && ctx.user.createdAt >= SEED_CHECK_SINCE) {
-      // —— 新号首推种子校验（复审补，2026-11-01 二修）：账本功能上线后注册的账号，
-      // 无账本行首推一律过种子校验。原「注册 1 小时内」口径有绕过口：注册后等满
-      // 1 小时再首推，既不走增速校验也不走种子校验，可一次种入 immortal=999 满档
-      // 基线（防线整体失效）。改为以功能上线时间为界：早于它的存量账号免校验
-      // （不回溯迁移），之后注册的无论账龄、首推必查。堵两条线：
-      // ① 手写 localStorage / 直调 API 一次推满档（种基线零校验 = 全部防线失效）；
-      // ② 登出不清本地档，同浏览器新号继承旧大号存档。
+      // —— 新号首推种子校验（2026-11-01 三修：阈值时长感知）——
+      // 账本上线（2026-10-31）后注册的账号，无账本行首推一律过种子校验（堵「等窗口
+      // 过后零校验种满档」的洞）。但阈值不能按「全新号」拍死：上线初期注册的玩家
+      // 已有两天正常进度（12 件强化装备 equipPower 轻松破 50 万、累计灵石破亿），
+      // 固定阈值会把真玩家永久拒收（线上实测：登录即 400）。改为按账龄线性放宽，
+      // 每存续一天放行「一天足量余量」的进度；仙位/轮回仍为 0（两天内不可能合法
+      // 达成，硬指标保留）。作弊面评估：等 N 天再注入 = 基线仍被钳在
+      // totalStones ≤ 5e7 + N×5e9、装备战力 ≤ 2e5×(1+N)——战力天花板被
+      // 自报战力一致性校验（装备分×2500）与 immortal=0 双重锁死，远小于原洞。
+      const ageDays = Math.max(0, (now - ctx.user.createdAt) / 86400000);
+      const capTotalStones = 5e7 + ageDays * 5e9;
+      const capOpens = 2e5 + ageDays * 2e5;
+      const capDust = 2e6 + ageDays * 5e6;
+      const capTickets = 1000 + ageDays * 500;
+      const capEquipPower = 2e5 * (1 + ageDays);
       const seedFails = [];
-      if (Number(data.totalStones) > 5e7) seedFails.push('累计灵石超新号上限');
-      if (Number(data.opens) > 2e5) seedFails.push('开箱次数超新号上限');
-      if (Number(data.dustTotal) > 2e6) seedFails.push('累计碎屑超新号上限');
-      if (Number(data.petTickets) > 1000) seedFails.push('招募券超新号上限');
+      if (Number(data.totalStones) > capTotalStones) seedFails.push('累计灵石超新号上限');
+      if (Number(data.opens) > capOpens) seedFails.push('开箱次数超新号上限');
+      if (Number(data.dustTotal) > capDust) seedFails.push('累计碎屑超新号上限');
+      if (Number(data.petTickets) > capTickets) seedFails.push('招募券超新号上限');
       if (Number(data.immortal) > 0 || Number(data.ascensions) > 0) seedFails.push('仙位/轮回超新号上限');
-      if (equipPowerOf(data) > 2e5) seedFails.push('装备战力超新号上限');
+      if (equipPowerOf(data) > capEquipPower) seedFails.push('装备战力超新号上限');
       if (seedFails.length) {
-        console.error('[saves] 新号种子校验拒收 user=' + ctx.user.id + '：' + seedFails[0]);
+        console.error('[saves] 新号种子校验拒收 user=' + ctx.user.id + '（账龄 ' +
+          ageDays.toFixed(2) + ' 天）：' + seedFails[0]);
         return sendJSON(res, 400, { error: '新账号存档异常，请从零开始修行' });
       }
     }

@@ -13,11 +13,12 @@ import {
   simulateBattle, MODES, contentReq, enemyFor, recommendedPower,
   playerCombatStats, elementBonusOf, settleGain, expectedOf, dayProdMultOf,
   applyStoneBuffsOf,
-  MILESTONES, WILD_MAX, ENDLESS_GATE, TROPHY_FIELDS, MODE_EXP_MULT,
+  WILD_MAX, ENDLESS_GATE, TROPHY_FIELDS, MODE_EXP_MULT,
   WILD_SET_PITY, WILD_SET_RATE, MODE_SET_RATE, TREASURE_DROP,
   SWEEP_DAILY_FREE, SWEEP_BUY_MAX, SWEEP_BUY_COST, WILD_REPEAT_DAILY,
+  TRIALS, TRIAL_REWARD,
 } from './battle.js';
-import { SLOTS, makeSpecialItem } from './items.js';
+import { SLOTS, SETS, makeSpecialItem } from './items.js';
 
 const FIGHT_PER_MIN = 90; // 自动战斗 1 场/分钟 + 手动连点，90/分钟留足余量
 const OFFLINE_CAP_S = 4 * 3600;
@@ -72,6 +73,7 @@ export function createCombatService(db, staminaSvc) {
       `UPDATE save_ledger SET wild_repeat_day = ?, wild_repeat_used = ?,
          sweep_day = ?, sweep_used = ?, sweep_bought = ? WHERE user_id = ?`),
     setOfflineAt: db.prepare('UPDATE save_ledger SET offline_at = ? WHERE user_id = ?'),
+    setTrial: db.prepare('UPDATE save_ledger SET trial_day = ?, trial_done = ? WHERE user_id = ?'),
     spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
     logAction: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
@@ -178,30 +180,25 @@ export function createCombatService(db, staminaSvc) {
     return { cleared: list, kills };
   }
 
-  // 套装件掉落 roll（game.js doBattle 掉落段同源）。id=0 由客户端收货时重编
-  function rollSpecialDrop({ mode, level, first, sweep, replay, killsNow }) {
+  // 套装件掉落 roll（game.js doBattle 掉落段同源）。id=0 由客户端收货时重编。
+  // 2026-11-01 用户指定：首通里程碑 / 满层满野必掉全部取消，四模式一律按概率——
+  // 野外 0.8% + 50 杀保底；无尽 / 闯关 / 爬塔（含首通、复战、扫荡）0.8%
+  function rollSpecialDrop({ mode, level, killsNow }) {
     const itemSeq = () => 0;
-    let slotKey = null;
-    const milestoneSlot = MILESTONES[mode] ? MILESTONES[mode][level] : null;
-    if (first && milestoneSlot) slotKey = milestoneSlot;
-    else if (mode === 'wild') {
-      if (first && level === WILD_MAX) slotKey = SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
-      else if (killsNow % WILD_SET_PITY === 0 || Math.random() < WILD_SET_RATE) {
-        slotKey = SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
-      }
-    } else if (mode === 'endless') {
-      // 无尽掉「镇塔」套装件（客户端口径：grantSpecial('tower', level, ...)）
-      if (Math.random() < MODE_SET_RATE) {
-        return makeSpecialItem('tower', level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key, itemSeq, contentReq);
+    const randSlot = () => SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
+    if (mode === 'wild') {
+      if (killsNow % WILD_SET_PITY === 0 || Math.random() < WILD_SET_RATE) {
+        return makeSpecialItem('wild', level, randSlot(), itemSeq, contentReq);
       }
       return null;
-    } else if (first && level === MODES[mode].max) {
-      slotKey = SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
-    } else if ((replay || sweep) && Math.random() < MODE_SET_RATE) {
-      slotKey = SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
     }
-    if (!slotKey) return null;
-    return makeSpecialItem(mode, level, slotKey, itemSeq, contentReq);
+    if (mode === 'endless') {
+      // 无尽掉「镇塔」套装件（客户端口径：grantSpecial('tower', level, ...)）
+      if (Math.random() < MODE_SET_RATE) return makeSpecialItem('tower', level, randSlot(), itemSeq, contentReq);
+      return null;
+    }
+    if (Math.random() < MODE_SET_RATE) return makeSpecialItem(mode, level, randSlot(), itemSeq, contentReq);
+    return null;
   }
 
   // POST /api/combat/fight {mode, level?, sweepLevel?, buy?}
@@ -555,5 +552,72 @@ export function createCombatService(db, staminaSvc) {
   // addStones 增益链直接复用 battle.js 的实现（周/时辰/天象/内丹一份口径）
   const applyStoneBuffs = (mirror, n) => applyStoneBuffsOf(mirror, n);
 
-  return { fight, offline };
+  // 条件试炼（2026-11-01 用户指定上收服务端）：失败免费重试；通关标记与奖励以服务端
+  // 当日 done 表为准——改档 / 回滚 / 多开都无法重复领奖。奖励数值由响应下发、客户端
+  // addStones/addDust 入账（2400 万灵石/日量级远低于增速包络），防重关键在 trial_done 标记
+  function trial(req, res, ctx) {
+    const id = typeof ctx.body?.id === 'string' ? ctx.body.id : '';
+    const def = TRIALS.find((t) => t.id === id);
+    if (!def) return sendJSON(res, 400, { error: '未知试炼' });
+    const now = Date.now();
+    const today = dayStr(now);
+    const saveRow = stmts.getSave.get(ctx.user.id);
+    if (!saveRow) return sendJSON(res, 400, { error: '尚未创建云端存档' });
+    const mirror = loadMirror(saveRow.data);
+    db.exec('BEGIN');
+    try {
+      const led = ensureLedger(ctx.user.id, mirror, now);
+      // 境界门槛：化神（FEATURE_GATES.trials 同口径，users.realm 随存档同步）
+      if (Number(mirror.realm) < 4) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '条件试炼需境界「化神」' });
+      }
+      let done = [];
+      if (led.trial_day === today) {
+        try { done = JSON.parse(led.trial_done || '[]'); } catch (e) { done = []; }
+        if (!Array.isArray(done)) done = [];
+      }
+      if (done.includes(id)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 200, { pass: true, already: true, done, reward: null });
+      }
+      // 关卡口径与客户端 currentLevel 同源：账本进度 +1 封顶 200，野外取当前选中区
+      const level = def.enemy === 'wild'
+        ? Math.max(1, Math.min(WILD_MAX, Math.floor(num(mirror.wildZone)) || 1))
+        : Math.min(MODES[def.enemy].max,
+            Math.floor(num(def.enemy === 'tower' ? led.tower_cleared : led.stage_cleared)) + 1);
+      const env = envFor(ctx.user.id, now);
+      const player = playerCombatStats(mirror, env);
+      if (def.noLs) player.lifesteal = 0;
+      const enemy = enemyFor(def.enemy, level, mirror);
+      const elb = elementBonusOf(mirror, enemy.el);
+      player.atk *= elb.mult;
+      const result = simulateBattle(player, enemy);
+      const pass = result.win &&
+        (!def.maxRounds || result.rounds <= def.maxRounds) &&
+        (!def.takenRatio || result.taken <= player.hp * def.takenRatio);
+      if (!pass) {
+        const reason = !result.win ? '战斗失败'
+          : def.maxRounds ? '耗时 ' + result.rounds + ' 回合（需 ≤' + def.maxRounds + '）' : '承伤超限';
+        db.exec('ROLLBACK');
+        return sendJSON(res, 200, { pass: false, reason, result, playerHp: player.hp, done });
+      }
+      done.push(id);
+      const allClear = done.length >= TRIALS.length;
+      stmts.setTrial.run(today, JSON.stringify(done), ctx.user.id);
+      stmts.logAction.run(ctx.user.id, today, 'trial',
+        TRIAL_REWARD.stones, TRIAL_REWARD.dust + (allClear ? 60 : 0), 0, 0, now);
+      db.exec('COMMIT');
+      return sendJSON(res, 200, {
+        pass: true, done, result, playerHp: player.hp,
+        enemy: enemyFor(def.enemy, level, mirror),
+        reward: { stones: TRIAL_REWARD.stones, dust: TRIAL_REWARD.dust, allClear },
+      });
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch (e2) { /* 无事务可回滚 */ }
+      throw e;
+    }
+  }
+
+  return { fight, offline, trial };
 }

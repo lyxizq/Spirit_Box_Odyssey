@@ -302,6 +302,17 @@ async function handleApi(req, res, pathname) {
     try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
     return combat.fight(req, res, { user, body });
   }
+  // 条件试炼（2026-11-01 上收服务端）：通关标记 + 奖励防重以服务端当日 done 表为准
+  if (pathname === '/api/trial/run' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+    const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+    if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+    let body = null;
+    try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    return combat.trial(req, res, { user, body });
+  }
   if (pathname === '/api/combat/offline' && method === 'POST') {
     const user = auth.getSessionUser(req);
     if (!user) return sendJSON(res, 401, { error: '未登录' });

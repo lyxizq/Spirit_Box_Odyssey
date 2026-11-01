@@ -102,12 +102,7 @@ export const SWEEP_DAILY_FREE = 10;
 export const SWEEP_BUY_MAX = 30;
 export const SWEEP_BUY_COST = 200000;
 export const WILD_REPEAT_DAILY = 50;
-export const MILESTONE_SLOTS = ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman',
-  'bracelet', 'ring', 'wrist', 'legs', 'band', 'wings'];
-export const MILESTONES = { tower: {}, stage: {}, wild: {} };
-for (let lv = 10; lv <= TOWER_MAX; lv += 10) MILESTONES.tower[lv] = MILESTONE_SLOTS[(lv / 10 - 1) % MILESTONE_SLOTS.length];
-for (let lv = 5; lv <= STAGE_MAX; lv += 5) MILESTONES.stage[lv] = MILESTONE_SLOTS[(lv / 5 - 1) % MILESTONE_SLOTS.length];
-for (let lv = 1; lv <= WILD_MAX; lv += 2) MILESTONES.wild[lv] = MILESTONE_SLOTS[((lv - 1) / 2) % MILESTONE_SLOTS.length];
+// 里程碑必掉已移除（2026-11-01 用户指定）：套装件全部按概率掉落，见 rollSpecialDrop
 
 export const MODES = {
   tower: {
@@ -565,7 +560,8 @@ export function playerCombatStats(data, env) {
   const setCounts = { tower: 0, stage: 0, wild: 0 };
   for (const s of SLOTS) {
     const it = data.equipped && data.equipped[s.key];
-    if (it && it.setKey && setCounts[it.setKey] !== undefined) setCounts[it.setKey]++;
+    // 只计「当前仍属套装」的部位（2026-11-01 收窄后，移除槽位的存量件不计）
+    if (it && it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[s.key] && setCounts[it.setKey] !== undefined) setCounts[it.setKey]++;
   }
   const b = { atk, hp, def, crit, dr, lifesteal };
   for (const key of Object.keys(SETS)) {
@@ -608,7 +604,7 @@ export function elementBonusOf(data, enemyEl) {
 
 const RARITY_WEIGHTS = [1000, 350, 100, 25, 2, 0.4];
 const RARITY_EXP = [0, 1, 3, 8, 20, 50];
-const EQUIP_CHANCE = 0.01;
+const EQUIP_CHANCE = 0.25; // 2026-11-01 用户指定 20-30% 档取 25%（原 1%），与 game.js 同源
 
 function weightsOf(data) {
   const m = 1 + 0.02 * (data.luckLv || 0);
@@ -731,6 +727,15 @@ export function settleGain({ mode, level, first, rewardScale, boss, data, sweep 
 
 // 今日产出倍率（灵潮窗口 ×2 · 上上签 +5%，game.js dayProdMult 同源；服务端本地时）。
 // FORTUNE_SIGNS[0]=上上签（prod 0.05，唯一带产出的签），idx 指向当日所抽签下标。
+// 条件试炼（2026-11-01 上收服务端）：与 game.js TRIALS 同源；通关条件结构化——
+// maxRounds 限回合 / noLs 禁吸血 / takenRatio 限承伤比例
+export const TRIALS = [
+  { id: 'swift', name: '迅捷试炼', desc: '5 回合内击败野外守护兽', enemy: 'wild', maxRounds: 5 },
+  { id: 'nols', name: '无息试炼', desc: '不靠吸血击败塔层守卫', enemy: 'tower', noLs: true },
+  { id: 'wall', name: '铁壁试炼', desc: '承受不超最大生命 30% 取胜', enemy: 'stage', takenRatio: 0.3 },
+];
+export const TRIAL_REWARD = { stones: 8e6, dust: 40 };
+
 const TIDE_WINDOWS = [{ s: 12, e: 14 }, { s: 20, e: 22 }];
 const TIDE_MULT = 2;
 const FORTUNE_PROD = [0.05, 0, 0, 0];

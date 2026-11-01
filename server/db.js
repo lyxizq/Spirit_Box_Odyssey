@@ -249,6 +249,9 @@ export const LEDGER_COLUMNS = [
   ['sweep_day',      "TEXT    NOT NULL DEFAULT ''"],
   ['sweep_used',     "TEXT    NOT NULL DEFAULT '{}'"],
   ['sweep_bought',   "TEXT    NOT NULL DEFAULT '{}'"],
+  // 条件试炼（2026-11-01 上收服务端）：通关标记以服务端当日 done 表为准，防改档/回滚重复领奖
+  ['trial_day',      "TEXT    NOT NULL DEFAULT ''"],
+  ['trial_done',     "TEXT    NOT NULL DEFAULT '[]'"],
   ['offline_at',     'INTEGER NOT NULL DEFAULT 0'],
 ];
 
