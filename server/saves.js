@@ -153,7 +153,7 @@ export function createSaveService(db) {
     SPECIAL_POWER_BASE: 1e9,           // 套装件战力基准（合法顶配 ~1e8 量级 ×10 余量；套装件不入装备等级体系）
     POWER_BASE: 4e14,                  // 自报总战力基准（六件 theoretical ~3.3e14 ×余量）
     EQUIP_LV_MAX: 10,                  // 装备等级上限（未飞升仙人 = 境界下标+1；飞升后归 0 重爬；仅普通件）
-    EQUIP_LV_STEP_MAX: 2.78,           // 装备等级每级战力复利上界（客户端掷 [2.62,2.78]，Lv.1 基线共 lv-1 步）
+    EQUIP_LV_STEP_MAX: 2.16,           // 装备等级每级战力复利上界（客户端掷 [2.0,2.16]，Lv.1 基线共 lv-1 步）
     IMMORTAL_STEP: 1.25,               // 仙位倍率：1.25^immortal
     POWER_GROWTH_ALLOWANCE: 25,        // 实际战力成长余量：装备分 × 实战乘区（词条/宝石/灵宠/套装等综合放大）
   };
@@ -189,8 +189,8 @@ export function createSaveService(db) {
     //（未飞升 = 境界下标+1，飞升后归 0），0..10 白名单；缺失按迁移基线 1 计
     const elv = it.lv === undefined ? 1 : it.lv;
     if (!isInt(elv, 0, DEEP.EQUIP_LV_MAX)) return bad(where + ' 装备等级越界');
-    // 战力上界：普通件=品质基准×1.2×2.78^(lv-1)（客户端 fixItem 同款，Lv.1 基线 ×1，
-    // 仙品 Lv.10 理论上界 ≈ 1.07e7）；套装件不入等级体系，仍按 1e9 基准 × 仙位放宽
+    // 战力上界：普通件=品质基准×1.2×2.16^(lv-1)（客户端 fixItem 同款，Lv.1 基线 ×1，
+    // 仙品 Lv.10 理论上界 ≈ 1.1e6）；套装件不入等级体系，仍按 1e9 基准 × 仙位放宽
     const powerCap = special
       ? safeCap(DEEP.SPECIAL_POWER_BASE * immortalMult({ immortal }))
       : Math.round(DEEP.BASE_POWER[it.r] * 1.2 *

@@ -347,10 +347,15 @@
 
   // 装备等级（2026-11-01 用户指定）：掉落时随境界定死——未飞升 = 境界下标+1（炼气 1 起，
   // 仙人 10 封顶），飞升后归 0 再随境界重爬。Lv.1 为基线（×1，与存量迁移件同口径），
-  // 此后每 +1 级战力独立掷 [2.62,2.78] 复利一步（Lv.10 共 9 步），
-  // 区间按「仙人级（Lv.10）仙品 ≈ 500~800 万」反向锚定：期望 2.7^9≈7640 步进 → 典型 ≈690 万
+  // 此后每 +1 级战力独立掷 [2.0,2.16] 复利一步（Lv.10 共 9 步），
+  // 区间按「仙人级（Lv.10）仙品 ≈ 50~80 万」反向锚定：期望 2.08^9≈727 步进 → 典型 ≈65 万
   const EQUIP_LV_MAX = 10;
-  const EQUIP_LV_STEP = [2.62, 2.78];
+  const EQUIP_LV_STEP = [2.0, 2.16];
+
+  // 掉落战力随机衰减（2026-11-01 用户指定）：所有玩法产装（开箱/赌石/熔铸/炼器/套装件）
+  // 战力统一乘 [0.3,1] 随机数——期望 ×0.65，只降不升，服务端量级上界与增速包络不受影响
+  const DROP_POW_MULT = [0.3, 1];
+  const rollDropPowMult = () => DROP_POW_MULT[0] + Math.random() * (DROP_POW_MULT[1] - DROP_POW_MULT[0]);
 
   /* ---------------- 词条 / 洗练 / 宝石 ---------------- */
 
@@ -1398,16 +1403,39 @@
   let cloudWarnAt = 0;         // 上次「云端拒收」提示时间（节流，10 分钟一次）
   let authSignedOut = false;   // 登出流程中：persist / 关页兜底全部停手（配合登出清本地档）
 
-  // 统一带 401 处理的 API 调用：会话失效自动回登录页
+  // 断服看门狗：任一 API 网络级失败（连接不通 / 网关 502/503/504）即视为停机信号，
+  // 2.5 秒后复探一次 /api/version 确认（避开单次网络抖动误踢），仍不通直接跳登录页挂「游戏升级中」横幅
+  let downConfirming = false;
+  function noteServerDown() {
+    if (downConfirming || authSignedOut) return;
+    downConfirming = true;
+    setTimeout(() => {
+      fetch('/api/version?probe=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+        .then((res) => {
+          if (res.ok || ![502, 503, 504].includes(res.status)) { downConfirming = false; return; } // 已恢复：只是抖动
+          location.replace('/login.html?down=1');
+        })
+        .catch(() => location.replace('/login.html?down=1')); // 复探仍不通：确认停机
+    }, 2500);
+  }
+
+  // 统一带 401 / 断服处理的 API 调用：会话失效自动回登录页；网络级失败交给断服看门狗
   async function api(pathname, opts = {}) {
-    const res = await fetch(pathname, Object.assign({
-      credentials: 'same-origin',
-      headers: { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' },
-    }, opts));
+    let res;
+    try {
+      res = await fetch(pathname, Object.assign({
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' },
+      }, opts));
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') noteServerDown(); // 连接失败 = 停机信号；客户端主动超时中止不算
+      throw e;
+    }
     if (res.status === 401) {
       location.replace('/login.html');
       throw new Error('unauthorized');
     }
+    if (res.status === 502 || res.status === 503 || res.status === 504) noteServerDown(); // 网关活着、后端停了
     return res;
   }
 
@@ -1432,9 +1460,12 @@
       cloudUser = me.displayName || me.username;
       return true;
     } catch (e) {
-      if (e.message !== 'unauthorized') {
-        blockStart('本版本需要登录账号才能修行：请通过游戏服务端访问（node server/index.js 启动后打开首页）。');
+      if (e.message === 'unauthorized') return false;
+      if (e instanceof TypeError) { // 服务端不可达（停机/未启动）：与游戏中断服同口径，回登录页挂「游戏升级中」横幅
+        location.replace('/login.html?down=1');
+        return false;
       }
+      blockStart('本版本需要登录账号才能修行：请通过游戏服务端访问（node server/index.js 启动后打开首页）。');
       return false;
     }
   }
@@ -1532,14 +1563,13 @@
   }
 
   // 页脚版本号 + 服务器时间：来自 /api/version；时间按服务器时区走针（每秒）。
-  // 兼做断服探针：连续拉取失败满 2 分钟即强制跳回登录页（?down=1 由登录页挂「维护中」横幅），
-  // 不保留断服本地玩法；期间恢复连接则计时清零，无感续玩。
+  // 兼做断服心跳（闲置时唯一探针）：拉取失败即交给断服看门狗快速确认，确认停机直接跳登录页
+  // （?down=1 由登录页挂「游戏升级中」横幅），不保留断服本地玩法。
   (function serverFooter() {
     const verEl = $('gameVersion');
     const timeEl = $('serverTime');
     let offset = null; // 服务器 epoch − 本地 epoch
     let tzOff = 0;     // 服务器时区偏移（getTimezoneOffset 口径，UTC+8 为 -480）
-    let downSince = 0; // 首次拉取失败的时刻；距此刻满 2 分钟即跳登录页
     const p2 = (n) => String(n).padStart(2, '0');
     function paint() {
       if (!timeEl || offset === null) return;
@@ -1562,9 +1592,7 @@
           paint();
         }
       } catch (e) {
-        const now = Date.now();
-        if (!downSince) downSince = now;
-        else if (now - downSince >= 120000) location.replace('/login.html?down=1');
+        noteServerDown();
       }
     }
     sync();
@@ -3113,13 +3141,14 @@
     const set = SETS[mode];
     // 兜底命名：套装件名必须为字符串（服务端 validateItem 拒收非字符串名，整档 400）
     const pieceName = set.pieces[slotDef.key] || (set.name + '·' + slotDef.name);
-    // 套装件不参与装备等级体系（2026-11-01 用户指定：套装维持现有，战力只随内容深度/仙位走）
+    // 套装件不参与装备等级体系（2026-11-01 用户指定：套装维持现有，战力只随内容深度/仙位走），
+    // 但同样吃掉落随机衰减 [0.3,1]
     return {
       id: state.itemSeq++,
       r: 5,
       slot: slotDef.key,
       name: pieceName,
-      power: specialPower(mode, level),
+      power: Math.max(1, Math.round(specialPower(mode, level) * rollDropPowMult())),
       el: randEl(),
       affixes: rollAffixes(5),
       special: true,
@@ -3304,7 +3333,7 @@
     return state.ascensions > 0 ? state.realm : state.realm + 1;
   }
 
-  // 等级战力复利：Lv.1 基线 ×1，此后每级独立掷 [2.62,2.78]（负等级/越界按基线兜底）
+  // 等级战力复利：Lv.1 基线 ×1，此后每级独立掷 [2.0,2.16]（负等级/越界按基线兜底）
   function rollLvGrowth(lv) {
     let m = 1;
     for (let i = 1; i < Math.max(1, Math.min(EQUIP_LV_MAX, lv | 0)); i++) {
@@ -3318,7 +3347,8 @@
     const pool = ITEM_NAMES[slotDef.key][ri];
     const name = pool[Math.floor(Math.random() * pool.length)];
     const lv = equipDropLv();
-    const power = Math.max(1, Math.round(BASE_POWER[ri] * (0.8 + Math.random() * 0.4) * rollLvGrowth(lv)));
+    const power = Math.max(1, Math.round(BASE_POWER[ri] * (0.8 + Math.random() * 0.4) *
+      rollLvGrowth(lv) * rollDropPowMult()));
     return {
       id: state.itemSeq++,
       r: ri,
@@ -4730,7 +4760,8 @@
       slot: slotKey,
       name: pool[Math.floor(Math.random() * pool.length)] + '（器）',
       lv,
-      power: Math.max(1, Math.round(BASE_POWER[4] * (0.9 + Math.random() * 0.3) * rollLvGrowth(lv))),
+      power: Math.max(1, Math.round(BASE_POWER[4] * (0.9 + Math.random() * 0.3) *
+        rollLvGrowth(lv) * rollDropPowMult())),
       el: randEl(),
       affixes: rollAffixes(4),
     };
