@@ -9,7 +9,7 @@ export const RARITIES = [
   { name: '凡品', color: '#9aa4b2', weight: 1000, stone: 1, exp: 0 },
   { name: '灵品', color: '#4ade80', weight: 350, stone: 3, exp: 1 },
   { name: '玄品', color: '#60a5fa', weight: 100, stone: 10, exp: 3 },
-  { name: '地品', color: '#c084fc', weight: 25, stone: 35, exp: 8 },
+  { name: '地品', color: '#2dd4bf', weight: 25, stone: 35, exp: 8 },
   { name: '天品', color: '#fbbf24', weight: 2, stone: 150, exp: 20 },
   { name: '仙品', color: '#f87171', weight: 0.4, stone: 800, exp: 50 },
 ];

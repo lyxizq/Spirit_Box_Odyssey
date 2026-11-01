@@ -1,6 +1,8 @@
 // 部署包构建脚本：混淆前端 JS + 压缩 CSS/HTML，产出可直接部署的目录与 zip。
 // 用法：npm run build:deploy（或 node scripts/build-deploy.mjs）
-// 产物：dist/spirit-box-odyssey-deploy-v<版本>/ 与同名 .zip（内容为项目根红框白名单，见 DEPLOY_FILES）
+// 产物：dist/spirit-box-odyssey-deploy/ 与同名 .zip（内容为项目根红框白名单）。
+// 2026-11-01 用户指定：产物名不带版本号，dist 下只保留最新一份——每次构建先
+// 清空 dist 里全部历史部署目录/压缩包（含旧版带 v 号的产物），不留堆积。
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
@@ -11,7 +13,8 @@ import esbuild from 'esbuild';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = PKG.version;
-const OUT_DIR = path.join(ROOT, 'dist', `spirit-box-odyssey-deploy-v${VERSION}`);
+const DIST = path.join(ROOT, 'dist');
+const OUT_DIR = path.join(DIST, 'spirit-box-odyssey-deploy');
 const ZIP_PATH = `${OUT_DIR}.zip`;
 
 // 部署包内容 = 截图红框白名单（data/ 运行时自动生成、docker/ docs/ 不对外）
@@ -78,8 +81,14 @@ function copyPackageJson() {
 }
 
 console.log(`== 部署包构建 v${VERSION} ==`);
-fs.rmSync(OUT_DIR, { recursive: true, force: true });
-fs.rmSync(ZIP_PATH, { force: true });
+// 只保留一份：清掉 dist 下所有历史部署目录与压缩包（含旧版带 v 号命名）
+if (fs.existsSync(DIST)) {
+  for (const name of fs.readdirSync(DIST)) {
+    if (name.startsWith('spirit-box-odyssey-deploy')) {
+      fs.rmSync(path.join(DIST, name), { recursive: true, force: true });
+    }
+  }
+}
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const report = [];

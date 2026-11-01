@@ -278,7 +278,7 @@
     { name: '凡品', color: '#9aa4b2', weight: 1000, stone: 1, exp: 0 },
     { name: '灵品', color: '#4ade80', weight: 350, stone: 3, exp: 1 },
     { name: '玄品', color: '#60a5fa', weight: 100, stone: 10, exp: 3 },
-    { name: '地品', color: '#c084fc', weight: 25, stone: 35, exp: 8 },
+    { name: '地品', color: '#2dd4bf', weight: 25, stone: 35, exp: 8 },
     { name: '天品', color: '#fbbf24', weight: 2, stone: 150, exp: 20 },
     { name: '仙品', color: '#f87171', weight: 0.4, stone: 800, exp: 50 },
   ];
@@ -3523,12 +3523,15 @@
   }
 
   function autoEquip(silent) {
-    let changed = 0;
     let vowSkipped = 0; // 凡衣修行戒律跳过的「确比穿戴件强」的专属件数（用于诚实提示）
 
+    // 第一步：逐槽按单品分选候选，只收集不落袋——整体评估后再决定
+    const swaps = []; // { slotKey, bagIdx }
+    const picked = new Set();
     for (const slotDef of SLOTS) {
       let best = -1;
       for (let i = 0; i < state.bag.length; i++) {
+        if (picked.has(i)) continue;
         if (state.bag[i].slot !== slotDef.key) continue;
         // 凡衣修行期间自动穿戴不碰专属件：破戒是玩家的显式选择（手动穿仍照常判破戒），
         // 不能让道童/一键穿戴替玩家默默破戒
@@ -3542,30 +3545,49 @@
 
       const current = state.equipped[slotDef.key];
       if (current && itemScore(current) >= itemScore(state.bag[best])) continue;
-
-      const item = state.bag.splice(best, 1)[0];
-      if (current) state.bag.push(current);
-      state.equipped[slotDef.key] = item;
-      changed++;
+      picked.add(best);
+      swaps.push({ slotKey: slotDef.key, bagIdx: best });
     }
 
-    if (!changed) {
+    if (!swaps.length) {
       if (!silent) {
         floatText(vowSkipped ? '凡衣修行中：更强的专属件不自动穿（手动穿戴会破戒）' : '没有更强的装备', '#9aa4b2');
       }
       return 0;
     }
 
+    // 第二步：整体评估（2026-11-01 用户指定）——套装凑件等联动可能让单品分合计升高而
+    // 实战战力反降。先试穿算 realPower（实战口径，含套装/词条/强化加成），低于穿前则
+    // 整体回滚不执行；一键穿戴与道童自动穿戴共用此闸门，永不降战力
+    const before = realPower();
+    const chosen = swaps.map((s) => state.bag[s.bagIdx]);
+    const oldEquipped = swaps.map((s) => state.equipped[s.slotKey]);
+    for (let i = 0; i < swaps.length; i++) state.equipped[swaps[i].slotKey] = chosen[i];
+    const after = realPower();
+    if (after < before) {
+      for (let i = 0; i < swaps.length; i++) state.equipped[swaps[i].slotKey] = oldEquipped[i];
+      if (!silent) floatText('整体评估：该组合战力更低（' + fmt(before) + ' → ' + fmt(after) + '），未执行', '#f87171');
+      return 0;
+    }
+
+    // 第三步：提交——新件离包、换下旧件回包（引用操作，避免下标位移）
+    for (let i = 0; i < swaps.length; i++) {
+      state.bag.splice(state.bag.indexOf(chosen[i]), 1);
+      if (oldEquipped[i]) state.bag.push(oldEquipped[i]);
+    }
+
     state.bagWarned = false;
     bagDirty = true;
     equipDirty = true;
     combatDirty = true;
-    pushLog((silent ? '道童自动' : '一键') + '穿戴完成，更换 ' + changed + ' 件装备', 'sys');
+    const delta = after - before;
+    pushLog((silent ? '道童自动' : '一键') + '穿戴完成，更换 ' + swaps.length +
+      ' 件装备 · 战力 ' + (delta >= 0 ? '+' : '') + fmt(delta), 'sys');
     if (!silent) beep(820, 0.1);
     render();
     paintBag(true);
     save();
-    return changed;
+    return swaps.length;
   }
 
   /* ---------------- 核心：开箱 ---------------- */
@@ -7518,7 +7540,7 @@
         '<p>获得 <b>+' + fmt(b.stoneGain) + '</b> 灵石 · <b>+' + fmt(b.expGain) +
           '</b> 修为 · <b>+' + b.trophy + '</b> ' + TROPHIES[b.mode].name + '</p>';
       if (b.special) {
-        html += '<p class="loot-line">获得「' + esc(b.special.item.name) + '」 · ' +
+        html += '<p class="loot-line">获得「<span class="set-glow">' + esc(b.special.item.name) + '</span>」 · ' +
           SETS[b.special.item.setKey].name + '套装 · 战力 ' + fmt(itemPower(b.special.item)) +
           (b.special.result.kept ? '' : ' · 背包已满，已自动分解') + '</p>';
       }
@@ -13128,7 +13150,7 @@
         // 战力根本看不到——行1 名字+星级 …… 战力（右对齐）；行2 品质·套装·五行·部位；行3 词条
         return '<div class="inspect-row">' +
           '<div class="inspect-line">' +
-            '<span class="nm"><b data-c="' + rar.color + '">' + esc(it.name) + '</b>' + stars + '</span>' +
+            '<span class="nm"><b' + (it.setKey && SETS[it.setKey] ? ' class="set-glow"' : '') + ' data-c="' + rar.color + '">' + esc(it.name) + '</b>' + stars + '</span>' +
             '<span class="inspect-power">战力 ' + fmt(it.power) + '</span>' +
           '</div>' +
           '<div class="inspect-sub">' +

@@ -702,7 +702,7 @@ function stoneBuffParts(data) {
 
 // 结算公式（game.js doBattle stoneGain/expGain + addStones 增益同源）。
 // 2026-11-01 起灵石全额在服务端算毕（含周/时辰/天象/内丹加成），客户端平加入账。
-export function settleGain({ mode, level, first, rewardScale, boss, data }, env) {
+export function settleGain({ mode, level, first, rewardScale, boss, data, sweep }, env) {
   const cfg = MODES[mode];
   const bossScale = boss ? 1.8 : 1;
   const firstScale = first ? 1.5 : 1;
@@ -716,8 +716,11 @@ export function settleGain({ mode, level, first, rewardScale, boss, data }, env)
 
   const expMult = (1 + 0.10 * ((data.cave && data.cave.library) || 0)) *
     (1 + 0.05 * ((data.gongfa && data.gongfa.hui) || 0));
+  // 征战修为统一 ×60（2026-11-01 用户指定三连改：扫荡×100 → 扫荡/首通×100 → 全路径×60）——
+  // 扫荡/首通/复战同倍率；灵石不受此倍率影响。修为仅在服务端结算，客户端平加响应值
+  const boostExpMult = 60;
   const expGain = Math.floor(
-    req * cfg.exp * MODE_EXP_MULT * bossScale * firstScale * rewardScale * expMult
+    req * cfg.exp * MODE_EXP_MULT * bossScale * firstScale * rewardScale * boostExpMult * expMult
   );
 
   let trophy = 1 + Math.floor(level / cfg.trophyStep);

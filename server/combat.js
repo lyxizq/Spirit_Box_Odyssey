@@ -364,7 +364,8 @@ export function createCombatService(db, staminaSvc) {
 
       if (result.win) {
         const rewardScale = sweepLevel !== null ? (mode === 'wild' ? 1 : 0.5) : (replay ? 0.5 : 1);
-        const gains = settleGain({ mode, level, first, rewardScale, boss: enemy.boss, data: mirror }, {
+        const gains = settleGain({ mode, level, first, rewardScale, boss: enemy.boss, data: mirror,
+          sweep: sweepLevel !== null }, {
           ...env, weekend: isWeekend(), prodMult: dayProdMultOf(mirror),
         });
         stoneGain = gains.stoneGain;

@@ -32,6 +32,7 @@ html {
   --green: #4ade80;
   --blue: #60a5fa;
   --purple: #c084fc;
+  --cyan: #2dd4bf;                 /* 地品品级色（2026-11-01 换青，让紫让位给套装） */
   --orange: #fbbf24;
   --red: #f87171;
   --radius: 20px;
@@ -60,6 +61,7 @@ body.theme-light {
   --green: #1f9d55;
   --blue: #2f6fce;
   --purple: #7c4dc4;
+  --cyan: #115e59;                 /* 地品品级色（明色深青，纸底 6.1:1） */
   --orange: #9c4a06;
   --red: #b4362e;
 }
@@ -1309,7 +1311,7 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
 .log-list li.r0 { color: #9aa4b2; }
 .log-list li.r1 { color: var(--green); }
 .log-list li.r2 { color: var(--blue); }
-.log-list li.r3 { color: var(--purple); }
+.log-list li.r3 { color: var(--cyan); }
 .log-list li.r4 { color: var(--orange); }
 .log-list li.r5 { color: var(--red); font-weight: 600; }
 .log-list li.buff { color: #fca5a5; }
@@ -1358,7 +1360,7 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
 .collection-list li.r0 { color: #9aa4b2; }
 .collection-list li.r1 { color: var(--green); }
 .collection-list li.r2 { color: var(--blue); }
-.collection-list li.r3 { color: var(--purple); }
+.collection-list li.r3 { color: var(--cyan); }
 .collection-list li.r4 { color: var(--orange); }
 .collection-list li.r5 { color: var(--red); }
 
@@ -1671,7 +1673,7 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
 .item-r0 { --rc: #9aa4b2; }
 .item-r1 { --rc: var(--green); }
 .item-r2 { --rc: var(--blue); }
-.item-r3 { --rc: var(--purple); }
+.item-r3 { --rc: var(--cyan); }
 .item-r4 { --rc: var(--orange); }
 .item-r5 { --rc: var(--red); }
 
@@ -4928,7 +4930,7 @@ body.theme-light .battle-log b { color: #8a6a2f; }
    （0,2,1），明色下各分类塌成同一灰色、品质/警觉语义全丢——逐类显式重申 */
 body.theme-light .log-list li.r0 { color: #6f6350; }
 body.theme-light .log-list li.r2 { color: #1d4ed8; }
-body.theme-light .log-list li.r3 { color: #7c3aed; }
+body.theme-light .log-list li.r3 { color: var(--cyan); }
 body.theme-light .log-list li.r4 { color: #9c4a06; }
 body.theme-light .log-list li.r5 { color: #b4362e; }
 body.theme-light .log-list li.buff { color: #be185d; }
@@ -4948,4 +4950,48 @@ body.theme-light .item-r0 { --rc: #6f6350; }
   .ring { animation: none !important; }
   .box-icon { animation: none; } /* breathe 逐帧重绘 text-shadow：触屏端静止为常亮 */
   .map-tile.treasure-spot { animation: none; }
+}
+
+/* ============================================================
+ * 套装件名：紫色发光渐变字（2026-11-01 用户指定，高阶标识）
+ * 命中：装备槽位 / 背包条目（容器 item-special）、装备查看弹层（.set-glow）、
+ * 套装面板与图鉴的套装名（.set-row.set-xxx 内 .set-name）、战斗战利品行。
+ * 暗色亮紫流光；明色换深紫渐变弱光（纸底对比 ≥4.5:1）。
+ * ============================================================ */
+.item-special .slot-item-name,
+.item-special .bi-name,
+.set-glow,
+.set-tower .set-name,
+.set-stage .set-name,
+.set-wild .set-name {
+  /* 色阶大反差（亮粉紫→中紫→深紫→回亮）+ 250% 横向流光，过渡肉眼可见；
+     全部套装名统一动画（2026-11-01 用户要求加简单动画效果） */
+  background-image: linear-gradient(94deg, #f0abfc 0%, #c084fc 22%, #9d6ff5 45%, #e9d5ff 68%, #b675fb 88%, #f0abfc 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 6px rgba(192, 132, 252, 0.5));
+  animation: setNameFlow 4s ease-in-out infinite alternate;
+}
+/* bi-name 内的金色小字（em）不受渐变填充影响 */
+.item-special .bi-name em { -webkit-text-fill-color: var(--gold); }
+
+@keyframes setNameFlow {
+  from { background-position: 0% 0; }
+  to { background-position: 100% 0; }
+}
+
+/* 明色主题：深紫渐变 + 弱光（端色 #7e22ce/#6d28d9 对纸底 ≥5.6:1） */
+body.theme-light .item-special .slot-item-name,
+body.theme-light .item-special .bi-name,
+body.theme-light .set-glow,
+body.theme-light .set-tower .set-name,
+body.theme-light .set-stage .set-name,
+body.theme-light .set-wild .set-name {
+  /* 只换 image 不用 background 简写：简写会把 background-clip:text 重置成
+     border-box——文字透明 + 整块渐变 = 亮色下显示成紫条（实测截图） */
+  background-image: linear-gradient(94deg, #5b21b6 0%, #7e22ce 30%, #4c1d95 58%, #6d28d9 82%, #5b21b6 100%);
+  filter: drop-shadow(0 0 2px rgba(109, 40, 217, 0.35));
 }
