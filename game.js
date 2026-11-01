@@ -3969,8 +3969,12 @@
     const el = document.getElementById('combatStamina');
     if (!el) return;
     const s = staminaDisplay();
+    // 倒计时只到分钟（向上取整，≤5 分钟一格）：不显示秒
+    const remainMin = Math.ceil(Math.max(0, s.nextAt - Date.now()) / 60000);
     const text = !s ? '…'
-      : s.nextAt ? s.v + ' / ' + s.cap + '（' + fmtDuration(Math.max(0, s.nextAt - Date.now())) + '）'
+      : s.nextAt ? s.v + ' / ' + s.cap + '（' + (remainMin >= 60
+        ? Math.floor(remainMin / 60) + ' 小时 ' + (remainMin % 60) + ' 分'
+        : remainMin + ' 分钟') + '）'
         : s.v + ' / ' + s.cap;
     if (text !== staminaChipText) {
       staminaChipText = text;
@@ -10674,11 +10678,23 @@
       return;
     }
     const info = storyStageInfo(gi);
+    // 同卷同伴继承（2026-11-01 立绘缺口修复）：旁白/战斗结算行没有本关 NPC 说话时
+    // （如卷一第 2 关 pre 全是旁白+主角），左侧槽位回退「本卷此前关卡最近说话的
+    // NPC」——剧情上引路人同行，左侧不再空一块；跨卷自然隔离
+    let partnerDefault = '';
+    for (let si = info.li - 1; si >= 0 && !partnerDefault; si--) {
+      const prev = info.vol.stages[si];
+      const lines = [].concat(prev.pre || [], prev.post || []);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const spk = lines[i][0];
+        if (spk && spk !== 'n' && spk !== 'xiaofan' && STORY_CAST[spk]) { partnerDefault = spk; break; }
+      }
+    }
     storyFlow = {
       gi, v: info.v, li: info.li, vol: info.vol, st: info.st,
       review: !!review && stState === 'cleared',
       rewarded: stState === 'cleared',
-      phase: 'pre', idx: 0, partner: '', reward: null,
+      phase: 'pre', idx: 0, partner: '', partnerDefault, reward: null,
     };
     $('offlineModal').classList.remove('show');
     $('storyTitle').textContent = info.vol.title;
@@ -10733,7 +10749,7 @@
     }
 
     if (sys) {
-      storySetSlot($('storySlotL'), f.partner || null, false);
+      storySetSlot($('storySlotL'), f.partner || f.partnerDefault || null, false);
       storySetSlot($('storySlotR'), 'xiaofan', false);
       $('storyName').textContent = '——';
       applyStoryNameColor('#d8b36a');
@@ -10744,7 +10760,7 @@
       if (speaker && speaker !== 'n') {
         if (speaker === 'xiaofan') {
           storySetSlot($('storySlotR'), 'xiaofan', true);
-          storySetSlot($('storySlotL'), f.partner || null, false);
+          storySetSlot($('storySlotL'), f.partner || f.partnerDefault || null, false);
         } else {
           f.partner = speaker;
           storySetSlot($('storySlotL'), speaker, true);
@@ -10753,7 +10769,7 @@
         $('storyName').textContent = withPlayerName(STORY_CAST[speaker].name);
         applyStoryNameColor(STORY_CAST[speaker].color);
       } else {
-        storySetSlot($('storySlotL'), f.partner || null, false);
+        storySetSlot($('storySlotL'), f.partner || f.partnerDefault || null, false);
         storySetSlot($('storySlotR'), 'xiaofan', false);
         $('storyName').textContent = '旁白';
         applyStoryNameColor('#8b93a7');
@@ -10949,7 +10965,7 @@
     const box = $('storyText');
     $('storyName').textContent = '本关小结';
     applyStoryNameColor('#d8b36a');
-    storySetSlot($('storySlotL'), f.partner || null, false);
+    storySetSlot($('storySlotL'), f.partner || f.partnerDefault || null, false);
     storySetSlot($('storySlotR'), 'xiaofan', true);
     if (f.review || !r) {
       box.textContent = '旧卷重读，江湖如昨。（回顾模式不重复发奖）';
