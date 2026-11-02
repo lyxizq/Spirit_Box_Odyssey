@@ -75,7 +75,22 @@
       var data = null;
       try { data = await res.json(); } catch (err) { data = null; }
       if (res.ok && data && data.ok) {
-        location.replace('/');
+        // 200 只代表服务端已发 Set-Cookie；浏览器拒收 Cookie（被反代链路打成 Secure、
+        // 禁 Cookie 等）时直接跳「/」会被 302 弹回登录页——无声循环极难自查。
+        // 先复核会话确已建立再跳转，失败给出可行动的提示
+        var me = null;
+        try {
+          var meRes = await fetch('/api/auth/me', { credentials: 'same-origin' });
+          me = meRes.ok ? await meRes.json() : null;
+        } catch (err) { me = null; }
+        // /api/auth/me 成功响应形如 {username, displayName, ...}（无 ok 字段）
+        if (me && me.username) {
+          location.replace('/');
+          return;
+        }
+        setError('登录态未能建立：请检查浏览器是否允许本站 Cookie（含隐身/无痕与浏览器拦截设置）');
+        submitBtn.disabled = false;
+        submitBtn.textContent = mode === 'register' ? '开宗立派' : '进入修行';
         return;
       }
       setError((data && data.error) || '请求失败，请稍后再试');

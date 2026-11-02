@@ -260,6 +260,18 @@ async function handleApi(req, res, pathname) {
     return saves.reset(req, res, { user });
   }
 
+  // 客户端大额领奖授权（2026-11-01 收益包络防砖）：数额记入 action_log 计入增速包络
+  if (pathname === '/api/claim' && method === 'POST') {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+    const { tooLarge, text } = await readBody(req, 4096);
+    if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+    let body = null;
+    try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    return saves.claim(req, res, { user, body });
+  }
+
   // 账号资料：改显示名（写接口同源 + JSON + 32KB 体）
   if (pathname === '/api/profile/name' && method === 'POST') {
     const user = auth.getSessionUser(req);

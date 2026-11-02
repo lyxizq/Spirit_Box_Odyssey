@@ -329,6 +329,12 @@ export function openDb(dbPath) {
   // 把账号永久拒收（线上实测：零增量回推都 400）。cli_sync 存最近一次成功推送的
   // 计数快照（JSON），单调性对比它；NULL 回退主列（旧行兼容），reset 时一并清空
   ensureColumn(db, 'save_ledger', 'cli_sync', 'TEXT');
+  // 客户端大额领奖的当日次数锁（2026-11-01 收益包络防砖）：JSON {kind:[day,count]}，
+  // /api/claim 校验后把领奖数额记入 action_log（sanctionedSince 计入增速包络）
+  ensureColumn(db, 'save_ledger', 'claim_days', 'TEXT');
+  // 套装保底计数（2026-11-01 二改）：JSON {mode:[胜场,日,当日已保底数]}，
+  // 四模式统一每胜 50 场保底 1 件、每日每玩法保底上限 2 件（combat.js rollSpecialDrop）
+  ensureColumn(db, 'save_ledger', 'set_pity', 'TEXT');
   ensureColumn(db, 'guild_members', 'contribution', 'INTEGER NOT NULL DEFAULT 0');
   // 同门互助（2026-10-31）：传功 / 赠礼记账——发起方记日期，受赠方记来源（领取后清除）
   ensureColumn(db, 'guild_members', 'aid_day',        "TEXT    NOT NULL DEFAULT ''");

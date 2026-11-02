@@ -17,8 +17,10 @@ const DIST = path.join(ROOT, 'dist');
 const OUT_DIR = path.join(DIST, 'spirit-box-odyssey-deploy');
 const ZIP_PATH = `${OUT_DIR}.zip`;
 
-// 部署包内容 = 截图红框白名单（data/ 运行时自动生成、docker/ docs/ 不对外）
-const COPY_FILES = ['cover.png', 'cover.svg', 'favicon.png', 'favicon.svg', 'LICENSE', 'index.html', 'login.html', 'package.json'];
+// 部署包内容 = 截图红框白名单（data/ 运行时自动生成、docker/ docs/ 不对外）。
+// package.json 不在此列：由 copyPackageJson() 写剥离版（放这里会被下方原样拷贝覆盖回去）
+const COPY_FILES = ['cover.png', 'cover.svg', 'favicon.png', 'favicon.svg', 'LICENSE'];
+const COPY_HTML = ['index.html', 'login.html'];
 const COPY_DIRS = ['assets', 'server'];
 const OBFUSCATE_JS = ['game.js', 'login.js', 'theme-boot.js'];
 const MINIFY_CSS = ['styles.css'];
@@ -81,10 +83,12 @@ function copyPackageJson() {
 }
 
 console.log(`== 部署包构建 v${VERSION} ==`);
-// 只保留一份：清掉 dist 下所有历史部署目录与压缩包（含旧版带 v 号命名）
+// 只保留一份：清掉 dist 下所有历史部署目录与压缩包（含旧版带 v 号命名）；
+// SHA256SUMS.txt 是上次发布按当时 zip 生成的校验清单——zip 已重建即失效，一并清掉
+// 防止下次发布忘重生成时校验旧哈希
 if (fs.existsSync(DIST)) {
   for (const name of fs.readdirSync(DIST)) {
-    if (name.startsWith('spirit-box-odyssey-deploy')) {
+    if (name.startsWith('spirit-box-odyssey-deploy') || name === 'SHA256SUMS.txt') {
       fs.rmSync(path.join(DIST, name), { recursive: true, force: true });
     }
   }
@@ -101,7 +105,13 @@ report.push(['package.json', '-', '-（已剥离 devDependencies/build 脚本）
 for (const file of COPY_FILES) {
   fs.copyFileSync(path.join(ROOT, file), path.join(OUT_DIR, file));
 }
-report.push(['HTML ×2', '-', '-（去缩进空行，保留换行）']);
+// HTML 保守压缩落盘（原实现漏调用 minifyHtml，两页被原样拷贝、报表却声称已压缩）
+for (const file of COPY_HTML) {
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  const out = minifyHtml(src);
+  fs.writeFileSync(path.join(OUT_DIR, file), out);
+  report.push([file, human(src.length), human(out.length), '压缩']);
+}
 
 for (const rel of OBFUSCATE_JS) {
   const [before, after] = await processJs(rel);

@@ -17,6 +17,9 @@
     <span id="wanderBannerText">✦ 奇遇降临</span>
     <button class="mini" id="wanderGo">前往奇遇 ▸</button>
   </div>
+  <div class="event-banner cloud-banner hidden" id="cloudBanner" role="alert">
+    <span id="cloudBannerText">⚠ 云端存档同步异常</span>
+  </div>
 
   <header class="top">
     <div class="brand">
@@ -315,12 +318,6 @@
             <p class="hint hidden" id="immortalHint"></p>
           </section>
 
-      <section class="panel guide" aria-label="修行指南">
-            <h2>修行指南</h2>
-            <p class="hint" id="guideLead"></p>
-            <div id="guideList"></div>
-            <p class="guide-meta" id="guideMeta"></p>
-          </section>
 
       </div>
 <section class="panel status panel-wide" aria-label="角色状态">
@@ -344,6 +341,14 @@
         <p class="hint">点亮后每日自动购买该商品。</p>
       </div>
     </section>
+
+      <!-- 修行指南：修炼页最下方（仅修炼页显示，panel-wide 全宽） -->
+      <section class="panel guide panel-wide" aria-label="修行指南">
+        <h2>修行指南</h2>
+        <p class="hint" id="guideLead"></p>
+        <div id="guideList"></div>
+        <p class="guide-meta" id="guideMeta"></p>
+      </section>
     </div>
 
     <div class="tab-page" data-page="equip">
@@ -372,6 +377,7 @@
         <div class="chip-row" id="meltList"></div>
       </div>
       <p class="hint">强化只作用于已穿戴装备，最高 +200。装备战力决定灵石收益；总战力为实战口径（含境界 / 时辰 / 灵宠 / 功法等加成），与顶栏和战力榜一致。</p>
+    </section>
 <section class="panel bag" aria-label="背包">
       <h2>背包 <span class="count" id="bagCount">0 / 100</span>
         <button class="btn tiny hidden" id="bagExpandBtn">使用扩容符</button></h2>
@@ -397,9 +403,11 @@
       </div>
       <ul class="bag-list" id="bagList"></ul>
       <p class="hint">装备默认不分解；背包装满时，自动保留更强的一件。</p>
+    </section>
 <section class="panel log" aria-label="最近掉落">
       <h2>最近掉落</h2>
       <ul class="log-list" id="logList"></ul>
+    </section>
     </div>
     <div class="tab-page" data-page="zhan">
 <section class="panel combat" aria-label="秘境征战">
@@ -540,12 +548,9 @@
         </div>
       </div>
     </section>
-    </section>
-    </section>
       </div>
       <div class="col col-b">
 
-    </section>
       </div>
 <section class="panel panel-wide map-panel" aria-label="秘境图">
       <h2>秘境图 <span class="count" id="mapAp">行动力 0 / 12</span>
@@ -736,6 +741,20 @@
       <button class="btn primary wide" id="offlineClose">收下</button>
     </div>
   </div>
+  <div class="modal cast-modal" id="castModal" role="dialog" aria-modal="true" aria-labelledby="castModalName">
+    <div class="modal-card cast-card-modal">
+      <div class="cast-modal-head">
+        <span class="cast-modal-avatar" id="castModalAvatar" aria-hidden="true"></span>
+        <div class="cast-modal-id">
+          <h2 id="castModalName">—</h2>
+          <p class="cast-modal-sub">人物志 · 已结识</p>
+        </div>
+        <button class="mini" id="castModalClose">✕</button>
+      </div>
+      <div class="cast-modal-art" id="castModalArt"></div>
+      <p class="cast-modal-brief" id="castModalBrief"></p>
+    </div>
+  </div>
   <div class="modal" id="gambleModal" role="dialog" aria-modal="true" aria-labelledby="gambleModalTitle">
     <div class="modal-card">
       <h3 id="gambleModalTitle">璞玉结果</h3>
@@ -776,7 +795,6 @@
         <button class="btn primary" id="beastCloseBtn">关闭</button>
       </div>
     </div>
-  </div>
   </div>
 
   <div class="modal battle-modal" id="battleModal" role="dialog" aria-modal="true" aria-labelledby="battleTitle">
@@ -926,7 +944,9 @@
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <!-- defer：解析完再执行（其后的 helpModal 等 DOM 已就绪），DOMContentLoaded 语义不变，
+       且 797KB 主脚本不再阻塞其后的 HTML 解析 -->
+  <script src="game.js" defer></script>
   <div class="modal help-modal" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal-card help-card">
       <h2 id="helpTitle">玩法说明</h2>

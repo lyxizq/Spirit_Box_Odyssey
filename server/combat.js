@@ -8,13 +8,14 @@
 // 作弊面被 validateDeep + 增速包络兜住；战斗结果本身客户端完全无法伪造。
 import { sendJSON, SlidingWindow } from './http-util.js';
 import { computeStamina, staminaView, STAMINA_CAP } from './stamina.js';
-import { ledgerOf } from './economy.js';
+import { ledgerOf, rollSetPity } from './economy.js';
 import {
   simulateBattle, MODES, contentReq, enemyFor, recommendedPower,
   playerCombatStats, elementBonusOf, settleGain, expectedOf, dayProdMultOf,
   applyStoneBuffsOf,
   WILD_MAX, ENDLESS_GATE, TROPHY_FIELDS, MODE_EXP_MULT,
-  WILD_SET_PITY, WILD_SET_RATE, MODE_SET_RATE, TREASURE_DROP,
+  WILD_SET_PITY, WILD_SET_PITY_DAILY, WILD_SET_RATE, MODE_SET_RATE, TREASURE_DROP,
+  // （OFFLINE_HUNT_PITY 已废止：离线巡猎并入四模式统一 50 胜保底 + 每日 2 件口径）
   SWEEP_DAILY_FREE, SWEEP_BUY_MAX, SWEEP_BUY_COST, WILD_REPEAT_DAILY,
   TRIALS, TRIAL_REWARD,
 } from './battle.js';
@@ -69,6 +70,7 @@ export function createCombatService(db, staminaSvc) {
       'UPDATE save_ledger SET tower_cleared = ?, stage_cleared = ?, endless_best = ?, wild_max = ? WHERE user_id = ?'),
     setWildJson: db.prepare(
       'UPDATE save_ledger SET wild_cleared = ?, wild_kills = ? WHERE user_id = ?'),
+    setSetPity: db.prepare('UPDATE save_ledger SET set_pity = ? WHERE user_id = ?'),
     setCounters: db.prepare(
       `UPDATE save_ledger SET wild_repeat_day = ?, wild_repeat_used = ?,
          sweep_day = ?, sweep_used = ?, sweep_bought = ? WHERE user_id = ?`),
@@ -180,25 +182,21 @@ export function createCombatService(db, staminaSvc) {
     return { cleared: list, kills };
   }
 
-  // 套装件掉落 roll（game.js doBattle 掉落段同源）。id=0 由客户端收货时重编。
-  // 2026-11-01 用户指定：首通里程碑 / 满层满野必掉全部取消，四模式一律按概率——
-  // 野外 0.8% + 50 杀保底；无尽 / 闯关 / 爬塔（含首通、复战、扫荡）0.8%
-  function rollSpecialDrop({ mode, level, killsNow }) {
+  // 套装件掉落 roll（仅胜场调用；game.js doBattle 掉落段同源）。id=0 由客户端收货时重编。
+  // 保底状态机在 economy.js rollSetPity（四模式每胜 50 场、每日 2 件，纯函数可单测）；
+  // 随机 0.8%（含首通、复战、扫荡）不受保底配额限制，可与保底同场各掉一件。
+  // random 与 pity 分开返回：客户端对 pitySpecial 单独播「保底达成」，混排进一个
+  // 数组再按下标取会把「仅保底掉落」错装进 special 字段、丢保底播报。
+  function rollSpecialDrop({ mode, level, win, pityMap, today }) {
     const itemSeq = () => 0;
     const randSlot = () => SLOTS[Math.floor(Math.random() * SLOTS.length)].key;
-    if (mode === 'wild') {
-      if (killsNow % WILD_SET_PITY === 0 || Math.random() < WILD_SET_RATE) {
-        return makeSpecialItem('wild', level, randSlot(), itemSeq, contentReq);
-      }
-      return null;
-    }
-    if (mode === 'endless') {
-      // 无尽掉「镇塔」套装件（客户端口径：grantSpecial('tower', level, ...)）
-      if (Math.random() < MODE_SET_RATE) return makeSpecialItem('tower', level, randSlot(), itemSeq, contentReq);
-      return null;
-    }
-    if (Math.random() < MODE_SET_RATE) return makeSpecialItem(mode, level, randSlot(), itemSeq, contentReq);
-    return null;
+    const dropOne = (m) => makeSpecialItem(m === 'endless' ? 'tower' : m, level, randSlot(), itemSeq, contentReq);
+    const out = rollSetPity(pityMap, mode, win, today, dropOne);
+    return {
+      random: win && Math.random() < MODE_SET_RATE ? dropOne(mode) : null,
+      pityItems: out.pityItems,
+      pityMap: out.pityMap,
+    };
   }
 
   // POST /api/combat/fight {mode, level?, sweepLevel?, buy?}
@@ -357,6 +355,7 @@ export function createCombatService(db, staminaSvc) {
       let trophy = 0;
       let frag = 0;
       let special = null;
+      let pitySpecial = null;
       let progress = null;
 
       if (result.win) {
@@ -377,10 +376,16 @@ export function createCombatService(db, staminaSvc) {
           stmts.setWildJson.run(JSON.stringify(wildCleared), JSON.stringify(wildKills), ctx.user.id);
         }
 
-        special = rollSpecialDrop({
-          mode, level, first, sweep: sweepLevel !== null, replay,
-          killsNow: mode === 'wild' ? Math.floor(num(wildKills[level])) : 0,
+        // 保底计数器（账本 set_pity：{mode:[胜场,日,当日已保底数]}，跨会话累计）
+        const setPityMap = modeMapOf(led.set_pity);
+        const rolled = rollSpecialDrop({
+          mode, level, win: true,
+          pityMap: setPityMap,
+          today,
         });
+        special = rolled.random;
+        pitySpecial = rolled.pityItems[0] || null;
+        stmts.setSetPity.run(JSON.stringify(rolled.pityMap), ctx.user.id);
 
         // 藏宝图残片（陈列室门槛 = 境界 4，FEATURE_GATES 同源）
         if (featureRealmOf(mirror) >= 4 && Math.random() < TREASURE_DROP) frag = 1;
@@ -417,7 +422,7 @@ export function createCombatService(db, staminaSvc) {
           hp: enemy.hp, atk: enemy.atk, def: enemy.def,
         },
         element: elb,
-        stoneGain, expGain, trophy, trophyField: TROPHY_FIELDS[mode], frag, special,
+        stoneGain, expGain, trophy, trophyField: TROPHY_FIELDS[mode], frag, special, pitySpecial,
         progress,
         stamina: spent.view,
         // 权威计数回传（事务后的值）：客户端镜像精确对齐，本地只做展示预判
@@ -511,12 +516,26 @@ export function createCombatService(db, staminaSvc) {
             const oldKills = Math.floor(num(wildKills[level]));
             wildKills[level] = oldKills + winsPaid;
             stmts.setWildJson.run(JSON.stringify(wildCleared), JSON.stringify(wildKills), ctx.user.id);
-            const pity = Math.floor((oldKills + winsPaid) / OFFLINE_HUNT_PITY) - Math.floor(oldKills / OFFLINE_HUNT_PITY);
+            // 离线巡猎与在线野外共用同一保底计数（2026-11-01 二改：每胜 50 场、每日 2 件，
+            // 原离线 100 胜独立保底口径废止）；随机期望 floor(胜场×0.8%) 不受限
+            const setPityMap = modeMapOf(led.set_pity);
+            const pst = Array.isArray(setPityMap.wild) ? setPityMap.wild : [0, '', 0];
+            let pityWins = (pst[0] | 0) + winsPaid;
+            let pityDay = String(pst[1] || '');
+            let pityN = pst[2] | 0;
+            if (pityDay !== today) { pityDay = today; pityN = 0; }
             const randomDrops = Math.floor(winsPaid * WILD_SET_RATE);
             const drops = [];
-            for (let i = 0; i < pity + randomDrops && drops.length < 12; i++) {
+            for (let i = 0; i < randomDrops && drops.length < 12; i++) {
               drops.push(makeSpecialItem('wild', level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key, () => 0, contentReq));
             }
+            while (pityWins >= WILD_SET_PITY && pityN < WILD_SET_PITY_DAILY && drops.length < 12) {
+              drops.push(makeSpecialItem('wild', level, SLOTS[Math.floor(Math.random() * SLOTS.length)].key, () => 0, contentReq));
+              pityWins -= WILD_SET_PITY;
+              pityN++;
+            }
+            setPityMap.wild = [pityWins, pityDay, pityN];
+            stmts.setSetPity.run(JSON.stringify(setPityMap), ctx.user.id);
             hunt = {
               wins: winsPaid, hunts, stones: huntStones, exp: huntExp,
               trophy: winsPaid * trophyEach, drops, clamped: winsPaid < wins,

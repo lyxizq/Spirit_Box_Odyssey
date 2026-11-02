@@ -133,6 +133,19 @@ main,
 
 .event-banner .mini { margin: 0; }
 
+/* 云端同步异常横幅（2026-11-01 用户指定）：存档被拒/断网置顶常驻，恢复后自动收起 */
+.cloud-banner {
+  max-width: 1096px;
+  margin: 8px auto 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+  font-weight: 600;
+  text-align: center;
+}
+
 /* ---------- header ---------- */
 
 .top {
@@ -2460,6 +2473,14 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
 .bounty-tier.bounty-lan { color: var(--blue); }
 .bounty-tier.bounty-zi { color: var(--purple); }
 
+/* 悬赏令动作行（2026-11-01 用户指定）：刷新/领取两钮一行靠拢，右对齐；
+   不走 .pet-actions 的窄屏换行/限宽规则（2454 行 flex-wrap+62%）——两钮会被拆两行 */
+.bounty-actions {
+  flex-wrap: nowrap;
+  max-width: none;
+  margin-left: auto;
+}
+
 .bestiary-list {
   display: flex;
   flex-wrap: wrap;
@@ -3592,8 +3613,6 @@ body.theme-light .auth-notice { color: var(--gold-dim); }
 body.theme-light .auth-error { color: #b91c1c; }
 body.theme-light .auth-card { box-shadow: 0 24px 60px rgba(138, 106, 47, 0.18); }
 
-.hidden { display: none !important; }
-
 /* ---------- 页脚账号条 ---------- */
 
 /* ---------------- 天下（排行 / 竞技场 / 妖王 / 仙盟） ---------------- */
@@ -3665,7 +3684,7 @@ body.theme-light .auth-card { box-shadow: 0 24px 60px rgba(138, 106, 47, 0.18); 
 .inspect-empty { color: var(--muted); font-size: 12px; }
 .inspect-meta { color: var(--muted); font-size: 12px; }
 
-.arena-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.arena-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 
 .arena-card {
   display: flex;
@@ -4486,21 +4505,31 @@ body.theme-light .panel.stage .stats dd.gold { color: #8a6a2f; }
 .panel.combat > .training-box { grid-column: 2; margin-bottom: 12px; }
 .panel.combat .trophy-list { grid-template-columns: 1fr; }
 
-/* 战利品与战技逐行对齐：两盒等高，内容区各按三行 1fr 均分、统一行距 7px，
-   塔印↔战意、战功↔体魄、兽骨↔破甲 行轨道完全一致 */
+/* 战利品与战技逐行对齐：两盒等高，内容区各按三行 1fr 均分、统一行距 4px，
+   塔印↔战意、战功↔体魄、兽骨↔破甲 行轨道完全一致。
+   2026-11-01 用户指定：战利品改「左标签右数值」单行式，两盒整体高度压缩 */
 .panel.combat .trophy-box,
-.panel.combat .training-box { display: flex; flex-direction: column; }
+.panel.combat .training-box { display: flex; flex-direction: column; padding: 8px 10px; }
+.panel.combat .side-title { margin-bottom: 6px; }
 .panel.combat .trophy-list,
 .panel.combat .training-list {
   flex: 1;
   display: grid;
   grid-template-rows: repeat(3, 1fr);
-  align-items: start;
-  gap: 7px;
+  align-items: stretch;
+  gap: 4px;
 }
-.panel.combat .trophy-list li { display: grid; align-content: center; justify-items: center; }
-.panel.combat .training-row { align-content: start; }
-.panel.combat .training-row .training-desc { margin-top: 2px; }
+.panel.combat .trophy-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 9px;
+}
+.panel.combat .trophy-list span { font-size: 10.5px; }
+.panel.combat .trophy-list b { margin-top: 0; font-size: 12.5px; }
+.panel.combat .training-list { align-content: stretch; }
+.panel.combat .training-row { align-content: center; gap: 2px 7px; }
+.panel.combat .training-row .training-desc { margin-top: 0; }
 
 /* 陈列室行内部位图标：统一 20px 居中（slot-ic 默认为行内文字设计，抵消其偏移） */
 .pet-icon .slot-ic { width: 20px; height: 20px; margin: 0; vertical-align: baseline; display: block; }
@@ -4869,12 +4898,13 @@ body.theme-light .modal-card .gold { color: #8a6a2f; }
   font-size: 12px;
 }
 
-/* 行卡间距（2026-10-30）：明色实底后行贴行明显，统一加 8px 行距（暗色透明卡也同步透气） */
+/* 行卡间距（2026-10-30 统一 8px；2026-11-01 用户指定二改：全局行距缩短 8px → 3px。
+   有容器 gap 的列表（竞技场 8→4、天梯 6、战利品 4）叠上后约 7~11px，不再出现大空档） */
 .pet-row, .cave-row, .daily-row, .achv-row, .guide-row,
 .rank-row, .guild-row, .realm-row, .stat-line,
 .arena-card, .bag-item, .collection-list li,
 .log-list li, .trophy-list li, .rogue-box {
-  margin-bottom: 8px;
+  margin-bottom: 3px;
 }
 
 /* 丹药加成徽章（明色）：加深底与字色，粉系警示保持 */
@@ -4994,4 +5024,36 @@ body.theme-light .set-wild .set-name {
      border-box——文字透明 + 整块渐变 = 亮色下显示成紫条（实测截图） */
   background-image: linear-gradient(94deg, #5b21b6 0%, #7e22ce 30%, #4c1d95 58%, #6d28d9 82%, #5b21b6 100%);
   filter: drop-shadow(0 0 2px rgba(109, 40, 217, 0.35));
+}
+
+/* 条件试炼失败提示（2026-11-01 用户指定）：行内常驻上次未通过原因，红字小号 */
+.trial-fail {
+  color: var(--red);
+  font-size: 10.5px;
+  opacity: 0.9;
+}
+
+/* 人物志详情弹层（2026-11-01 用户指定）：头像（立绘圆形裁切）+ 彩绘立绘 + 文字小传 */
+.cast-card.met { cursor: pointer; }
+.cast-modal .modal-card { max-width: min(88vw, 340px); }
+.cast-modal-head { display: flex; align-items: center; gap: 10px; }
+.cast-modal-head h2 { margin: 0; font-size: 16px; }
+.cast-modal-id { flex: 1; min-width: 0; }
+.cast-modal-sub { margin: 2px 0 0; color: var(--muted); font-size: 10.5px; }
+.cast-modal-avatar {
+  width: 46px; height: 46px; border-radius: 50%; overflow: hidden; flex: 0 0 auto;
+  border: 2px solid rgba(216, 179, 106, 0.45); background: #131824;
+}
+.cast-modal-avatar .story-art, .cast-modal-avatar img, .cast-modal-avatar svg {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.cast-modal-art {
+  margin: 10px 0; border-radius: 12px; overflow: hidden; background: #131824;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.cast-modal-art .story-art, .cast-modal-art img, .cast-modal-art svg {
+  width: 100%; display: block;
+}
+.cast-modal-brief {
+  margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.9; text-align: justify;
 }

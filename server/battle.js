@@ -95,7 +95,8 @@ export const CURVE_LEGACY = { stage: 30, tower: 60, wild: 12 };
 export const CURVE_TAIL = { stage: 1.055, tower: 1.06, wild: 1.055 };
 export const MODE_EXP_MULT = 1 / 50; // 四秘境修为 nerf（2026-11-01 用户指定）
 export const TREASURE_DROP = 0.05;   // 每场秘境征战胜利的残片掉率
-export const WILD_SET_PITY = 50;     // 野外本区击杀保底
+export const WILD_SET_PITY = 50;     // 套装保底：四模式统一每胜 50 场必掉 1 件（滚动计数）
+export const WILD_SET_PITY_DAILY = 2; // 套装保底每日上限：每玩法每日最多 2 件（随机掉落不受限）
 export const WILD_SET_RATE = 0.008;  // 野外每场随机掉率
 export const MODE_SET_RATE = 0.008;  // 无尽 / 复战扫荡掉率
 export const SWEEP_DAILY_FREE = 10;
@@ -607,7 +608,11 @@ const RARITY_EXP = [0, 1, 3, 8, 20, 50];
 const EQUIP_CHANCE = 0.075; // 2026-11-01 用户指定：掉率改逐箱随机 5%~10%（game.js equipChance），期望口径取均值 7.5%
 
 function weightsOf(data) {
-  const m = 1 + 0.02 * (data.luckLv || 0);
+  // luckLv 钳制（UPGRADES.luck.max=60，客户端 applySaveData 同口径）：validateDeep 未校验
+  // 该字段，非数值真值（如 "x"）经 `|| 0` 透传成 NaN，会把 /api/combat/offline 的
+  // exp 结算打成 NaN → SQLite NOT NULL 抛错 500（自伤型 DoS，直到推正常档自愈）
+  const luck = Math.max(0, Math.min(60, Math.floor(Number(data.luckLv) || 0)));
+  const m = 1 + 0.02 * luck;
   return RARITY_WEIGHTS.map((w, i) => w * Math.pow(m, i));
 }
 
@@ -744,7 +749,9 @@ export function dayProdMultOf(data) {
   const tide = TIDE_WINDOWS.some((w) => h >= w.s && h < w.e) ? TIDE_MULT : 1;
   let fortune = 1;
   const f = data.fortune;
-  if (f && f.date === dayStrOf(new Date()) && Array.isArray(f.claimed) && Number.isInteger(f.idx) && f.idx >= 0) {
+  // 客户端 fortune.claimed 是布尔（game.js 存档载荷 `claimed: !!state.fortune.claimed`）：
+  // 原写成 Array.isArray 恒 false，上上签 +5% 产出在服务端结算中永不生效（少发方向）
+  if (f && f.date === dayStrOf(new Date()) && f.claimed === true && Number.isInteger(f.idx) && f.idx >= 0) {
     fortune = 1 + (FORTUNE_PROD[f.idx] || 0);
   }
   return tide * fortune;

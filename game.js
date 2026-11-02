@@ -101,10 +101,13 @@
   // 套装件随机掉率（2026-11-01 用户指定逐次下调，末档 2026-11-01 定值：
   // 野外随机 0.8%/保底 50 杀/无尽与复战扫荡 0.8%；离线巡猎估算与 UI 文案
   // 同读本组常量，口径恒一致）。首通里程碑与满层/满野首通必掉是进度奖励骨架，不动
-  const WILD_SET_PITY = 50;     // 野外本区击杀保底：每 N 杀必掉 1 件
-  const WILD_SET_RATE = 0.008;  // 野外每场随机掉率 0.8%（离线巡猎估算同口径）
-  const MODE_SET_RATE = 0.008;  // 无尽 / 闯关爬塔复战与扫荡的每场随机掉率 0.8%
-  const OFFLINE_HUNT_PITY = 100; // 离线巡猎估算保底：每 N 胜必掉 1 件（2026-11-01 用户指定，弱于在线 50 杀）
+  // 套装掉落（2026-11-01 二改，服务端 rollSpecialDrop 权威）：四模式统一「每胜 50 场
+  // 保底 1 件（滚动计数，跨会话累计）」，每日每玩法保底最多 2 件（配额用尽计数挂起，
+  // 次日自动补发）；随机 0.8%/场（含首通、复战、扫荡、离线巡猎）不受保底配额限制
+  const WILD_SET_PITY = 50;      // 保底胜负计数：每 N 胜必掉 1 件（四模式同口径）
+  const WILD_SET_PITY_DAILY = 2; // 每日每玩法保底掉落上限
+  const WILD_SET_RATE = 0.008;   // 野外每场随机掉率 0.8%
+  const MODE_SET_RATE = 0.008;   // 无尽 / 闯关爬塔复战与扫荡的每场随机掉率 0.8%
 
   // 自动战斗节奏（2026-11-01 用户指定）：自动巡猎/连续挑战每场结束后间隔 1 分钟，
   // 离线巡猎估算同口径（1 场/分钟），四模式共用此节奏；体力闸门（一场 1 点）照常生效
@@ -1226,6 +1229,8 @@
     volume: 0.6,
     achievements: {},
     signInDays: 0,
+    pendingMilestone: 0, // 签到里程碑补发挂起（服务端确认失败时挂起，下次签到重试）
+    trialFail: { date: '', id: '', reason: '' }, // 条件试炼最近一次失败原因（行内前置提示用）
     lastSignIn: '',
     lastSignMode: '',
     signLog: [],
@@ -1491,8 +1496,28 @@
     }
   }
 
+  // 云端同步异常横幅（2026-11-01 用户指定）：存档被拒/断网时页面顶部常驻警示，
+  // 玩家不再只能从控制台发现同步故障；下一次推送成功即自动收起
+  function showCloudBanner(text) {
+    const el = $('cloudBanner');
+    if (!el) return;
+    const t = $('cloudBannerText');
+    if (t) t.textContent = '⚠ ' + text;
+    el.classList.remove('hidden');
+  }
+  function hideCloudBanner() {
+    const el = $('cloudBanner');
+    if (el) el.classList.add('hidden');
+  }
+
+  // 离线结算在途闸门（2026-11-02 线上事故 user=25）：/api/combat/offline 服务端已把
+  // 离线收益加进账本主列、客户端还没应用响应的往返窗口里，任何一次成功推送都会以
+  // 「未含发放」的镜像覆盖主列（cli_sync 对齐后服务端 srv 差额=0），随后吸收档必被
+  // 「开箱次数增速异常」拒收。结算在途期间压制所有云推送，应用完毕由 finally 补推。
+  let offlineInFlight = 0;
+
   function queueCloud(text) {
-    if (!cloudOn) return;
+    if (!cloudOn || offlineInFlight) return;
     cloudPending = text;
     const now = Date.now();
     if (now - cloudLastPush >= CLOUD_MIN_GAP) {
@@ -1504,6 +1529,7 @@
 
   async function flushCloud() {
     if (authSignedOut) return; // 登出/重置后不再推已作废的会话档（5 秒重试定时器也走这里）
+    if (offlineInFlight) return; // 结算在途不推（重试定时器会在窗口内推出结算前旧帧，压掉主列发放）
     if (!cloudOn || !cloudPending || cloudBusy) return;
     const text = cloudPending;
     cloudBusy = true;
@@ -1513,22 +1539,30 @@
         // await 期间 persist 可能已把 pending 换成更新的档：只清掉自己推的那份
         if (cloudPending === text) cloudPending = null;
         cloudLastPush = Date.now();
+        hideCloudBanner(); // 恢复同步：收起顶部警示横幅
         try { applyClickBan((await res.json()).clickBanUntil); } catch (e) { /* 忽略非 JSON */ }
       } else if (res.status === 400 || res.status === 422) {
         // 服务端校验拒收（量级/增速 400）：丢弃本份待推档避免 5 秒死循环重试，
         // 节流提示一次；本地照常可玩，下次 persist 的自然重推即为重新同步。
         // 429 / 5xx 等临时故障不走这里——保留 pending 由下方 5 秒重试兜底（复审 P2-6）
-        cloudPending = null;
+        if (cloudPending === text) cloudPending = null; // await 期间可能已排入更新档，只丢自己这份
         let msg = '';
         try { msg = (await res.json()).error || ''; } catch (e) { /* 忽略非 JSON 响应 */ }
+        const tip = msg || '存档校验未通过';
+        showCloudBanner('云端进度保存被拒：' + tip + '（游戏可继续，恢复同步后横幅自动消失）');
         if (Date.now() - cloudWarnAt > 600000) {
           cloudWarnAt = Date.now();
-          const tip = msg || '云端存档被拒';
           floatText('云端同步：' + tip, '#f87171');
           pushLog('云端存档被拒：' + tip + '（换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
         }
+      } else {
+        // 429 / 5xx 等临时故障：pending 保留由 5 秒重试兜底，横幅提示等待恢复
+        showCloudBanner('云端暂不可用（' + res.status + '），进度将自动重试同步');
       }
-    } catch (e) { /* 失败保留 pending，由下一次存档或关页兜底重试 */ }
+    } catch (e) {
+      // 网络失败：pending 保留由重试兜底，横幅提示断网状态
+      showCloudBanner('网络异常，云端存档未能同步（进度将自动重试）');
+    }
     cloudBusy = false;
     if (cloudPending && !cloudTimer) {
       cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 5000);
@@ -1538,6 +1572,7 @@
   // 关页兜底：sendBeacon 尽力推最后一帧（挂了也有 5 秒节流内的常规推送顶着）
   function cloudFlushNow() {
     if (authSignedOut) return; // 登出后不再推已清档的会话
+    if (offlineInFlight) return; // 结算在途不推 beacon（同 flushCloud：防旧帧压掉主列发放）
     if (!cloudOn || !cloudPending) return;
     try {
       if (navigator.sendBeacon) {
@@ -1710,15 +1745,16 @@
       state.best = Math.max(-1, Math.min(RARITIES.length - 1, state.best | 0));
 
       if (!Array.isArray(state.bag)) state.bag = [];
+      // Number.isFinite（isFinite(null)=true 会让 power:null 的脏档件透过滤）
       state.bag = state.bag.filter(
-        (it) => it && isFinite(it.power) && RARITIES[it.r] && SLOT_MAP[it.slot]
+        (it) => it && Number.isFinite(it.power) && RARITIES[it.r] && SLOT_MAP[it.slot]
       );
 
       if (!state.equipped || typeof state.equipped !== 'object') state.equipped = emptyEquipped();
       for (const s of SLOTS) {
         const it = state.equipped[s.key];
         state.equipped[s.key] =
-          (it && it.slot === s.key && isFinite(it.power) && RARITIES[it.r] && SLOT_MAP[it.slot]) ? it : null;
+          (it && it.slot === s.key && Number.isFinite(it.power) && RARITIES[it.r] && SLOT_MAP[it.slot]) ? it : null;
       }
 
       let seq = typeof state.itemSeq === 'number' && state.itemSeq > 0 ? state.itemSeq : 1;
@@ -1807,6 +1843,7 @@
         state.achievements = {};
       }
       state.signInDays = fixInt(state.signInDays, 0, 1e6);
+      state.pendingMilestone = fixInt(state.pendingMilestone || 0, 0, 1e6); // 里程碑补发挂起（0 = 无）
       if (!state.daily || typeof state.daily !== 'object' || Array.isArray(state.daily)) {
         state.daily = { date: '', opens: 0, wins: 0, forge: 0, claimed: [] };
       }
@@ -2008,6 +2045,11 @@
       state.trials = {
         date: typeof state.trials.date === 'string' ? state.trials.date : '',
         done: Array.isArray(state.trials.done) ? state.trials.done.filter((id) => TRIALS.some((t) => t.id === id)) : [],
+        trialFail: (state.trialFail && typeof state.trialFail === 'object' && !Array.isArray(state.trialFail)) ? {
+          date: typeof state.trialFail.date === 'string' ? state.trialFail.date : '',
+          id: typeof state.trialFail.id === 'string' ? state.trialFail.id : '',
+          reason: typeof state.trialFail.reason === 'string' ? state.trialFail.reason.slice(0, 40) : '',
+        } : { date: '', id: '', reason: '' },
       };
       if (!state.bossRush || typeof state.bossRush !== 'object' || Array.isArray(state.bossRush)) {
         state.bossRush = { date: '', grade: '' };
@@ -2078,12 +2120,18 @@
           pushLog('装备部位化：宝石入槽 ' + movedGems + ' 颗' +
             (overflowGems ? '，' + overflowGems + ' 颗放不下折算 ' + refundDust + ' 碎屑' : ''), 'sys');
         }
+        // 旧档的 lv 是强化等级（上面已消费进 enh），清除旧语义——lv 从此是装备等级
+        for (const it of state.bag) delete it.lv;
+        for (const s of SLOTS) {
+          if (state.equipped[s.key]) delete state.equipped[s.key].lv;
+          if (state.museum && state.museum[s.key]) delete state.museum[s.key].lv;
+        }
       }
-      // 所有档统一：装备剥离 lv / gems（部位化后强化等级不再在装备上）；
-      // 随后重发装备等级（2026-11-01）：旧档此处 lv 已被剥离，存量件统一按基线 Lv.1 入册
-      //（战力不动），新掉落才按当前境界定级吃复利乘区
+      // 所有档统一：装备剥离 gems（部位化后宝石绑槽位）。lv 保留——2026-11-01 起它是
+      // 装备等级（掉落时随境界定死、战力含复利），在此抹掉会把等级打回 Lv.1 而战力
+      // 原样保留，推送被服务端战力校验拒收（线上实测：凡品 Lv.2 战力 7 vs 上限 4）。
+      // 缺 lv 的存量件随后由 stampEquipLv 补基线 Lv.1（战力不动），套装件剔除 lv。
       const stripSlotFields = (it) => {
-        delete it.lv;
         delete it.gems;
       };
       for (const it of state.bag) stripSlotFields(it);
@@ -3713,7 +3761,7 @@
     rollBagToken('box');
 
     const crit = Math.random() < critChance();
-    // 装备改为概率掉落：1% 掉装备，品质在掉落内按权重另掷；未掉落只有灵石/修为基础收益
+    // 装备为概率掉落：逐箱独立掷 5%~10%（equipChance），品质在掉落内按权重另掷；未掉落只有灵石/修为基础收益
     const drop = Math.random() < equipChance();
     const ri = drop ? rollRarity() : -1;
     const item = drop ? makeItem(ri) : null;
@@ -3890,7 +3938,19 @@
   // 离线收益（2026-11-01 全量迁移 P1）：整体上收服务端复算——时间起点
   // （ledger.offline_at）、开箱期望、巡猎胜率、体力 clamp 全在服务端，
   // 客户端调钟彻底失效；本地只应用响应并展示
+  // 对外入口带在途闸门：整个「请求 → 应用」期间 offlineInFlight>0（见 queueCloud 处注释），
+  // 期间被压制的 persist 在应用完毕后由 finally 统一补推最新帧
   async function awardOffline() {
+    offlineInFlight++;
+    try {
+      await awardOfflineApply();
+    } finally {
+      offlineInFlight--;
+      if (!offlineInFlight && cloudOn && !authSignedOut) save();
+    }
+  }
+
+  async function awardOfflineApply() {
     let out = null;
     try {
       out = await worldFetch('/api/combat/offline', { method: 'POST', body: '{}' });
@@ -3922,6 +3982,11 @@
       const h = out.hunt;
       ensureDaily();
       state.daily.wins += h.wins;
+      // 与在线 doBattle 同口径：周常胜场 / 悬赏胜场进度同步累计（离线巡猎原漏记）
+      ensureWeekly();
+      state.weekly.wins += h.wins;
+      ensureBounty();
+      bountyProgress('wins', h.wins);
       if (h.wildKills) state.wildKills = Object.assign({}, h.wildKills); // 权威击杀计数对齐
       if (h.trophy) state.beastBones = (state.beastBones || 0) + h.trophy;
       for (const d of h.drops || []) {
@@ -4193,7 +4258,7 @@
           pushLog('体力耗尽，自动巡猎停止（每日 300 点，每 5 分钟恢复 1 点）', 'sys');
         }
         floatText(msg, '#f87171');
-      } else if (e && e.status === 429 && /挑战上限/.test(msg)) {
+      } else if (e && e.status === 429 && /已达上限|挑战上限/.test(msg)) {
         if (auto) {
           state.autoHunt = false;
           combatDirty = true;
@@ -4269,6 +4334,11 @@
       if (out.special) {
         out.special.id = state.itemSeq++; // 服务端发件不带 id，入包时本地重编
         special = grantSpecial(out.special);
+      }
+      if (out.pitySpecial) { // 保底掉落（每胜 50 场；与随机件同场时各掉一件）
+        out.pitySpecial.id = state.itemSeq++;
+        grantSpecial(out.pitySpecial);
+        pushLog('保底达成：' + out.pitySpecial.name + ' 已入包', 'special');
       }
 
       lastBattles[mode] = {
@@ -5596,7 +5666,7 @@
     return 'stones';
   }
 
-  function resolveMapEncounter(idx) {
+  async function resolveMapEncounter(idx) {
     const pool = (state.story.met || []).filter((id) => STORY_CAST[id]);
     const met = pool.length ? pool : ENCOUNTER_POOL_FALLBACK.filter((id) => STORY_CAST[id]);
     if (!met.length) return;
@@ -5612,6 +5682,8 @@
     let giftText = '';
     if (kind === 'stones') {
       const n = Math.max(100000, Math.floor(totalPower() * 20));
+      const gw = await claimGate('wander_gift', stoneGainEstimate(n));
+      if (!gw.ok) return;
       addStones(n);
       giftText = fill('{npc}从袖中摸出一袋灵石：「盘缠而已，莫推辞。」（+' + fmt(n) + ' 灵石）');
     } else if (kind === 'dust') {
@@ -5672,7 +5744,7 @@
     }
   }
 
-  function mapMove(idx) {
+  async function mapMove(idx) {
     ensureMap();
     // 挖宝点：点中金光格直接挖宝（不耗行动力、不要求相邻）
     if (idx === state.treasure.at && featureOpen('treasure')) {
@@ -5724,6 +5796,8 @@
       }
       const vein = veinBonus(info.el);
       const loot = Math.max(20000, Math.floor(totalPower() * 45 * vein));
+      const gl = await claimGate('map_loot', stoneGainEstimate(loot));
+      if (!gl.ok) return;
       addStones(loot);
       addDust(Math.max(8, Math.floor(totalPower() / 200 * vein)));
       state.bestiary[enemy.base] = (state.bestiary[enemy.base] || 0) + 1;
@@ -5755,7 +5829,8 @@
       showMapEvent('藏宝窟', mapEventHtml('+' + fmt(gain) + ' 灵石' + (vein > 1 ? '（灵脉相克 ×1.5）' : ''), 'shrine'));
       chime([659, 784, 1046]);
     } else if (!already && info.type === 'encounter') {
-      resolveMapEncounter(idx);
+      // await：偶遇礼与 looted 标记要落在下面 save() 之前（否则关页重开可重复触发）
+      await resolveMapEncounter(idx);
     }
 
     state.map.ap--;
@@ -6113,13 +6188,22 @@
     save();
   }
 
-  function claimBounty(idx) {
+  async function claimBounty(idx) {
     ensureBounty();
     const sl = state.bounty.slots[idx];
     if (!sl || sl.claimed) return;
     if (sl.prog < sl.target) return;
-    sl.claimed = true;
     const tier = BOUNTY_TIERS.find((t) => t.key === sl.tier) || BOUNTY_TIERS[0];
+    // 本单是否最后一单（先预判再过闸：两道闸门都通过才落状态——否则全清奖再无入口）
+    const willAll = !state.bounty.allClaimed &&
+      state.bounty.slots.every((x, i) => x.claimed || i === idx);
+    const gbo = await claimGate('bounty', stoneGainEstimate(tier.stones));
+    if (!gbo.ok) return;
+    if (willAll) {
+      const gba = await claimGate('bounty_all', stoneGainEstimate(BOUNTY_ALL_CLEAR.stones));
+      if (!gba.ok) return;
+    }
+    sl.claimed = true;
     const gained = addStones(tier.stones);
     addDust(tier.dust);
     let extra = '';
@@ -6130,7 +6214,7 @@
     pushLog('悬赏达成「' + bountyDesc(sl) + '」（' + tier.name + '单）：+' + fmt(gained) +
       ' 灵石 · ' + tier.dust + ' 碎屑' + extra, 'special');
     chime([784, 1046]);
-    if (state.bounty.slots.every((x) => x.claimed) && !state.bounty.allClaimed) {
+    if (willAll) {
       state.bounty.allClaimed = true;
       const allGained = addStones(BOUNTY_ALL_CLEAR.stones);
       pushLog('四单全清！额外 +' + fmt(allGained) + ' 灵石', 'special');
@@ -6192,13 +6276,15 @@
   function ensureTide() {
     if (ensureDated(state.tide)) state.tide.claimed = [false, false];
   }
-  function claimTide(i) {
+  async function claimTide(i) {
     ensureTide();
     if (!tideWindowOpen(i)) {
       floatText('未在灵潮时段', '#9aa4b2');
       return;
     }
     if (state.tide.claimed[i]) return;
+    const gt = await claimGate('lingchao', stoneGainEstimate(TIDE_CLAIM));
+    if (!gt.ok) return;
     state.tide.claimed[i] = true;
     const gained = addStones(TIDE_CLAIM);
     pushLog('灵潮符已领：+' + fmt(gained) + ' 灵石（窗口内开箱与秘境产出 ×2）', 'special');
@@ -6295,12 +6381,22 @@
       state.quiz.done = false;
     }
   }
-  function quizAnswer(choice) {
+  async function quizAnswer(choice) {
     ensureQuiz();
     if (state.quiz.done) return;
     const ids = quizPick();
     const def = QUIZ_BANK[ids[state.quiz.idx]];
     const ok = choice === def.idx;
+    // 领奖闸门前置（确认失败不消耗本题：idx 不前进，重点同一题即重试）
+    if (ok) {
+      const gq = await claimGate('quiz_per', stoneGainEstimate(QUIZ_PER_STONES));
+      if (!gq.ok) return;
+      // 第 10 题且十题全对：全对奖一并先过闸，失败同样不消耗本题
+      if (state.quiz.idx + 1 >= QUIZ_N && state.quiz.correct + 1 >= QUIZ_N) {
+        const gqa = await claimGate('quiz_all', stoneGainEstimate(QUIZ_ALL_BONUS.stones || 0));
+        if (!gqa.ok) return;
+      }
+    }
     let resultTitle, resultBody;
     if (ok) {
       state.quiz.correct++;
@@ -6402,7 +6498,7 @@
     const ratio = player.hp > 0 ? last / player.hp : 0;
     return ratio >= 0.6 ? 'S' : ratio >= 0.25 ? 'A' : 'B';
   }
-  function anomalyFight() {
+  async function anomalyFight() {
     if (state.anomaly.date === todayStr() && state.anomaly.done) {
       floatText('今日异象已平', '#9aa4b2');
       return;
@@ -6422,16 +6518,7 @@
       loseText: '明日再战',
       rewardText: result.win ? grade + ' 级评定 · 奖励已入账' : undefined,
     });
-    state.anomaly.date = todayStr();
-    state.anomaly.done = true;
-    state.anomaly.grade = grade;
     if (result.win) {
-      if (grade === 'S' && !state.anomaly.sDays.includes(todayStr())) {
-        state.anomaly.sDays.push(todayStr());
-        // 月保底只读当月：旧月份条目裁掉，防 sDays 随年无界增长
-        const ym = todayStr().slice(0, 7);
-        state.anomaly.sDays = state.anomaly.sDays.filter((d) => d.slice(0, 7) === ym);
-      }
       const affs = anomalyAffixes();
       let stone = ANOMALY_FIRST.stones;
       let dust = ANOMALY_FIRST.dust;
@@ -6440,6 +6527,18 @@
         if (a.stone) stone *= a.stone;
         if (a.dust) dust *= a.dust;
         if (a.exp) expK *= a.exp;
+      }
+      // 领奖确认先行（确认失败不落 done/grade，可直接重打重领——战斗本地模拟可复现）
+      const ga = await claimGate('anomaly', stoneGainEstimate(stone));
+      if (!ga.ok) return;
+      state.anomaly.date = todayStr();
+      state.anomaly.done = true;
+      state.anomaly.grade = grade;
+      if (grade === 'S' && !state.anomaly.sDays.includes(todayStr())) {
+        state.anomaly.sDays.push(todayStr());
+        // 月保底只读当月：旧月份条目裁掉，防 sDays 随年无界增长
+        const ym = todayStr().slice(0, 7);
+        state.anomaly.sDays = state.anomaly.sDays.filter((d) => d.slice(0, 7) === ym);
       }
       const gained = addStones(Math.floor(stone));
       addDust(Math.floor(dust));
@@ -6453,6 +6552,10 @@
         Math.floor(dust) + ' 碎屑', 'special');
       anomalyMonthBonus();
     } else {
+      // 败场无奖励：仍记为今日已尝试（原口径：异象每日一次，胜负都消耗）
+      state.anomaly.date = todayStr();
+      state.anomaly.done = true;
+      state.anomaly.grade = grade;
       pushLog('异象未平，养精蓄锐明日再战', 'sys');
     }
     combatDirty = true;
@@ -6495,7 +6598,35 @@
       }
     }
   }
-  function claimVigor() {
+  // —— 大额领奖服务端确认（2026-11-01 收益包络防砖）——
+  // 签到/任务/求签/灵气等奖励数额先过 /api/claim 记入服务端授权流水（action_log），
+  // 再本地入账；确认失败不发放、不消耗本地领取状态，可直接重试。数额按增益链
+  // （周/时辰/天象/核心，addStones 同源）预估上报，服务端钳单笔上限与当日次数。
+  async function claimGate(kind, stones, extra) {
+    if (!stones || stones <= 0) return { ok: true, stones: 0 }; // 碎屑/空奖不入流水
+    try {
+      const res = await api('/api/claim', {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ kind, amount: Math.max(1, Math.round(stones)) }, extra)),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return { ok: true, stones: Number(data.stones) || 0 }; // tide 类以服务端自算数额为准
+      floatText('领取失败：' + (data.error || '请稍后再试'), '#f87171');
+      return { ok: false, stones: 0 };
+    } catch (e) {
+      return { ok: false, stones: 0 }; // 网络失败：noteServerDown 已接管提示
+    }
+  }
+  function stoneGainEstimate(n) {
+    let v = n;
+    if (weekIs('stone')) v = Math.max(1, Math.floor(v * 1.2));
+    if (shichenIs('stone')) v = Math.max(1, Math.floor(v * shichenNow().stone));
+    if (skyVal('stone')) v = Math.max(1, Math.floor(v * skyVal('stone')));
+    if (coreBonus('stone')) v = Math.max(1, Math.floor(v * (1 + coreBonus('stone'))));
+    return v;
+  }
+
+  async function claimVigor() {
     const today = todayStr();
     if (state.vigor.date !== today) return;
     const cells = Math.min(VIGOR_CELL_N, Math.floor(state.vigor.minutes / VIGOR_CELL_MIN));
@@ -6503,6 +6634,8 @@
       floatText('灵气尚未盈满', '#9aa4b2');
       return;
     }
+    const gv = await claimGate('vigor', stoneGainEstimate(VIGOR_REWARD.stones));
+    if (!gv.ok) return;
     state.vigor.claimed++;
     const gained = addStones(VIGOR_REWARD.stones);
     addDust(VIGOR_REWARD.dust);
@@ -6538,10 +6671,12 @@
     renderDailyExt();
     save();
   }
-  function claimFortune() {
+  async function claimFortune() {
     ensureFortune();
     const s = FORTUNE_SIGNS[state.fortune.idx];
     if (state.fortune.claimed || !s) return;
+    const gf = await claimGate('fortune', stoneGainEstimate(s.stones || 0));
+    if (!gf.ok) return;
     state.fortune.claimed = true;
     if (s.stones) {
       const gained = addStones(s.stones);
@@ -6599,7 +6734,7 @@
     save();
   }
 
-  function fightTribulation() {
+  async function fightTribulation() {
     if (!tribulationDue()) return;
     const use = Math.min(3, Number($('tribModal').dataset.use || 0));
     const st = playerCombatStats();
@@ -6618,6 +6753,9 @@
     };
     const player = Object.assign({}, st);
     player.atk *= elementBonus(enemy.el).mult;
+    // 护体符减伤参战（乘区叠加进 dr，与 simulateBattle 的 (1-dr) 同口径）：
+    // 原实现只把减伤乘在战报数字上，胜负不受符影响、符却照扣——机制空转
+    player.dr = Math.min(0.95, 1 - (1 - player.dr) * (1 - use * TALISMAN_REDUCE));
     const result = simulateBattle(player, enemy);
     const tribStones = Math.max(20000, Math.floor(st.power * 10));
     showBattlePopup(enemy, result, {
@@ -6625,8 +6763,11 @@
       closeText: '收下奖励', loseText: '离开',
       rewardText: result.win ? '+' + fmt(tribStones) + ' 灵石 · +300 碎屑 · +2 招募券' : undefined,
     });
-    const taken = Math.round(result.taken * (1 - use * TALISMAN_REDUCE));
+    // 减伤已在上面的 dr 里参与模拟，战报数字不再二次折减
+    const taken = Math.round(result.taken);
     if (result.win) {
+      const gt = await claimGate('tribulation', stoneGainEstimate(tribStones));
+      if (!gt.ok) return;
       state.talismans = Math.max(0, state.talismans - use);
       state.tribulation.done = true;
       state.tribulation.last = todayStr();
@@ -6727,13 +6868,44 @@
     return out;
   }
 
-  function doSignIn(mode) {
+  async function doSignIn(mode) {
     ensureDaily();
     if (state.lastSignIn === todayStr()) {
       floatText('今日已签到', '#9aa4b2');
       return;
     }
+    // 补发此前领奖确认失败而挂起的签到里程碑（见下方 milestone 分支）
+    const pendingMs = state.pendingMilestone | 0;
+    if (pendingMs) {
+      state.pendingMilestone = 0;
+      const pm = SIGN_MILESTONES[pendingMs];
+      if (pm && !state.signMilestones.includes(pendingMs)) {
+        const gp = await claimGate('sign_milestone', stoneGainEstimate(pm.stones || 0));
+        if (!gp.ok) {
+          state.pendingMilestone = pendingMs; // 确认失败：继续挂起，下次签到重试
+        } else {
+          state.signMilestones.push(pendingMs);
+          if (pm.stones) addStones(pm.stones);
+          if (pm.dust) addDust(pm.dust);
+          if (pm.tickets) state.petTickets += pm.tickets;
+          pushLog('签到里程碑 ' + pendingMs + ' 天（补发）：' + pm.text, 'special');
+          chime([659, 784, 1046, 1318]);
+        }
+      }
+    }
     const reward = SIGN_REWARDS[state.signInDays % SIGN_REWARDS.length];
+    // 赌狗档位先掷后确认：确认失败不落任何状态（lastSignIn 不写，可直接重试）
+    let g = null;
+    let gainStones = 0;
+    if (mode === 'gamble') {
+      g = rollSignGamble();
+      if (g.tier === 'big') gainStones = Math.floor((reward.stones || 0) * g.mult);
+      else if (g.tier === 'keep') gainStones = reward.stones || 0;
+    } else {
+      gainStones = reward.stones || 0;
+    }
+    const gs = await claimGate('sign', stoneGainEstimate(gainStones));
+    if (!gs.ok) return;
     state.lastSignIn = todayStr();
     state.signInDays++;
     state.lastSignMode = mode;
@@ -6743,7 +6915,6 @@
     let du = 0;   // 碎屑实际增减
     let entry;
     if (mode === 'gamble') {
-      const g = rollSignGamble();
       const stakeStones = reward.stones || 0;
       const stakeDust = reward.dust || 0;
       let cutS = 0;   // 翻车时的灵石倒扣额（供战绩「最深倒扣」用）
@@ -6807,13 +6978,20 @@
 
     const milestone = SIGN_MILESTONES[state.signInDays];
     if (milestone && !state.signMilestones.includes(state.signInDays)) {
-      state.signMilestones.push(state.signInDays);
-      if (milestone.stones) addStones(milestone.stones);
-      if (milestone.dust) addDust(milestone.dust);
-      if (milestone.tickets) state.petTickets += milestone.tickets;
-      pushLog('签到里程碑 ' + state.signInDays + ' 天：' + milestone.text, 'special');
-      chime([659, 784, 1046, 1318]);
-      floatText('里程碑 ' + state.signInDays + ' 天！', '#f0d9a8');
+      // 里程碑大额（最高 100 亿）：服务端确认失败则挂起到下次签到补发
+      const gm = await claimGate('sign_milestone', stoneGainEstimate(milestone.stones || 0));
+      if (gm.ok) {
+        state.signMilestones.push(state.signInDays);
+        if (milestone.stones) addStones(milestone.stones);
+        if (milestone.dust) addDust(milestone.dust);
+        if (milestone.tickets) state.petTickets += milestone.tickets;
+        pushLog('签到里程碑 ' + state.signInDays + ' 天：' + milestone.text, 'special');
+        chime([659, 784, 1046, 1318]);
+        floatText('里程碑 ' + state.signInDays + ' 天！', '#f0d9a8');
+      } else {
+        state.pendingMilestone = state.signInDays;
+        floatText('里程碑奖励确认失败，下次签到补发', '#f87171');
+      }
     }
     render();
     save();
@@ -6841,11 +7019,19 @@
     }).join('');
   }
 
-  function claimTask(id) {
+  async function claimTask(id) {
     ensureDaily();
     const def = DAILY_TASKS.find((t) => t.id === id);
     if (!def || state.daily.claimed.includes(id)) return;
     if ((state.daily[id] || 0) < def.target) return;
+    const gt = await claimGate('task_' + id, stoneGainEstimate(def.reward.stones || 0));
+    if (!gt.ok) return;
+    // 全勤奖与最后一项任务同帧领取：一并过确认，避免任务入账而全勤奖挂起
+    const allDone = state.daily.claimed.length + 1 >= DAILY_TASKS.length;
+    if (allDone) {
+      const ga = await claimGate('task_all', stoneGainEstimate(DAILY_ALL_BONUS.stones || 0));
+      if (!ga.ok) return;
+    }
     state.daily.claimed.push(id);
     if (def.reward.stones) addStones(def.reward.stones);
     if (def.reward.dust) addDust(def.reward.dust);
@@ -6862,11 +7048,19 @@
     save();
   }
 
-  function claimWeekly(id) {
+  async function claimWeekly(id) {
     ensureWeekly();
     const def = WEEKLY_TASKS.find((t) => t.id === id);
     if (!def || state.weekly.claimed.includes(id)) return;
     if ((state.weekly[id] || 0) < def.target) return;
+    const gw = await claimGate('wtask_' + id, stoneGainEstimate(def.reward.stones || 0));
+    if (!gw.ok) return;
+    // 周常全勤奖与最后一项同帧领取：一并过确认
+    const allDone = state.weekly.claimed.length + 1 >= WEEKLY_TASKS.length;
+    if (allDone) {
+      const ga = await claimGate('wtask_all', stoneGainEstimate(WEEKLY_ALL_BONUS.stones || 0));
+      if (!ga.ok) return;
+    }
     state.weekly.claimed.push(id);
     if (def.reward.stones) addStones(def.reward.stones);
     if (def.reward.dust) addDust(def.reward.dust);
@@ -6883,11 +7077,25 @@
     save();
   }
 
-  function claimAchievement(id) {
+  async function claimAchievement(id) {
     const a = ACHIEVEMENTS.find((x) => x.id === id);
     if (!a || state.achievements[a.id] || a.cur(state) < a.target) return;
+    // 天道录阶梯成就（id = 梯子_阈值）：数额由服务端按表自算（tide），客户端上报不采信；
+    // 手写的零星小额成就不走确认
+    const us = id.indexOf('_');
+    const ladId = us > 0 ? id.slice(0, us) : '';
+    const lad = ACHV_LADDERS.find((x) => x.id === ladId);
+    const tier = us > 0 ? Number(id.slice(us + 1)) : NaN;
+    let extra = null;
+    let paid = a.stones || 0;
+    if (lad && Number.isInteger(tier) && lad.tiers.includes(tier)) {
+      extra = { ladder: ladId, tier };
+      const gate = await claimGate('tide', paid, extra);
+      if (!gate.ok) return;
+      paid = gate.stones || 0;
+    }
     state.achievements[id] = true;
-    if (a.stones) addStones(a.stones);
+    if (paid) addStones(paid);
     if (a.dust) addDust(a.dust);
     if (a.trophies) state[a.trophies.field] += a.trophies.n;
     pushLog('达成成就「' + a.name + '」' +
@@ -7129,7 +7337,7 @@
     renderTrials();
   }
 
-  function rogueFight() {
+  async function rogueFight() {
     const run = state.rogue.run;
     if (!run) return;
     const floor = run.floor;
@@ -7157,6 +7365,8 @@
 
     if (result.win) {
       const stones = rogueStones;
+      const gr = await claimGate('rogue_fight', stoneGainEstimate(stones));
+      if (!gr.ok) return;
       addStones(stones);
       rollBagToken('rogue');
       addTrophy('tower', 2 + floor);
@@ -7238,7 +7448,7 @@
     return false;
   };
 
-  function runBossRush() {
+  async function runBossRush() {
     if (state.stageCleared < 5) {
       floatText('通关闯关第 5 关解锁', '#f87171');
       return;
@@ -7273,6 +7483,8 @@
     } else {
       const per = totalRounds / levels.length;
       const grade = BOSS_RUSH_GRADES.find((g) => per <= g.max);
+      const gbr = await claimGate('bossrush', stoneGainEstimate(grade.stones));
+      if (!gbr.ok) return;
       state.bossRush.grade = grade.name;
       if (grade.name === 'S') state.rushS = (state.rushS || 0) + 1;
       addStones(grade.stones);
@@ -7335,6 +7547,11 @@
         pushLog('三项试炼全通：额外 60 碎屑', 'special');
       }
     } else {
+      state.trialFail = {
+        date: todayStr(), id,
+        reason: (out.reason || '战斗失败') +
+          (out.result && out.result.rounds ? '（' + out.result.rounds + ' 回合）' : ''),
+      };
       pushLog('「' + def.name + '」未通过：' + (out.reason || '战斗失败'), 'sys');
       beep(220, 0.1);
     }
@@ -11278,7 +11495,8 @@
     const castHtml = STORY_CAST_ORDER.map((id) => {
       const met = state.story.met.indexOf(id) >= 0;
       const c = STORY_CAST[id];
-      return '<div class="cast-card ' + (met ? 'met' : 'unknown') + '" title="' + esc(met ? withPlayerName(c.brief) : '尚未结识') + '">' +
+      return '<div class="cast-card ' + (met ? 'met clickable' : 'unknown') + '" data-cast="' + id + '"' +
+        ' title="' + esc(met ? '点击查看人物详情' : '尚未结识') + '">' +
         '<div class="cast-art">' + (met ? storyPortrait(id, 'cast') : '<span>?</span>') + '</div>' +
         '<b>' + (met ? esc(withPlayerName(c.name)) : '？？？') + '</b>' +
         '<span class="cast-brief">' + (met ? esc(withPlayerName(c.brief)) : '随剧情结识') + '</span></div>';
@@ -11287,7 +11505,31 @@
     $('castCount').textContent = state.story.met.length + ' / ' + STORY_CAST_ORDER.length;
   }
 
+  // 人物志详情弹层（2026-11-01 用户指定）：头像（立绘圆形裁切）+ 彩绘立绘 + 文字小传
+  function openCastModal(id) {
+    const c = STORY_CAST[id];
+    if (!c || state.story.met.indexOf(id) < 0) {
+      floatText('尚未结识', '#9aa4b2');
+      return;
+    }
+    $('castModalName').textContent = withPlayerName(c.name);
+    $('castModalBrief').textContent = withPlayerName(c.brief);
+    $('castModalAvatar').innerHTML = storyPortrait(id, 'avatar');
+    $('castModalArt').innerHTML = storyPortrait(id, 'modal');
+    armStoryArtGuard($('castModalAvatar'));
+    armStoryArtGuard($('castModalArt'));
+    $('castModal').classList.add('show');
+  }
+
   function bindStory() {
+    $('castGrid').addEventListener('click', (e) => {
+      const card = e.target.closest('[data-cast]');
+      if (card) openCastModal(card.dataset.cast);
+    });
+    $('castModalClose').addEventListener('click', () => $('castModal').classList.remove('show'));
+    $('castModal').addEventListener('click', (e) => {
+      if (e.target === $('castModal')) $('castModal').classList.remove('show'); // 点遮罩关闭
+    });
     $('storyBox').addEventListener('click', (e) => {
       const head = e.target.closest('.story-vol-head');
       if (head) {
@@ -11502,17 +11744,19 @@
       ensureDaily(); // 跨日后未触发任何战斗时，保证额度显示即时重置（惰性重置的显示层兜底）
       const wildLeft = Math.max(0, WILD_REPEAT_DAILY - (state.daily.wildRepeat || 0));
       progress = '已解锁 ' + wildMaxUnlocked() + ' / ' + WILD_MAX + ' 区域 · 本区击杀 ' +
-        fmt(kills) + ' · 每 ' + WILD_SET_PITY + ' 杀必掉荒狩套装（另有 ' +
-        Math.round(WILD_SET_RATE * 1000) / 10 + '%/场）' +
+        fmt(kills) + ' · 每胜 ' + WILD_SET_PITY + ' 场保底荒狩套装（每日保底 ' + WILD_SET_PITY_DAILY +
+        ' 件，另有 ' + Math.round(WILD_SET_RATE * 1000) / 10 + '%/场随机不限）' +
         ' · 已胜怪挑战剩 ' + wildLeft + '/' + WILD_REPEAT_DAILY + '（扫荡不计）';
     } else if (mode === 'endless') {
       const aff = ENCHANTS[(level - 1) % ENCHANTS.length];
       progress = '无尽最高 ' + state.endlessBest + ' 层 · 本层词缀「' + aff.name + '」' + aff.desc +
-        ' · ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉镇塔套装';
+        ' · 每胜 ' + WILD_SET_PITY + ' 场保底镇塔套装（每日 ' + WILD_SET_PITY_DAILY +
+        ' 件）· ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '%/场随机不限';
     } else {
       progress = '已通关 ' + cleared + ' / ' + cfg.max + ' ' + unit +
         (replay ? ' · 再战最终' + unit + '奖励减半' : '') +
-        ' · ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '% 概率掉' + (mode === 'tower' ? '镇塔' : '征伐') + '套装';
+        ' · 每胜 ' + WILD_SET_PITY + ' 场保底' + (mode === 'tower' ? '镇塔' : '征伐') + '套装（每日 ' +
+        WILD_SET_PITY_DAILY + ' 件）· ' + (Math.round(MODE_SET_RATE * 1000) / 10) + '%/场随机不限';
     }
     $('combatProgress').textContent = progress;
 
@@ -12501,11 +12745,17 @@
     $('trialList').innerHTML = TRIALS.map((t) => {
       const done = trialsDone.includes(t.id);
       const unlocked = unlockedMode(t.enemy);
+      // 失败提示前置（2026-11-01 用户指定）：最近一次挑战失败的原因行内常驻，
+      // 免得只有弹层一闪而过、看起来像什么都没发生还能无限重挑
+      const fail = state.trialFail || {};
+      const failHint = (!done && fail.date === todayStr() && fail.id === t.id && fail.reason)
+        ? '<span class="trial-fail">上次未通过：' + esc(fail.reason) + '，可免费重试</span>' : '';
       return (
         '<div class="pet-row' + (done ? ' claimed' : '') + '">' +
           '<div class="pet-main"><span class="pet-name">' + t.name + '</span>' +
           '<p class="pet-desc">' + t.desc + ' · 奖励 ' + fmt(TRIAL_REWARD.stones) + ' 灵石 + ' +
-            TRIAL_REWARD.dust + ' 碎屑</p></div>' +
+            TRIAL_REWARD.dust + ' 碎屑</p>' +
+          (failHint ? '<p class="pet-desc">' + failHint + '</p>' : '') + '</div>' +
           '<button class="mini" data-trial="' + t.id + '"' + (done || !unlocked ? ' disabled' : '') + '>' +
             (done ? '已达成' : !unlocked ? '未解锁' : '挑战') + '</button>' +
         '</div>'
@@ -12904,7 +13154,7 @@
             '<i class="bounty-tier bounty-' + sl.tier + '">【' + tier.name + '】</i> ' + bountyDesc(sl) + '</span>' +
           '<p class="pet-desc">' + fmt(Math.min(sl.prog, sl.target)) + ' / ' + fmt(sl.target) +
             ' · ' + rewardText + '</p></div>' +
-          '<div class="pet-actions">' +
+          '<div class="pet-actions bounty-actions">' +
             '<button class="mini" data-bounty-reroll="' + i + '"' +
               (state.bounty.rerolls <= 0 || state.stones < BOUNTY_REROLL_COST ? ' disabled' : '') +
               '>刷新 ' + fmt(BOUNTY_REROLL_COST) + resIcon('stones') + '</button>' +
@@ -13364,8 +13614,12 @@
       '<div class="ac-head"><b>' + esc(o.name) + (o.bot ? ' <i class="bot-tag">剑影</i>' : '') + '</b>' +
       '<span>' + realmName(o.realm) + ' · 战力 ' + fmt(o.power) + ' · 分 ' + o.rating + '</span></div>' +
       '<button class="btn tiny" data-act="arena" data-id="' + o.id + '"' +
-      (p.used >= p.cap ? ' disabled' : '') + '>切磋</button></div>'
+      (p.used >= p.cap || Date.now() < pvpReadyAt ? ' disabled' : '') + '>切磋</button></div>'
     ).join('') || '<p class="hint">暂时没有对手：等其他修士把战力立起来再来看。</p>';
+    // 冷却结束自动恢复按钮（3 秒出手冷却的可视化置灰，2026-11-01 用户指定）
+    if (Date.now() < pvpReadyAt && !pvpCoolTimer) {
+      pvpCoolTimer = setTimeout(() => { pvpCoolTimer = 0; renderArena(); }, pvpReadyAt - Date.now() + 50);
+    }
   }
 
   // 竞技场刷新对手：重拉 /api/pvp，服务端每次随机洗牌即换一批名单
@@ -13404,12 +13658,16 @@
     WORLD.arenaBusy.buy = false;
   }
 
+  let pvpReadyAt = 0; // 服务端 3 秒出手冷却（PVP_COOLDOWN_MS）的本地镜像：冷却期内按钮置灰，点击本地提示，不打服务器吃 429
+  let pvpCoolTimer = 0;
   async function arenaFight(id) {
     const p = WORLD.pvp;
     if (!p || WORLD.arenaBusy[id]) return;
+    if (Date.now() < pvpReadyAt) { floatText('出手太急，稍候再战', '#f87171'); return; }
     const opp = p.opponents.find((o) => o.id === id);
     if (!opp || !opp.snap) return;
     if (p.used >= p.cap) { floatText('今日切磋已尽', '#f87171'); return; }
+    pvpReadyAt = Date.now() + 3000; // 预占冷却（置于守卫之后：早退路径不留幽灵冷却）
     WORLD.arenaBusy[id] = true;
     try {
       const mine = playerCombatStats();
@@ -13530,7 +13788,7 @@
   }
 
   // 讨伐奖励：全服打掉当日妖王后，有战功者各领一份（伤害越高越多，结击者加倍）；只发一次
-  function bossMaybeClaim() {
+  async function bossMaybeClaim() {
     const b = WORLD.boss;
     if (!b || !b.defeated || !(b.myDamage > 0) || state.boss.claimed === b.day) return;
     let stones = Math.min(200000, 8000 + Math.floor(b.myDamage / 50));
@@ -13540,6 +13798,8 @@
       stones *= 2;
       extra = '（致命一击加倍）';
     }
+    const gb = await claimGate('boss_daily', stoneGainEstimate(stones));
+    if (!gb.ok) return;
     stones = addStones(stones);
     dust = addDust(dust);
     state.boss.claimed = b.day;
@@ -13833,7 +14093,7 @@
   }
 
   // 讨平奖励：有战功者每日一份（伤害越高越多，结击者加倍）；贡献由服务端按伤害结算
-  function guildBossMaybeClaim() {
+  async function guildBossMaybeClaim() {
     const g = WORLD.guild && WORLD.guild.guild;
     if (!g || !g.boss || !g.boss.defeated || !(g.boss.myDamage > 0)) return;
     const b = g.boss;
@@ -13845,6 +14105,8 @@
       stones *= 2;
       extra = '（致命一击加倍）';
     }
+    const gg = await claimGate('gboss_daily', stoneGainEstimate(stones));
+    if (!gg.ok) return;
     stones = addStones(stones);
     dust = addDust(dust);
     state.guildBoss.claimed = b.day;
@@ -13900,6 +14162,12 @@
     if (guildAidBusy[busyKey]) return;
     guildAidBusy[busyKey] = true;
     try {
+      // 传功奖励先过领奖闸门再动服务端（原顺序：aid 成功后才 gate，gate 网络失败时
+      // 每日一次的传功已被服务端消费、300 万灵石却没入账且不可重试）
+      if (type === 'skill') {
+        const ga = await claimGate('aid_skill', stoneGainEstimate(AID_SKILL.stones));
+        if (!ga.ok) return;
+      }
       const out = await worldFetch('/api/guild/aid', {
         method: 'POST', body: JSON.stringify({ type, targetId }),
       });
@@ -13925,6 +14193,16 @@
 
   async function guildAidCollect() {
     try {
+      // 受传功 300 万灵石同属大额领奖：先过 /api/claim 授权流水再入账（原实现直接
+      // addStones，服务端账本无对应授权——刚重置/低账龄号一笔击穿收益包络，存档推送
+      // 被「灵石收益增速异常」拒收）；闸门置于 collect 之前，失败不消费服务端标记可重试。
+      // 赠礼只有 20 碎屑不入流水：按盟载荷 aid.from 预判类型，只为传功过闸
+      const aid = WORLD.guild && WORLD.guild.guild && WORLD.guild.guild.aid;
+      const pendingSkill = aid && aid.from && aid.from.type === 'skill';
+      if (pendingSkill) {
+        const gk = await claimGate('aid_skill', stoneGainEstimate(AID_SKILL.stones));
+        if (!gk.ok) return;
+      }
       const out = await worldFetch('/api/guild/aid/collect', { method: 'POST', body: '{}' });
       if (out.type === 'skill') {
         const gained = addStones(AID_SKILL.stones);
@@ -14783,6 +15061,7 @@
       stats: () => playerCombatStats(),
       enemy: (m, l) => enemyFor(m, l),          // 同源断言用（scripts/parity-check.mjs）
       req: (m, l) => contentReq(m, l),          // 同源断言用
+      recommended: (m, l) => recommendedPower(m, l), // 同源断言用（防脚本内抄公式漂移）
       open: (n) => manualOpen(Math.max(1, Math.min(10000, n | 0))),
       offline: () => awardOffline(),
       refresh: () => {

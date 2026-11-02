@@ -113,15 +113,24 @@ const data = {
   daoLv: { married: 'bai' },
   title: '剑侠',
   museum: { weapon: { r: 5, special: true } },
-  bestiaryNote: 0,
 };
 
-// 把同一份存档写进客户端内部 state（LX.state() 返回可变引用）
+let fails = 0;
+
+// 把同一份存档写进客户端内部 state（LX.state() 返回可变引用）。
+// 死键报警：state 改名后合成存档若还写旧键，公式会静默跑默认值、断言退化成
+// 「两个服务端互相比」——写入前先确认键真实存在
 const st = LX.state();
-for (const k of Object.keys(data)) st[k] = data[k] === undefined ? st[k] : JSON.parse(JSON.stringify(data[k]));
+for (const k of Object.keys(data)) {
+  if (!(k in st)) {
+    fails++;
+    console.error(`  ✗ 合成存档键 "${k}" 在客户端 state 中不存在（改名后未同步本脚本？）`);
+    continue;
+  }
+  st[k] = data[k] === undefined ? st[k] : JSON.parse(JSON.stringify(data[k]));
+}
 
 const env = { now: Date.now(), guildLevel: 4 };
-let fails = 0;
 function close(a, b, tag) {
   const rel = Math.abs(a - b) / Math.max(1, Math.abs(a), Math.abs(b));
   if (!(rel <= 1e-9)) {
@@ -155,12 +164,10 @@ for (const mode of ['stage', 'tower', 'wild', 'endless']) {
 }
 console.log('contentReq/enemyFor 四模式 × 11 关卡  ✓');
 
-// 建议战力抽样（客户端口径内联复算：req × boss1.35 × ENEMY_DIFF 3.0 × 1.008^min(lv,300)）
-const isBossC = (m, l) => (m === 'tower' || m === 'endless') ? l % 10 === 0
-  : m === 'stage' ? l % 5 === 0 : (l % 4 === 0 || l === 200);
+// 建议战力抽样（走 LX.recommended 真客户端实现——原脚本在此内联复抄公式，
+// game.js 的 recommendedPower 本体漂移时这道门测不出来）
 for (const [m, l] of [['tower', 77], ['stage', 43], ['wild', 96], ['endless', 120]]) {
-  const expect = Math.ceil(LX.req(m, l) * (isBossC(m, l) ? 1.35 : 1) * 3.0 * Math.pow(1.008, Math.min(l, 300)));
-  close(expect, recommendedPower(m, l, data), `recommended(${m},${l})`);
+  close(LX.recommended(m, l), recommendedPower(m, l, data), `recommended(${m},${l})`);
 }
 console.log('recommendedPower 抽样  ✓');
 

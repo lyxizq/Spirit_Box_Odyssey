@@ -37,14 +37,26 @@ export function createSaveService(db) {
     // 拆掉（老号可 reset 后直推贴天花板满档合法入库）。归零保留 = 首推走正常
     // 增速校验，基线 0 + 真实经过时间，合法重玩能过、伪造跳变被拒。
     delSave: db.prepare('DELETE FROM game_saves WHERE user_id = ?'),
+    // 重置归零清单必须覆盖全部进度/计数列：wild_cleared、trial_done、sweep_used、
+    // offline_at、set_pity 等原本残留——重置号会继承旧野外进度/试炼当日已做/扫荡
+    // 已用等状态，与「等价于全新账号开局」矛盾（复审 P2：set_pity 是 JSON 列同样要清）
     resetLedger: db.prepare(
       `INSERT INTO save_ledger (user_id, grants, updated_at) VALUES (?, 1, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          stones = 0, total_stones = 0, dust_total = 0, opens = 0, exp = 0,
          pet_tickets = 0, ascensions = 0, immortal = 0, power = 0,
          tower_cleared = 0, stage_cleared = 0, endless_best = 0, wild_max = 0,
-         cli_sync = NULL,
+         wild_cleared = '[]', wild_kills = '{}', wild_repeat_day = '', wild_repeat_used = 0,
+         sweep_day = '', sweep_used = '{}', sweep_bought = '{}',
+         trial_day = '', trial_done = '[]', offline_at = 0, set_pity = NULL,
+         cli_sync = NULL, claim_days = NULL,
          grants = 1, clicks = 0, click_ban_until = 0, updated_at = excluded.updated_at`),
+    // 领奖日锁（乐观锁 CAS：并发双标签页领取只有一个能改写成功）
+    setClaimDays: db.prepare(
+      'UPDATE save_ledger SET claim_days = ? WHERE user_id = ? AND claim_days IS ?'),
+    // 领奖授权入流水：action_log 由 sanctionedSince 计入收益增速包络（防「领奖后包络击穿」）
+    logClaim: db.prepare(
+      'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, 0, 0, 0, ?)'),
     clearProfile: db.prepare("UPDATE users SET power_score = 0, realm = '', pvp_snapshot = NULL WHERE id = ?"),
     // 增速账本：上次入库计数器快照 + 窗口内兑换码授权收益
     getLedger: db.prepare('SELECT * FROM save_ledger WHERE user_id = ?'),
@@ -56,10 +68,16 @@ export function createSaveService(db) {
        ON CONFLICT(user_id) DO UPDATE SET stones = excluded.stones, total_stones = excluded.total_stones,
          dust_total = excluded.dust_total, opens = excluded.opens, exp = excluded.exp,
          pet_tickets = excluded.pet_tickets, ascensions = excluded.ascensions, immortal = excluded.immortal,
-         power = excluded.power, tower_cleared = excluded.tower_cleared, stage_cleared = excluded.stage_cleared,
-         endless_best = excluded.endless_best, wild_max = excluded.wild_max, grants = excluded.grants,
+         power = excluded.power, grants = excluded.grants,
          clicks = excluded.clicks, click_ban_until = excluded.click_ban_until,
          cli_sync = excluded.cli_sync,
+         /* 进度列只进不退：cli_sync 基线下允许客户端推更低的镜像过单调校验，若照抄
+            excluded 值会让服务端进度回退——下一场又按 first=1.5× 首通结算（复刷首通
+            奖励 3 倍差的口子）。MAX 钳制后客户端展示镜像不变，防砖语义保留 */
+         tower_cleared = MAX(tower_cleared, excluded.tower_cleared),
+         stage_cleared = MAX(stage_cleared, excluded.stage_cleared),
+         endless_best = MAX(endless_best, excluded.endless_best),
+         wild_max = MAX(wild_max, excluded.wild_max),
          updated_at = excluded.updated_at`),
     redeemSince: db.prepare(
       `SELECT c.reward AS reward FROM redeem_log l LEFT JOIN redeem_codes c ON c.code = l.code
@@ -440,7 +458,15 @@ export function createSaveService(db) {
         wildMax: numOr(cli.wildMax, prevRow.wild_max),
         grants: prevRow.grants,
       };
-      const fail = checkVelocity(prev, data, now - prevRow.updated_at, sanctionedSince(ctx.user.id, prevRow.updated_at));
+      const fail = checkVelocity(prev, data, now - prevRow.updated_at,
+        sanctionedSince(ctx.user.id, prevRow.updated_at), {
+          // 窗口内「已入主列、尚未被 cli_sync 吸收」的服务端发放（2026-11-02 离线砖修复）：
+          // combat/offline 等结算把灵石/开箱直接加进主列，客户端几秒后推档时 elapsed
+          // 只有几秒，包络的离线额度套不住——主列只由服务端结算增加、推送成功即与
+          // cli_sync 对齐，差额就是发放实额（负值由 checkVelocity 钳 0，防脏数据）
+          stones: Math.floor(prevRow.total_stones) - prev.totalStones,
+          opens: Math.floor(prevRow.opens) - prev.opens,
+        });
       if (fail) {
         console.error('[saves] 增速校验拒收 user=' + ctx.user.id + '：' + fail);
         return sendJSON(res, 400, { error: '存档增速异常，已保留上次云端进度' });
@@ -561,6 +587,161 @@ export function createSaveService(db) {
     };
   }
 
+  // —— 客户端大额领奖授权（2026-11-01 收益包络防砖）——
+  // 签到/赌狗/每日任务/求签/灵气等奖励在客户端入账且不走服务端结算，数额不在
+  // action_log 授权流水里；刚重置/新建的账号「5e7×days」项≈0，一笔领奖就能击穿
+  // 收益包络，推送被「灵石收益增速异常」拒收（线上实测：+1e6 vs 包络 4.7e5）。
+  // /api/claim 在发放前记入 action_log（sanctionedSince 计入包络）并做当日次数锁；
+  // 数额由客户端按增益链预估上报，服务端只钳「单笔上限 × 当日次数」，上限含增益余量。
+  // 赌石暂未接入（概率玩法，P3 迁移时随上收一并处理；其头奖砖窗约 1~2 小时可自愈）。
+  const CLAIM_RULES = {
+    sign:           { cap: 1.5e8, perDay: 1 },  // 签到+赌狗（day7 1200万 × 赌狗×5 × 增益余量）
+    sign_milestone: { cap: 2.5e10, perDay: 1 }, // 签到里程碑（day1000 = 100 亿）
+    task_opens:     { cap: 7.5e6, perDay: 1 },
+    task_wins:      { cap: 7.5e6, perDay: 1 },
+    task_forge:     { cap: 7.5e6, perDay: 1 },
+    task_all:       { cap: 1.5e7, perDay: 1 },  // 日常全勤
+    fortune:        { cap: 7.5e6, perDay: 1 },  // 每日占卜领签
+    vigor:          { cap: 5e6, perDay: 6 },    // 灵气格（每格 200 万 × 当日格数）
+    lingchao:       { cap: 1e7, perDay: 2 },    // 灵潮符（400 万/符 × 每日两窗，含增益余量）
+    wtask_opens:    { cap: 7.5e6, perWeek: 1 }, // 周常（300 万 × 增益余量）
+    wtask_wins:     { cap: 7.5e6, perWeek: 1 },
+    wtask_rogue:    { cap: 1.25e7, perWeek: 1 }, // 500 万
+    wtask_all:      { cap: 5e6, perWeek: 1 },   // 周常全勤（200 万）
+    bounty:         { cap: 3e7, perDay: 4 },    // 悬赏（紫单 1200 万 × 余量；每日四单）
+    bounty_all:     { cap: 1.25e7, perDay: 1 }, // 悬赏四单全清（500 万 × 余量）
+    quiz_per:       { cap: 1.5e6, perDay: 10 }, // 仙道问答（60 万/题 × 10 题）
+    quiz_all:       { cap: 3.75e6, perDay: 1 }, // 问答全对（150 万）
+    bossrush:       { cap: 5e7, perDay: 1 },    // 首领连战 S 级（2000 万 × 余量）
+    anomaly:        { cap: 6e7, perDay: 2 },    // 异象平定（1500 万 × 血月 ×1.5 × 余量）
+    aid_skill:      { cap: 7.5e6, perDay: 2 },  // 同门传功（300 万 × 余量）
+    boss_daily:     { cap: 1e6, perDay: 1 },    // 妖王讨伐伤害奖励（40 万封顶 × 余量）
+    gboss_daily:    { cap: 4e5, perDay: 1 },    // 盟妖王伤害奖励（16 万封顶 × 余量）
+    // 战力动态上限类：数额随玩家战力成长（power = 账本装备分），dyn 系数按
+    // 「客户端公式上界 × realPower ≤ 装备分×2500 × 2.5 余量」反推，见各领取点注释
+    tribulation:    { cap: 1e6, perDay: 1, dyn: 6.5e4 },  // 天劫：realPower×10
+    wander_gift:    { cap: 1e6, perDay: 5, dyn: 1.3e5 },  // 奇遇盘缠：realPower×20
+    rogue_fight:    { cap: 1e6, perDay: 300, dyn: 4.2e2 }, // 探幽：装备分×2×(1+0.1层)×灵潮 ≈ ×168
+    map_loot:       { cap: 1e6, perDay: 8, dyn: 3.5e2 },  // 秘境图收获：装备分×45×灵脉 ≈ ×135
+  };
+  const claimWindow = new SlidingWindow(60 * 1000, 30);
+  const dayKey = () => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  // 周键与客户端 weekKey 同口径（game.js 周常以 ISO 周重置）
+  const weekKey = () => {
+    const d = new Date();
+    return d.getFullYear() + '-W' + Math.floor((d - new Date(d.getFullYear(), 0, 1)) / (7 * 86400000));
+  };
+
+  // —— 天道录阶梯（game.js ACHV_LADDERS 同源）：tier=达成阈值，奖励=round(base×ratio^档位)。
+  // gate 列非空的梯子用账本进度复核（阈值未达 → 409）；gate 为 null 的梯子进度计数在
+  // 客户端（战斗统计/图鉴/玩法进度），服务端无法复核，靠「每档终身一次 + 奖励几何收敛于
+  // 顶档」把伪造面压到一次性顶档值。奖励由服务端按表自算，客户端上报数额不采信。
+  const TIDE_LADDERS = {
+    open:     { tiers: [2e5, 5e5, 1e6, 5e6, 1e7, 5e7, 1e8, 5e8, 1e9, 5e9], base: 3e5, ratio: 3, gate: 'opens' },
+    stone:    { tiers: [1e6, 1e7, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16], base: 3e5, ratio: 3, gate: 'total_stones' },
+    dust:     { tiers: [5000, 2e4, 1e5, 5e5, 2e6, 1e7, 5e7], base: 2e5, ratio: 2.5, gate: 'dust_total' },
+    realm:    { tiers: [1, 2, 4, 5, 6, 7, 8], base: 2e5, ratio: 3 },
+    stage:    { tiers: [50, 80, 120, 160, 200], base: 5e5, ratio: 3, gate: 'stage_cleared' },
+    tower:    { tiers: [90, 120, 150, 180, 200], base: 5e5, ratio: 3, gate: 'tower_cleared' },
+    wild:     { tiers: [30, 60, 100, 150, 200], base: 4e5, ratio: 3, gate: 'wild_max' },
+    endless:  { tiers: [30, 60, 100, 150, 200, 300, 500, 800, 1000, 2000], base: 2e5, ratio: 2.5, gate: 'endless_best' },
+    rogue:    { tiers: [20, 40, 60, 80, 100, 130, 160, 200], base: 3e5, ratio: 3 },
+    bestiary: { tiers: [5, 10, 20, 30, 50, 80, 120, 160, 200, 260, 320], base: 1e5, ratio: 2.2 },
+    wins:     { tiers: [100, 500, 2000, 1e4, 5e4, 2e5, 1e6, 5e6, 1e7, 1e8], base: 2e5, ratio: 2.6 },
+    dmg:      { tiers: [1e6, 1e8, 1e10, 1e12, 1e14, 1e16], base: 3e5, ratio: 2.8 },
+    taken:    { tiers: [1e6, 1e8, 1e10, 1e12, 1e14, 1e16], base: 3e5, ratio: 2.8 },
+    trial:    { tiers: [100, 300, 1000, 3000, 1e4, 3e4], base: 2e5, ratio: 2.5 },
+    rush:     { tiers: [10, 30, 100, 300], base: 1e5, ratio: 3 },
+    setall:   { tiers: [12, 18], base: 5e5, ratio: 2.5 },
+    immortal: { tiers: [10, 25, 50, 100, 200, 400], base: 1e6, ratio: 2.5, gate: 'immortal' },
+    ascend:   { tiers: [2, 5, 10, 25, 50, 100], base: 5e5, ratio: 2.5, gate: 'ascensions' },
+    sign:     { tiers: [7, 30, 100, 365, 1000, 2000, 3650], base: 1e5, ratio: 2.5 },
+    museum:   { tiers: [3, 6], base: 2e5, ratio: 2 },
+    merit:    { tiers: [1e3, 1e4, 1e5, 1e6], base: 3e5, ratio: 3 },
+    mark:     { tiers: [500, 5000, 5e4, 5e5], base: 3e5, ratio: 3 },
+    bone:     { tiers: [500, 5000, 5e4, 5e5], base: 3e5, ratio: 3 },
+    gongfa:   { tiers: [10, 15], base: 3e5, ratio: 2 },
+    hunt:     { tiers: [1e3, 1e4, 1e5, 1e6], base: 2e5, ratio: 2.8 },
+    elixir:   { tiers: [10, 50, 200], base: 1e5, ratio: 2.5 },
+    chapter:  { tiers: [3, 6, 10], base: 2e5, ratio: 2.5 },
+    ordeal:   { tiers: [1, 2, 3], base: 5e5, ratio: 2.5 },
+    cave:     { tiers: [3, 6, 9, 12], base: 2e5, ratio: 2.5 },
+    forge:    { tiers: [3, 6], base: 5e5, ratio: 2 },
+    map:      { tiers: [10, 30, 64, 96], base: 1.5e5, ratio: 2.5 },
+  };
+
+  function claim(req, res, ctx) {
+    if (!claimWindow.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '领取过于频繁，请稍后再试' });
+    }
+    const kind = ctx.body && ctx.body.kind;
+    const prevRow = stmts.getLedger.get(ctx.user.id);
+    if (!prevRow) return sendJSON(res, 409, { error: '请先进入游戏后再领取' });
+    let map = {};
+    try { map = prevRow.claim_days ? JSON.parse(prevRow.claim_days) : {}; } catch (e) { map = {}; }
+    if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
+
+    // 两类领取：periodic（日/周锁次数）与 tide（天道录档位，终身一次 + 账本进度门槛）
+    let amount = 0;
+    let onceEver = null;
+    if (kind === 'tide') {
+      const ladder = ctx.body && ctx.body.ladder;
+      const lad = TIDE_LADDERS[ladder];
+      const tier = Math.round(Number(ctx.body && ctx.body.tier));
+      if (!lad) return sendJSON(res, 400, { error: '未知天道录梯子' });
+      const idx = lad.tiers.indexOf(tier);
+      if (idx < 0) return sendJSON(res, 400, { error: '未知天道录档位' });
+      if (lad.gate && !(Number(prevRow[lad.gate]) >= tier)) {
+        return sendJSON(res, 409, { error: '天道录进度未达档位' });
+      }
+      onceEver = ladder + ':' + tier;
+      const claimed = Array.isArray(map.tide) ? map.tide : [];
+      if (claimed.includes(onceEver)) return sendJSON(res, 429, { error: '该档位已领取' });
+      amount = Math.round(lad.base * Math.pow(lad.ratio, idx));
+    } else {
+      const rule = CLAIM_RULES[kind];
+      if (!rule) return sendJSON(res, 400, { error: '未知领奖类型' });
+      amount = Math.round(Number(ctx.body && ctx.body.amount));
+      // 战力动态上限：cap = cap + dyn×装备分（账本 power 列，覆盖成长期大额领取）
+      const cap = rule.cap + (rule.dyn ? rule.dyn * Number(prevRow.power || 0) : 0);
+      if (!Number.isInteger(amount) || amount <= 0 || amount > cap) {
+        return sendJSON(res, 400, { error: '领奖数额越界（上限 ' + Math.round(cap) + '）' });
+      }
+      const periodKey = rule.perWeek ? weekKey() : dayKey();
+      const perMax = rule.perWeek || rule.perDay;
+      const cur = Array.isArray(map[kind]) ? map[kind] : [];
+      const next = cur[0] === periodKey ? [periodKey, (cur[1] | 0) + 1] : [periodKey, 1];
+      if (next[1] > perMax) {
+        return sendJSON(res, 429, { error: rule.perWeek ? '该奖励本周已领取' : '该奖励今日已领取' });
+      }
+      map[kind] = next;
+    }
+
+    const nextJson = JSON.stringify((() => {
+      if (!onceEver) return map;
+      const claimed = Array.isArray(map.tide) ? map.tide.slice() : [];
+      claimed.push(onceEver);
+      return Object.assign({}, map, { tide: claimed });
+    })());
+    db.exec('BEGIN');
+    try {
+      // 乐观锁：双标签页并发领取只有一个能改写 claim_days 成功
+      const cas = stmts.setClaimDays.run(nextJson, ctx.user.id, prevRow.claim_days ?? null);
+      if (cas.changes === 0) throw new Error('claim-cas');
+      stmts.logClaim.run(ctx.user.id, dayKey(), 'claim:' + kind, amount, Date.now());
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      if (e.message === 'claim-cas') return sendJSON(res, 409, { error: '领取冲突，请重试' });
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, stones: amount });
+  }
+
   // 重置存档：删云端档与增速账本、清排行档案（power_score / realm / pvp_snapshot）。
   // 账本一并清空——下次首推按「无账本行首档种基线」走，等价于全新账号开局。
   // 仙盟 / 竞技场天梯等社交数据不在重置范围（与旧本地重置口径一致）。
@@ -586,5 +767,5 @@ export function createSaveService(db) {
     }
   }
 
-  return { get, store, reset };
+  return { get, store, reset, claim };
 }

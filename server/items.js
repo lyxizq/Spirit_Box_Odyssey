@@ -209,7 +209,9 @@ export function makeSpecialItem(mode, level, slotKey, itemSeq, contentReqFn) {
     r: 5,
     slot: slotDef.key,
     name: pieceName,
-    power: specialPower(mode, level, contentReqFn),
+    // 掉落随机衰减（2026-11-01 用户指定，game.js makeSpecialItem 同源）：×[0.3,1]
+    power: Math.max(1, Math.round(specialPower(mode, level, contentReqFn) *
+      (0.3 + Math.random() * 0.7))),
     el: randEl(),
     affixes: rollAffixes(5),
     special: true,

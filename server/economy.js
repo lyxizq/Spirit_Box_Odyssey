@@ -61,8 +61,8 @@ function perOpenCap(d, powerEq, critFactor, miscFactor) {
   const small = 1 + collectionGainOf(d) + petGainOf(d) + 0.08 * array;
   return (3 + 0.9 * gainLv)
     * Math.pow(1.7, realm)
-    * (1 + 0.25 * asc)
-    * (1 + 0.5 * immortal)
+    * (1 + 0.05 * asc)      // prestigeMult（2026-11-01 改 +5%/次，原 +25% 未同步至此）
+    * (1 + 0.1 * immortal)  // 仙位收益（2026-11-01 改 +10%/位，原 +50% 未同步至此）
     * (1 + Math.sqrt(Math.max(1, powerEq)) / 20)   // powerMult（game.js:2209）
     * small
     * critFactor
@@ -88,8 +88,44 @@ function perBattleGainCap(immortal, powerEq) {
   const dayProd = 4;          // 灵潮 ×2 × 占卜 ×2 兜底
   const misc = 12;            // 时辰/天象等余量
   return stone * first * weekend * boss * dayProd * misc
-    * Math.pow(1.25, immortal)
+    * Math.pow(1.05, immortal)  // immortalMult（2026-11-01 改 ×1.05/位，原 1.25 未同步至此）
     * Math.max(1, powerEq);
+}
+
+// 套装保底常量（与 battle.js/game.js 同源；economy 保持零依赖不引 battle.js）
+const WILD_SET_PITY = 50;      // 每胜 N 场保底 1 件
+const WILD_SET_PITY_DAILY = 2; // 每玩法每日保底上限
+
+/**
+ * 套装保底状态机（2026-11-01 二改，combat.js rollSpecialDrop 的纯函数内核）：
+ * 四模式统一每胜 WILD_SET_PITY(50) 场保底 1 件（滚动计数，pityMap 由调用方持久化），
+ * 每日每玩法保底最多 WILD_SET_PITY_DAILY(2) 件（当日配额用尽则计数挂起不清零，
+ * 跨日自动重置配额）；随机掉落由调用方另行 roll，不受保底配额限制。
+ * @param pityMap 保底计数表 {mode:[胜场,日,当日已保底数]}（就地更新并返回）
+ * @param win 本场是否胜利（败场只做跨日配额重置，不计数）
+ * @param dropOne(mode) 服务端发件回调（返回套装件对象）
+ * @returns {{pityItems:array, pityMap:object}} 本场保底掉落（0/1 件）
+ */
+export function rollSetPity(pityMap, mode, win, today, dropOne) {
+  const pityItems = [];
+  const st = Array.isArray(pityMap[mode]) ? pityMap[mode] : [0, '', 0];
+  let wins = st[0] | 0;
+  let day = String(st[1] || '');
+  let pityN = st[2] | 0;
+  if (day !== today) { day = today; pityN = 0; } // 跨日：保底配额重置
+  if (win) {
+    wins++;
+    if (wins >= WILD_SET_PITY) {
+      if (pityN < WILD_SET_PITY_DAILY) {
+        pityItems.push(dropOne(mode));
+        wins -= WILD_SET_PITY;
+        pityN++;
+      }
+      // 当日配额用尽：计数挂起不清零，次日配额恢复后下一胜即掉
+    }
+  }
+  pityMap[mode] = [wins, day, pityN];
+  return { pityItems, pityMap };
 }
 
 // 穿戴十二件重算战力（itemPower×部位强化乘区，game.js totalPower 同源）：
@@ -138,12 +174,21 @@ const daysOf = (ms) => Math.max(ms, 60000) / 86400000; // 时长至少按 1 分�
  * @param next  本次上传的存档 JSON（已过 validateSave/validateDeep）
  * @param elapsedMs 距上次成功入库的毫秒数（服务端时钟，含离线时长）
  * @param sanctioned 窗口内服务端授权收益 {stones,dust,tickets}（兑换码等，精确计入）
+ * @param srv 窗口内「已入主列、尚未被 cli_sync 吸收」的服务端发放 {stones,opens}
+ *   （2026-11-02 离线砖修复：combat/offline 把离线开箱/灵石直接加进账本主列，而客户端
+ *   启动后几秒内就推档——elapsed 只有几秒，离线开箱额度（elapsed×12/grant）全都套不住，
+ *   +10390 开箱被「增速异常」连续拒收 ~9 分钟，期间刷新还会把离线灵石从本地状态冲掉。
+ *   主列只由服务端结算增加、推送成功即被 cli_sync 对齐，所以「主列 − cli 基线」就是
+ *   未吸收的服务端发放额，计入包络；方向安全，客户端无法伪造）
  */
-export function checkVelocity(prev, next, elapsedMs, sanctioned) {
+export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
   const elapsedS = Math.max(0, elapsedMs) / 1000;
   const days = daysOf(elapsedMs);
   const s = sanctioned || { stones: 0, dust: 0, tickets: 0 };
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const sv = srv && typeof srv === 'object' ? srv : {};
+  const srvStones = Math.max(0, num(sv.stones));
+  const srvOpens = Math.max(0, num(sv.opens));
   // 离线补结豁免：只有种基线/迁移后的第一次校验推带整份 4h 离线额度（grants=1，用后即清）。
   // 其余窗口离线额度一律按服务端 elapsed 折算——客户端调钟伪造「离线 4h」时服务端
   // elapsed 只有几秒，额度自动收缩，调钟刷离线路线被堵死（2026-10-31 复审）。
@@ -190,13 +235,16 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned) {
   }
 
   // —— 2) 开箱增速：interval 下限 2026-11-01 起 0.2s（实际 5 次/秒），包络沿用 20 次/秒上界，×1.2 余量容忍节流合批；
-  // 离线部分只给豁免额度（见 grant）——
-  if (dOpens > elapsedS * OPEN_RATE_PER_S * 1.2 + grant + 2000) {
+  // 离线部分只给豁免额度（见 grant），服务端离线结算的未吸收发放按实额计入（srvOpens）——
+  if (dOpens > elapsedS * OPEN_RATE_PER_S * 1.2 + grant + 2000 + srvOpens) {
     return '开箱次数增速异常（+' + dOpens + ' / ' + Math.round(elapsedS) + 's）';
   }
 
   // —— 3) 灵石收益包络：在线开箱（逐次最坏）+ 离线补结（期望口径，额度=elapsed×12，
-  // 即 20 次/秒 × 离线效率 0.5 × 1.2 余量）+ 战斗 + 按天杂项 + 兑换码 ——
+  // 即 20 次/秒 × 离线效率 0.5 × 1.2 余量）+ 战斗 + 按天杂项 + 兑换码 + 服务端发放 ——
+  // srvStones 与 action_log 授权流水（s.stones）内容重叠（combat/offline 两处都记），
+  // 重复计入只松不紧且都是服务端实额；留着防边界（如同毫秒 created_at 不满足
+  // sanctionedSince 的 created_at > updated_at 严格比较时授权流水漏计）
   const battlesAllow = elapsedS * BATTLE_RATE_PER_S + 200;
   const onlineOpens = Math.min(Math.max(0, dOpens), elapsedS * OPEN_RATE_PER_S * 1.2 + 2000);
   const offlineOpens = Math.min(
@@ -207,7 +255,8 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned) {
     + perOpenExpectedCap(next, battlePower) * offlineOpens
     + perBattleGainCap(immCap, battlePower) * battlesAllow
     + 5e7 * days
-    + Math.max(0, s.stones);
+    + Math.max(0, s.stones)
+    + srvStones;
   if (dTotal > incomeAllow * 1.5) {
     return '灵石收益增速异常（+' + dTotal.toExponential(2) + '，包络 ' + incomeAllow.toExponential(2) + '）';
   }
