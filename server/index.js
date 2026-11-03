@@ -11,6 +11,8 @@ import { createSaveService } from './saves.js';
 import { createSocialService } from './social.js';
 import { createStaminaService } from './stamina.js';
 import { createCombatService } from './combat.js';
+import { createPetsService } from './pets.js';
+import { createShopService } from './shop.js';
 import { sendJSON, readBody, getIp, isSecure, sameOrigin, acceptsGzip, gzipBody, GZIP_MIN_SIZE } from './http-util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,6 +28,8 @@ const saves = createSaveService(db);
 const social = createSocialService(db);
 const stamina = createStaminaService(db);
 const combat = createCombatService(db, stamina);
+const pets = createPetsService(db, stamina);
+const shop = createShopService(db);
 
 const SESSION_COOKIE = 'lx_session';
 const AUTH_BODY_LIMIT = 32 * 1024;    // 登录 / 注册请求体上限
@@ -41,6 +45,7 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.gif': 'image/gif',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
@@ -124,12 +129,18 @@ function serveStatic(req, res, urlPath) {
   const mime = MIME[ext];
   if (!mime) return forbidden(res); // 只发文本/图片/音频等已知类型，防误发任意文件
   if (ext === '.md') return notFound(res); // 文档一律不对外（.md 有 MIME 映射，防 assets 误放文档泄露）
+  // 图片资源（立绘/封面/图标等）内容不变：交由 EdgeOne 等边缘节点长缓存 30 天，
+  // 命中后不再回源（2026-11-03 用户指定；若日后原地替换同名图片，边缘最多滞后一个
+  // max-age 周期，需要立即生效就换文件名或清 CDN 缓存）；其余非三件套资源仍 1 小时
+  const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.ico', '.svg', '.avif']);
+  const cacheControl = ext === '.html' || ext === '.js' || ext === '.css' ? 'no-store'
+    : IMAGE_EXT.has(ext) ? 'public, max-age=2592000'
+    : 'public, max-age=3600';
   const cacheHeaders = {
     'Content-Type': mime,
     // html/js/css 三件套必须同版本且无版本号查询串：no-store 完全不缓存，
-    // 杜绝 EdgeOne 等边缘节点留存旧版脚本/样式造成的前后端版本错配；
-    // 图片类资源内容不变，允许边缘缓存 1 小时
-    'Cache-Control': ext === '.html' || ext === '.js' || ext === '.css' ? 'no-store' : 'public, max-age=3600',
+    // 杜绝 EdgeOne 等边缘节点留存旧版脚本/样式造成的前后端版本错配
+    'Cache-Control': cacheControl,
     ...BASE_HEADERS,
   };
   if (GZIP_TEXT.has(ext)) {
@@ -334,6 +345,38 @@ async function handleApi(req, res, pathname) {
     let body = null;
     try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
     return combat.offline(req, res, { user, body });
+  }
+
+  // 灵宠玩法（2026-11-02 灵宠个体化）：缚灵谷捕捉 / 合成 / 洗髓，概率全服务端掷
+  // （pets.js 内再按方法分发；hunt/capture 有券与体力消耗，统一走鉴权 + body 解析）
+  if (/^\/api\/pet\//.test(pathname)) {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    let body = null;
+    if (method === 'POST') {
+      if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+      const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+      if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+      try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    }
+    if (pets.handle(req, res, { method, pathname, user, body })) return;
+    return sendJSON(res, 404, { error: 'not found' });
+  }
+
+  // 云来坊市（2026-11-02 模拟经营）：建筑/制作/直售/交单/原料入账全服务端裁定
+  // （shop.js 内再按方法分发；灵石收支过账本 + action_log 授权流水）
+  if (/^\/api\/shop(\/|$)/.test(pathname)) {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    let body = null;
+    if (method === 'POST') {
+      if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+      const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+      if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+      try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    }
+    if (shop.handle(req, res, { method, pathname, user, body })) return;
+    return sendJSON(res, 404, { error: 'not found' });
   }
 
   // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 兑换码（social.js 内再按方法分发）

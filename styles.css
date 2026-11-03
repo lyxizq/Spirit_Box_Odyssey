@@ -676,7 +676,7 @@ body.theme-light .panel.stage .stats div { border-color: rgba(43, 52, 64, 0.14);
 
 .realm-hero .bar { height: 8px; margin: 8px 0 14px; background: rgba(243, 239, 226, 0.16); }
 
-.realm-hero-cta { display: flex; justify-content: flex-end; }
+.realm-hero-cta { display: flex; justify-content: flex-end; gap: 12px; }
 
 .realm-hero-cta .btn {
   padding: 12px 26px;
@@ -1504,7 +1504,9 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
 .slot-actions { display: flex; gap: 6px; }
 
 .mini {
-  flex: 1;
+  /* 2026-11-03 用户指定：行内操作钮一律内容定宽（坊市升级/收取/开工/交付等不再拉伸半行）；
+     需要等分/铺满的按钮组由各自容器显式指定（seed-actions/slot-actions/gather-up 等） */
+  flex: 0 0 auto;
   min-width: 0;
   padding: 5px 6px;
   overflow: hidden;
@@ -2215,9 +2217,10 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
 
 .forge-msg.show { opacity: 1; }
 
-.forge-actions { margin-top: 8px; }
+/* 2026-11-03 用户指定：自动放入/合成/关闭三钮同行等宽 */
+.forge-actions { display: flex; gap: 8px; margin-top: 8px; }
 
-.forge-actions .btn.wide { margin-top: 0; }
+.forge-actions .btn.wide { flex: 1; width: auto; margin-top: 0; }
 
 /* ---------- pets / cave / daily / achievements / set-collect ---------- */
 
@@ -2639,8 +2642,9 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
   .bag-item { gap: 6px; }
 }
 
-/* 装备卡操作按钮两行（2026-10-30 全宽度生效）：强化独占一行不截断、工坊/卸下第二行 */
-.slot-actions { flex-wrap: wrap; }
+/* 装备卡操作按钮两行（2026-10-30 全宽度生效）：强化独占一行不截断、工坊/卸下第二行；
+   2026-11-03 统一口径：非全宽钮内容定宽、靠右 */
+.slot-actions { flex-wrap: wrap; justify-content: flex-end; }
 .slot-actions .mini[data-act="enhance"] { flex: 1 1 100%; }
 .equip-slot { min-height: 0; }
 .slot-empty { margin: 14px 0 2px; }
@@ -3388,10 +3392,18 @@ h2 { font-size: 15px; }
   user-select: none;
 }
 
+/* 境界清单开关（2026-11-03 改独立按钮）：点它只展开/收起境界清单，
+   点标题其余区域走面板折叠——两个动作互不重叠 */
 .realm-toggle {
   font-size: 12px;
   color: var(--muted);
   margin-left: 4px;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 .panel.realm h2:hover .realm-toggle { color: var(--gold-2); }
@@ -3644,6 +3656,16 @@ body.theme-light .auth-card { box-shadow: 0 24px 60px rgba(138, 106, 47, 0.18); 
 
 .rank-row .pw { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
+/* 天梯榜：默认只露出前 10 名，往下滚动看更多（行高锁定 1.5 保证 10 行精确） */
+#ladderList {
+  max-height: 409px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
+}
+
+#ladderList .rank-row { line-height: 1.5; }
+
 /* 战力榜点名字查装备 */
 .rank-row .rk-name {
   cursor: pointer;
@@ -3744,6 +3766,8 @@ body.theme-light .auth-card { box-shadow: 0 24px 60px rgba(138, 106, 47, 0.18); 
 
 @media (max-width: 720px) {
   .rank-row, .guild-row { font-size: 14px; }
+
+  #ladderList { max-height: 424px; }
 }
 
 /* 假人「剑影」标识：灰蓝小签，与真人金签区分 */
@@ -3921,6 +3945,14 @@ body.theme-light .fighter-enemy .fighter-avatar {
   height: 14px;
   vertical-align: -2px;
   margin-left: 3px;
+}
+
+/* 物品小图标（2026-11-03）：挂在名字前面，与后缀位 .res-ic 镜像 */
+.item-ic {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-right: 3px;
 }
 
 .btn .res-ic,
@@ -4534,7 +4566,8 @@ body.theme-light .panel.stage .stats dd.gold { color: #8a6a2f; }
 /* 陈列室行内部位图标：统一 20px 居中（slot-ic 默认为行内文字设计，抵消其偏移） */
 .pet-icon .slot-ic { width: 20px; height: 20px; margin: 0; vertical-align: baseline; display: block; }
 
-/* 灵宠行：图标+信息占首行，喂养/信物/内丹/休息/放生落到第二行单行等分
+/* 灵宠行：图标+信息占首行，喂养/信物/内丹/休息/详情/解锁等按钮落到第二行——
+   2026-11-03 用户指定：按钮不再等分拉伸，按内容定宽、整行右对齐（此类按钮统一处理）
    （覆盖 .pet-actions 的 62% 限宽换行与窄屏两列网格；ID 选择器压过媒体查询） */
 #petList .pet-row { flex-wrap: wrap; }
 #petList .pet-actions {
@@ -4544,13 +4577,15 @@ body.theme-light .panel.stage .stats dd.gold { color: #8a6a2f; }
   max-width: none;
   width: auto;
   margin-top: 6px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 #petList .pet-actions .mini {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
   margin-left: 0;
-  padding: 8px 4px;
-  font-size: 10px;
+  padding: 7px 14px;
+  font-size: 11px;
 }
 
 /* 道侣行头像：立绘铺满 34px 方块（圆角随盒），加载失败隐图显文字兜底 */
@@ -4866,6 +4901,14 @@ body.theme-light .mini:disabled {
 }
 .signlog-row b { color: var(--gold-2); font-weight: 600; }
 .signlog-row.signlog-debt, .signlog-row.signlog-debt b { color: var(--red); }
+
+/* 签到流水弹层列表（2026-11-03 用户指定）：面板原位改为弹层查看，滚动看全量 */
+.signlog-list {
+  max-height: min(420px, 56vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
+}
 body.theme-light .signlog-row.signlog-debt,
 body.theme-light .signlog-row.signlog-debt b { color: #b91c1c; }
 
@@ -5056,4 +5099,425 @@ body.theme-light .set-wild .set-name {
 }
 .cast-modal-brief {
   margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.9; text-align: justify;
+}
+
+/* —— 方格牧场（2026-11-02 灵田改 12×12 方格）+ 洗炼石徽章 ——
+   颜色全部走主题变量/半透明彩色叠加：暗色水墨与明色羊皮纸双主题下都可读 —— */
+.res-ic { width: 13px; height: 13px; vertical-align: -2px; }
+.farm-counts { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 2px; }
+.farm-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; line-height: 1; padding: 3px 8px; border-radius: 10px;
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--text); cursor: default;
+}
+.farm-chip b { font-size: 11px; font-weight: 600; }
+.farm-chip.sel {
+  border-color: var(--gold); color: var(--gold-2);
+  background: var(--accent-soft);
+}
+body.theme-light .farm-chip.sel { color: var(--gold-dim); }
+.farm-chip.lack { border-color: var(--red); color: var(--red); }
+.farm-seedbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
+/* 购种/一键收获/一键播种收窄：不吃 .mini 的 flex:1，按内容定宽（2026-11-03 用户指定） */
+.farm-seedbar button[data-seedbuy],
+.farm-seedbar button[data-farmbatch] { flex: 0 0 auto; }
+.farm-seedbar .farm-chip { cursor: pointer; }
+#farmGrid {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 34px; gap: 2px;
+  max-width: 432px; margin: 8px auto 4px;
+  user-select: none; -webkit-user-select: none;
+}
+.farm-cell {
+  min-width: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; line-height: 1; border-radius: 4px;
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--muted); overflow: hidden; white-space: nowrap;
+}
+.farm-cell.fc-far { opacity: .35; }
+.farm-cell.fc-edge {
+  border: 1px dashed var(--gold); color: var(--gold);
+  background: var(--accent-soft); cursor: pointer; font-weight: 600;
+}
+.farm-cell.fc-edge:active { background: var(--gold); color: var(--cta-ink, #3a2c10); }
+.farm-cell.fc-empty { background: rgba(74, 222, 128, .12); cursor: pointer; }
+.farm-cell.fc-empty:active { background: rgba(74, 222, 128, .28); }
+.farm-cell.fc-grow { background: rgba(96, 165, 250, .22); color: var(--blue); }
+.farm-cell.fc-ready {
+  background: rgba(74, 222, 128, .45); color: #12300f; font-weight: 700;
+  cursor: pointer; box-shadow: 0 0 6px rgba(74, 222, 128, .5);
+}
+
+/* ---------- 灵宠个体化（2026-11-02）：缚灵谷捕捉 / 合成 / 详情 ---------- */
+
+.pet-top { justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
+.pet-top #petSlotsBtn { margin-left: auto; }
+/* 顶栏券数：图标前置（.res-ic 默认 margin-left 是给后缀图标用的） */
+#ticketCount .res-ic { margin-left: 0; margin-right: 3px; }
+
+.pet-section-title {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--gold-2);
+  opacity: 0.85;
+}
+.pet-section-title:first-child { margin-top: 0; }
+
+.pet-art-mini {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(216, 179, 106, 0.35);
+  background: #10151f;
+}
+.pet-art-mini .story-art { width: 100%; height: 100%; }
+
+.pet-name.r1 { color: var(--green); }
+.pet-name.r2 { color: var(--blue); }
+.pet-name.r3 { color: var(--cyan); }
+.pet-name.r4 { color: var(--orange); }
+.pet-name.r5 { color: var(--red); }
+.pet-rbadge {
+  font-style: normal;
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+
+/* 品质色（捕捉/详情界面通用；与 RARITIES 色板一致） */
+.r0 { color: #9aa4b2; }
+.r1 { color: #4ade80; }
+.r2 { color: #60a5fa; }
+.r3 { color: #2dd4bf; }
+.r4 { color: #fbbf24; }
+.r5 { color: #f87171; }
+
+.pet-modal { z-index: 56; }
+/* 二次弹窗（弹层之上再开的弹层，如合成/熔铸结果、灵宠详情）：永远在最前面（2026-11-03 用户指定） */
+.modal.modal-sub { z-index: 60; }
+.pet-hunt-card, .pet-fuse-card, .pet-detail-card {
+  width: min(94vw, 430px);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+/* 缚灵谷 */
+.hunt-zones { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.hunt-zone {
+  border: 1px solid rgba(216, 179, 106, 0.3);
+  background: rgba(216, 179, 106, 0.06);
+  color: inherit;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.hunt-zone em { font-style: normal; font-size: 11px; opacity: 0.75; }
+.hunt-zone.on {
+  border-color: rgba(216, 179, 106, 0.75);
+  background: rgba(216, 179, 106, 0.16);
+  font-weight: 600;
+}
+.hunt-zone.lock { opacity: 0.5; cursor: not-allowed; }
+.hunt-zone:disabled { cursor: not-allowed; }
+
+.hunt-scene {
+  min-height: 260px;
+  border-radius: 14px;
+  border: 1px solid rgba(216, 179, 106, 0.25);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(216, 179, 106, 0.10), transparent 60%),
+    linear-gradient(180deg, #141c18 0%, #0b100d 100%);
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.hunt-empty { text-align: center; }
+.hunt-big { font-size: 20px; font-weight: 700; letter-spacing: 0.12em; color: #e8e2d0; margin: 0 0 6px; }
+.hunt-big.hunting { animation: hunt-pulse 1.1s ease-in-out infinite; }
+@keyframes hunt-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.hunt-pet { width: 200px; height: 220px; border-radius: 14px; overflow: hidden; }
+.hunt-pet .story-art { width: 100%; height: 100%; }
+.hunt-pet.glow { box-shadow: 0 0 26px rgba(240, 217, 168, 0.45); animation: hunt-pop 0.5s ease-out; }
+@keyframes hunt-pop {
+  0% { transform: scale(0.82); opacity: 0.2; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.hunt-name { margin: 10px 0 2px; font-weight: 700; font-size: 16px; text-align: center; }
+.hunt-affixes { margin: 0; font-size: 13px; color: #c8cbd4; text-align: center; }
+
+/* 合成结果弹层（2026-11-03 用户指定）：成品立绘居中 + 收下按钮 */
+.pet-fuse-result { text-align: center; }
+.pet-fuse-result .fuse-result-art { margin: 8px auto 0; }
+.pet-fuse-result .hint { margin: 8px 0 0; }
+
+/* 熔铸结果弹层（2026-11-03 用户指定）：成品卡居中（复用装备卡 item-r 品质色）、失败文案居中 */
+.melt-result { text-align: center; }
+.melt-result .melt-item-card { max-width: 260px; margin: 8px auto; text-align: left; }
+.melt-result .hint { margin: 8px 0 0; }
+.melt-fail-text { margin: 14px 0 0; font-size: 13px; color: var(--red, #f87171); }
+
+.hunt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.hunt-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.hunt-actions .btn em {
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.8;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 0 4px;
+}
+.hunt-actions .btn.wide { grid-column: 1 / -1; }
+.hunt-info { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+
+/* 合成 */
+.fuse-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.fuse-slot {
+  border: 1px dashed rgba(216, 179, 106, 0.4);
+  border-radius: 12px;
+  background: rgba(216, 179, 106, 0.05);
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 12px;
+  padding: 6px;
+}
+.fuse-slot em { font-size: 22px; opacity: 0.6; font-style: normal; }
+.fuse-slot.empty.picking { border-color: rgba(240, 217, 168, 0.9); background: rgba(240, 217, 168, 0.1); }
+.fuse-slot:not(.empty) { border-style: solid; }
+.fuse-slot-art { width: 62px; height: 66px; border-radius: 9px; overflow: hidden; display: block; }
+.fuse-slot-art .story-art { width: 100%; height: 100%; }
+
+.fuse-picker-box { margin-bottom: 8px; }
+.fuse-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.fuse-pick {
+  border: 1px solid rgba(216, 179, 106, 0.3);
+  border-radius: 10px;
+  background: rgba(216, 179, 106, 0.05);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 11px;
+  padding: 6px 4px;
+}
+.fuse-pick-art { width: 52px; height: 56px; border-radius: 8px; overflow: hidden; display: block; }
+.fuse-pick-art .story-art { width: 100%; height: 100%; }
+
+.fuse-preview { min-height: 54px; margin-bottom: 6px; }
+.fuse-result { font-size: 13px; margin: 0 0 6px; }
+.fuse-locks { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 12px; }
+.fuse-locks .mini.on { border-color: rgba(240, 217, 168, 0.9); background: rgba(240, 217, 168, 0.12); }
+
+/* 详情 */
+.pet-detail-grid { display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin: 8px 0; }
+.pet-detail-art { text-align: center; }
+.pet-detail-art .story-art {
+  width: 150px;
+  height: 170px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(216, 179, 106, 0.3);
+}
+.pet-detail-info { font-size: 13px; }
+.pet-line { margin: 0 0 5px; }
+.pet-affixes .affix-row { border-bottom: 1px dashed rgba(255, 255, 255, 0.08); }
+.pet-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.pet-detail-note { font-size: 12px; color: var(--muted); }
+.pet-detail-msg { color: var(--orange); }
+
+@media (max-width: 480px) {
+  .pet-detail-grid { grid-template-columns: 1fr; }
+  .pet-detail-art .story-art { margin: 0 auto; }
+  .hunt-actions { grid-template-columns: 1fr; }
+}
+
+/* 云来坊市（2026-11-02 模拟经营）：建筑/配方/订单/原料 */
+.shop-b { margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); }
+.shop-b-locked { opacity: .55; }
+.shop-b-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.shop-b-name { font-size: 13px; font-weight: 600; color: var(--gold, #f0d9a8); }
+.shop-b-name em { font-style: normal; font-size: 11px; color: var(--text, #dfe3ea); }
+.shop-b-name i { font-style: normal; font-size: 11px; color: var(--muted, #9aa3b2); }
+.shop-max { font-size: 11px; color: var(--muted, #9aa3b2); }
+.shop-craft, .shop-recipe, .shop-inv, .shop-order {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,.05);
+}
+.shop-craft:last-of-type, .shop-recipe:last-of-type { border-bottom: 0; }
+.shop-craft i { font-style: normal; color: var(--muted, #9aa3b2); flex: 1; }
+.shop-r-name { min-width: 52px; font-weight: 600; }
+.shop-r-locked .shop-r-name, .shop-r-locked .shop-r-info { opacity: .5; }
+.shop-r-info { flex: 1; font-size: 11px; color: var(--muted, #9aa3b2); }
+.shop-inv > span { flex: 1; }
+.shop-inv i { font-style: normal; font-size: 11px; color: var(--muted, #9aa3b2); }
+.shop-order.shop-o-done { opacity: .45; }
+.shop-order > span:first-child { min-width: 72px; }
+.shop-o-pay { flex: 1; font-size: 11px; color: var(--gold, #f0d9a8); }
+.shop-order i { font-style: normal; font-size: 11px; color: var(--muted, #9aa3b2); }
+.shop-refresh { font-style: normal; font-size: 10px; color: var(--muted, #9aa3b2); }
+.shop-mats { display: flex; flex-wrap: wrap; gap: 5px; }
+.shop-mat {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; line-height: 1; padding: 3px 8px; border-radius: 10px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+  color: var(--text, #dfe3ea); cursor: default;
+}
+.shop-mat-zero { opacity: .4; }
+
+/* 牧场种子栏两行布局（2026-11-02 用户指定）：第 1 行 3 籽、第 2 行 4 籽 + 购种 */
+.farm-seed-break { flex-basis: 100%; height: 0; }
+
+/* 牧场选种弹层（2026-11-02 用户指定）：点空白格弹层选种 */
+.farm-plant-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+.farm-plant-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border-radius: 10px; text-align: left;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09);
+  color: var(--text, #dfe3ea); font-size: 13px; cursor: pointer;
+}
+.farm-plant-row:hover { border-color: rgba(240, 217, 168, .55); }
+.farm-plant-row i { flex: 1; font-style: normal; font-size: 11px; color: var(--muted, #9aa3b2); }
+.farm-plant-row b { font-size: 12px; color: var(--gold, #f0d9a8); }
+.farm-plant-row[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* 牧场购种弹层（2026-11-02 用户指定）：列全部菜籽逐行填量，统一购买 */
+.farm-buy-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+.farm-buy-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 10px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09);
+  font-size: 13px;
+}
+.farm-buy-name { min-width: 0; }
+.farm-buy-name i { font-style: normal; font-size: 11px; color: var(--muted, #9aa3b2); }
+.farm-buy-own { margin-left: auto; font-size: 11px; color: var(--muted, #9aa3b2); white-space: nowrap; }
+.farm-buy-row input {
+  width: 62px; padding: 4px 6px; border-radius: 8px; text-align: center;
+  font-size: 13px; color: var(--text, #dfe3ea);
+  background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.14);
+}
+.farm-buy-row input:focus { outline: none; border-color: rgba(240, 217, 168, .6); }
+#farmBuyTotal b { color: var(--gold, #f0d9a8); }
+
+/* 灵宠背包容量（2026-11-02 用户指定）：扩容入口已并入顶栏背包紧凑条 */
+.pet-bag-max { font-size: 11px; color: var(--muted, #9aa3b2); }
+
+/* 坊市建筑 SVG 图标（2026-11-02 用户指定：替代丹/器/符文字） */
+.shop-b-ic { margin-right: 4px; }
+.shop-b-ic svg { vertical-align: -2px; }
+
+/* 洞府田字格（2026-11-02 用户指定）：四建筑 2×2，格内 竖排 图标名/描述/全宽按钮 */
+#caveList { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+#caveList .cave-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 6px 8px;
+}
+#caveList .cave-row .cave-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+#caveList .cave-row .cave-icon { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
+#caveList .cave-row .cave-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 升级钮收进标题行末（2026-11-02 用户指定）：小号紧凑，箭头位右贴 */
+#caveList .cave-row .cave-up {
+  margin-left: auto; flex: 0 0 auto;
+  padding: 2px 7px; font-size: 11px; line-height: 1.5; border-radius: 8px;
+}
+#caveList .cave-row .cave-desc { margin: 0; }
+@media (max-width: 379px) {
+  #caveList { grid-template-columns: 1fr; }
+}
+
+/* 出战灵宠展示位（2026-11-02 用户指定）：仅出战个体显示在开箱台旁，点击进灵宠面板 */
+.pet-companion {
+  display: flex; gap: 12px; justify-content: center; align-items: flex-end;
+  margin: 4px 0 0; padding: 0; background: none; border: 0; cursor: pointer;
+}
+.pet-companion[hidden] { display: none; }
+.pet-companion .pc-slot { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.pet-companion .pc-slot .story-art {
+  width: 46px; height: 46px; border-radius: 11px; overflow: hidden;
+  border: 1px solid rgba(216, 179, 106, 0.4);
+}
+.pet-companion .pc-name { font-size: 11px; font-style: normal; color: var(--gold-2, #f0d9a8); }
+
+/* 面板折叠（2026-11-02 用户指定）：全模块可折叠、默认折叠、跨会话记忆 */
+section.panel > h2 { cursor: pointer; }
+/* 面板内容首行信息条：计数 / 操作按钮从 h2 标题迁入面板内部（2026-11-03 用户指定，
+   折叠后的框上不再显示任何数据与按钮） */
+.panel-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 10px; font-size: 12px; color: var(--muted);
+}
+/* 垂钓抛竿 + 补饵同排（2026-11-03 用户指定：补饵在抛竿右侧） */
+.fish-actions { display: flex; gap: 8px; margin: 8px 0; }
+.fish-actions .btn { flex: 1; white-space: nowrap; }
+section.panel > h2::after {
+  content: '▾';
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0;
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+section.panel.folded > h2::after { content: '▸'; }
+/* !important：#dailyList / #achvList（ID 选择器 1-0-0）与 .panel.combat .trophy-box（0-3-0）
+   等自有 display 规则的特异性都高于本规则（0-2-2），折叠时会被顶掉露出内容——
+   折叠即全藏是硬语义，任何子面板的 display 声明都不得越过它 */
+section.panel.folded > :not(h2) { display: none !important; }
+
+/* 灵宠出战阵容 + 背包入口（2026-11-02 用户指定：面板只显示出战，背包点开才看；
+   2026-11-03 改版：背包缩为紧凑条随顶栏一行，挂在 券/捕捉/合成 之后） */
+.pet-bag-inline {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 10px; margin-left: 4px;
+  border-radius: 10px; background: rgba(216, 179, 106, 0.08);
+  border: 1px solid rgba(216, 179, 106, 0.3);
+}
+.pet-bag-count { flex: none; font-size: 12px; white-space: nowrap; }
+.pet-bag-count b { color: var(--gold-2, #f0d9a8); }
+.pet-bag-inline .mini { flex: 0 0 auto; }
+.pet-row.bag-empty { opacity: 0.65; border-style: dashed; }
+.pet-bag-list {
+  display: grid; grid-template-columns: 1fr; gap: 8px;
+  max-height: min(560px, 68vh); overflow-y: auto;
+  padding: 2px; margin: 8px 0 4px;
+}
+/* 背包为空/已满的提示行占满整行 */
+.pet-bag-list > .hint { grid-column: 1 / -1; margin: 0; }
+/* 背包行（2026-11-03 用户指定改版）：一行一只；属性完整显示可换行；
+   出战/详情加大、靠右对齐，独占卡片下一行 */
+.pet-bag-list .pet-row { flex-wrap: wrap; }
+.pet-bag-list .pet-main { flex: 1; min-width: 0; }
+.pet-bag-list .pet-desc { white-space: normal; }
+.pet-bag-list .pet-actions { flex: 0 0 100%; max-width: none; justify-content: flex-end; }
+.pet-bag-list .pet-actions .mini {
+  flex: 0 0 auto; margin-left: 0; /* 抵消 .pet-actions .mini 的 margin-left:auto（会把两钮的空隙平分、休息被推到中间） */
+  padding: 8px 18px; font-size: 11px; min-height: 30px;
 }

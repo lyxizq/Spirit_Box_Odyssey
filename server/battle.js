@@ -11,6 +11,7 @@
 // 同源断言：scripts/parity-check.mjs 用同一份存档分别跑客户端与服务端函数比对。
 
 import { SETS, SLOTS } from './items.js';
+import { PET_SPECIES, PET_AFF_LV_STEP } from './pets.js';
 
 // 竞技场快照结构：{atk, hp, def, crit, critMult, lifesteal, dr, pierce}
 // 2026-11-01 P1 起征战四模式也走本函数：补 events 逐回合记录 + playerHp/enemyHp
@@ -330,12 +331,51 @@ const RUNEWORDS = [
   { seq: ['hp', 'hp', 'hp'], apply: { hp: 0.08 } },
   { seq: ['crit', 'ls', 'pierce'], apply: { atk: 0.05, hp: 0.05 } },
 ];
-const PETS = [
-  { id: 'fox', stat: 'atk', per: 0.02 },
-  { id: 'turtle', stat: 'hp', per: 0.025 },
-  { id: 'rat', stat: 'crit', per: 0.004 },
-  { id: 'pixiu', stat: 'gain', per: 0.03 },
-];
+// 灵宠物种表（2026-11-02 灵宠个体化，game.js / server/pets.js 同源）：天赋仍按物种
+// 亲密度/信物缩放；个体词条按品质 roll、随个体 lv 消费端成长（PET_AFF_LV_STEP）
+const PET_SP_MAP = {};
+for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
+
+// activePets 现存实例 uid（数字）；旧档迁移前可能残留物种 id（字符串），双读兼容。
+// 去重 + 封长（2026-11-03 纵深兜底，validateDeep 已加同口径校验）：重复 uid / 超长数组
+// 会把天赋、个体词条、内丹、灵石内丹 buff 全部 ×N 复读（战斗面板与结算发放同步放大）
+const PET_SLOT_MAX = 5; // game.js 同源
+function activePetInsts(data) {
+  const out = [];
+  const insts = Array.isArray(data.petInsts) ? data.petInsts : [];
+  const seen = new Set();
+  const list = Array.isArray(data.activePets) ? data.activePets.slice(0, PET_SLOT_MAX) : [];
+  for (const uid of list) {
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    if (typeof uid === 'number') {
+      const inst = insts.find((p) => p && p.uid === uid);
+      if (inst && PET_SP_MAP[inst.sp]) out.push(inst);
+    } else if (typeof uid === 'string' && PET_SP_MAP[uid] && data.pets && data.pets[uid] !== undefined) {
+      out.push({ sp: uid, lv: 1, affixes: [] }); // 旧口径：纯物种天赋，无个体词条
+    }
+  }
+  return out;
+}
+
+// 出战灵宠的加成聚合（game.js petBonus/coreBonus 同源口径）：天赋（物种 per × 亲密度
+// + 信物 0.005/级）+ 个体词条（v × (1 + 0.01×(lv-1))）。gain 只吃天赋（词条池无经济键）
+function petAggOf(data) {
+  const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  for (const inst of activePetInsts(data)) {
+    const def = PET_SP_MAP[inst.sp];
+    const intimacy = (data.pets && data.pets[inst.sp] !== undefined) ? num(data.pets[inst.sp]) : 0;
+    const talent = def.per * intimacy + 0.005 * num(data.petTokens && data.petTokens[inst.sp]);
+    if (def.stat !== 'gain' && agg[def.stat] !== undefined) agg[def.stat] += talent;
+    const lvMult = 1 + PET_AFF_LV_STEP * (Math.max(1, num(inst.lv) || 1) - 1);
+    for (const a of inst.affixes || []) {
+      if (!a || agg[a.k] === undefined) continue;
+      agg[a.k] += (a.v || 0) * lvMult;
+    }
+  }
+  return agg;
+}
 const CORE_TRAITS = {
   fox: [
     { lv: 3, stat: 'atk', v: 0.03 }, { lv: 6, stat: 'crit', v: 0.01 }, { lv: 10, stat: 'atk', v: 0.05 },
@@ -348,6 +388,31 @@ const CORE_TRAITS = {
   ],
   pixiu: [
     { lv: 3, stat: 'stone', v: 0.04 }, { lv: 6, stat: 'dust', v: 0.04 }, { lv: 10, stat: 'stone', v: 0.06 },
+  ],
+  // —— 2026-11-02 灵宠个体化新增物种（game.js CORE_TRAITS 同源）——
+  ying: [
+    { lv: 3, stat: 'hp', v: 0.03 }, { lv: 6, stat: 'ls', v: 0.01 }, { lv: 10, stat: 'hp', v: 0.05 },
+  ],
+  xi: [
+    { lv: 3, stat: 'def', v: 0.03 }, { lv: 6, stat: 'dr', v: 0.01 }, { lv: 10, stat: 'def', v: 0.05 },
+  ],
+  sun: [
+    { lv: 3, stat: 'pierce', v: 0.015 }, { lv: 6, stat: 'crit', v: 0.01 }, { lv: 10, stat: 'pierce', v: 0.03 },
+  ],
+  chan: [
+    { lv: 3, stat: 'def', v: 0.03 }, { lv: 6, stat: 'dr', v: 0.012 }, { lv: 10, stat: 'def', v: 0.05 },
+  ],
+  zhu: [
+    { lv: 3, stat: 'crit', v: 0.012 }, { lv: 6, stat: 'pierce', v: 0.02 }, { lv: 10, stat: 'crit', v: 0.022 },
+  ],
+  baize: [
+    { lv: 3, stat: 'ls', v: 0.012 }, { lv: 6, stat: 'hp', v: 0.04 }, { lv: 10, stat: 'ls', v: 0.025 },
+  ],
+  qilin: [
+    { lv: 3, stat: 'hp', v: 0.035 }, { lv: 6, stat: 'def', v: 0.02 }, { lv: 10, stat: 'hp', v: 0.06 },
+  ],
+  kun: [
+    { lv: 3, stat: 'atk', v: 0.03 }, { lv: 6, stat: 'pierce', v: 0.02 }, { lv: 10, stat: 'atk', v: 0.05 },
   ],
 };
 const SHICHEN = [
@@ -426,6 +491,12 @@ export function playerCombatStats(data, env) {
   atk *= ascMult;
   hp *= ascMult;
 
+  // 云坊（2026-11-02 用户指定）：战力 +0.2%/级，攻血防同乘（game.js 同源位，改一处必改两处）
+  const fangMult = 1 + 0.002 * num(data.cave && data.cave.fang);
+  atk *= fangMult;
+  hp *= fangMult;
+  def *= fangMult;
+
   const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
   for (const s of SLOTS) {
     const it = data.equipped && data.equipped[s.key];
@@ -455,23 +526,19 @@ export function playerCombatStats(data, env) {
   let petAtk = 0;
   let petHp = 0;
   let petCrit = 0;
-  for (const id of data.activePets || []) {
-    const def = PETS.find((p) => p.id === id);
-    if (!def || !data.pets || data.pets[id] === undefined) continue;
-    const bonus = def.per * num(data.pets[id]) + 0.005 * num(data.petTokens && data.petTokens[id]);
-    if (def.stat === 'atk') petAtk += bonus;
-    else if (def.stat === 'hp') petHp += bonus;
-    else if (def.stat === 'crit') petCrit += bonus;
-  }
+  const petAgg = petAggOf(data);
+  petAtk = petAgg.atk;
+  petHp = petAgg.hp;
+  petCrit = petAgg.crit;
   let coreAtk = 0;
   let coreHp = 0;
   let coreCrit = 0;
   let coreDr = 0;
   let corePierce = 0;
-  for (const id of data.activePets || []) {
-    const coreLv = num(data.petCores && data.petCores[id]);
+  for (const inst of activePetInsts(data)) {
+    const coreLv = num(data.petCores && data.petCores[inst.sp]);
     if (!coreLv) continue;
-    for (const t of CORE_TRAITS[id] || []) {
+    for (const t of CORE_TRAITS[inst.sp] || []) {
       if (coreLv >= t.lv) {
         if (t.stat === 'atk') coreAtk += t.v;
         else if (t.stat === 'hp') coreHp += t.v;
@@ -484,7 +551,10 @@ export function playerCombatStats(data, env) {
   const gongfa = data.gongfa || {};
   atk *= 1 + (petAtk + 0.02 * num(gongfa.atk)) * GROWTH_SCALE + colCombat;
   hp *= 1 + (petHp + 0.02 * num(gongfa.hp)) * GROWTH_SCALE + colCombat;
+  def *= 1 + petAgg.def * GROWTH_SCALE;
   crit += petCrit * GROWTH_SCALE;
+  lifesteal += petAgg.ls * GROWTH_SCALE;
+  pierce += petAgg.pierce * GROWTH_SCALE;
   atk *= 1 + coreAtk * GROWTH_SCALE;
   hp *= 1 + coreHp * GROWTH_SCALE;
   crit += coreCrit * GROWTH_SCALE;
@@ -628,10 +698,10 @@ export function baseGainOf(data, env) {
     if (coll.length >= 6) colGain += 0.25;
   }
   let petGain = 0;
-  for (const id of data.activePets || []) {
-    const def = PETS.find((p) => p.id === id);
-    if (!def || def.stat !== 'gain' || !data.pets || data.pets[id] === undefined) continue;
-    petGain += def.per * num(data.pets[id]) + 0.005 * num(data.petTokens && data.petTokens[id]);
+  for (const inst of activePetInsts(data)) {
+    const def = PET_SP_MAP[inst.sp];
+    if (!def || def.stat !== 'gain' || !data.pets || data.pets[inst.sp] === undefined) continue;
+    petGain += def.per * num(data.pets[inst.sp]) + 0.005 * num(data.petTokens && data.petTokens[inst.sp]);
   }
   let museum = 0;
   for (const s of SLOTS) {
@@ -649,7 +719,11 @@ export function baseGainOf(data, env) {
   const elixir = data.elixir || {};
   const elixirGain = elixir.id === 'gain' && now < num(elixir.until) ? 1.3 : 1;
   const ordealFanYi = (data.ordealDone || []).includes('fanYi') ? 0.10 : 0;
-  return (3 + 0.9 * num(data.gainLv)) * realmMult * prestigeMult * powerMult
+  // gainLv 钳制（2026-11-03，weightsOf luckLv 同手法）：结算侧此前裸读镜像，改档
+  // gainLv:1e9 会把 /api/combat/offline 的灵石期望抬到 1e12+/轮——且该发放走 srv
+  // 差额豁免被增速包络自动放行（UPGRADES.gain.max=60，validateDeep 已加同口径校验）
+  const gainLv = Math.max(0, Math.min(60, Math.floor(Number(data.gainLv) || 0)));
+  return (3 + 0.9 * gainLv) * realmMult * prestigeMult * powerMult
     * (1 + colGain + petGain + caveGain)
     * (1 + 0.1 * num(data.immortal))
     * (data.title ? 1.02 : 1)
@@ -692,9 +766,9 @@ function stoneBuffParts(data) {
   const sc = shichenNow();
   const sky = skyNow();
   let coreStone = 0;
-  for (const id of (data && data.activePets) || []) {
-    const coreLv = (data.petCores && data.petCores[id]) || 0;
-    for (const t of CORE_TRAITS[id] || []) {
+  for (const inst of activePetInsts(data || {})) {
+    const coreLv = (data.petCores && data.petCores[inst.sp]) || 0;
+    for (const t of CORE_TRAITS[inst.sp] || []) {
       if (coreLv >= t.lv && t.stat === 'stone') coreStone += t.v;
     }
   }

@@ -344,6 +344,33 @@ ROGUE_BUFFS 8 种（攻/血/防/吸血/暴击/破甲/减伤 + 不灭·复活一�
 // 词条继承：材料装备 + 200 碎屑 → 材料第 1 条词条覆盖目标第 1 条未锁词条
 ```
 
+### 4.16 灵宠个体化（2026-11-02 重构：捕捉 / 合成 / 洗髓）
+
+```js
+// 物种表（server/pets.js 同源，12 只；旧 4 宠全部并入）
+PET_SPECIES  { id, name, icon, stat(天赋属性), per(天赋值), band:[品质下限,上限] }
+//   荒山: 幽萤蝶(凡~灵/hp) 青岩蜥(凡~灵/def) · 灵谷: 灵瞳鼠(灵~玄/crit) 铁甲龟(灵~玄/hp)
+//         雷灵狐(灵~地/atk) 风隼(灵~地/pierce) · 秘境: 玄冰蟾(玄~地/def) 千机蛛(玄~天/crit)
+//         招财貔貅(玄~天/gain) · 古渊: 白泽(地~仙/ls) 烛麒麟(地~仙/hp) · 仙府: 鲲鹏雏(仙/atk)
+PET_ZONES    缚灵谷五地（荒山4/灵谷5/秘境6/古渊7/仙府8 = 解锁境界下标，各带物种池权重）
+PET_HUNT_STAMINA 3  PET_HUNT_TICKET 1  PET_HUNT_DAILY 30
+PET_MEET_RATE 0.65  PET_MEET_PITY 3（连空 3 趟必遇，服务端 pity 计数）
+PET_CAPTURE_BASE [0.9,0.75,0.6,0.45,0.3,0.18]（按品质）  PET_CAPTURE_CAP 0.95
+PET_POLICY   bare 空(±0) / feed 灵果(+20%, 灵石 2万×8^r) / awe 镇压(+12%, 兽骨 20(r+1)^2)——消耗失败不退
+PET_FUSE_COST(r) = 5万×6^r（同物种同品质×3 → 品质+1，等级取最高，词条重随机；
+                  锁灵：1 洗练券继承材料中该词条最高值，其余重随机）
+PET_REROLL_STONES(r,times,lockN) = 1万×4^r ×1.3^times ×2^lockN   PET_REROLL_DUST = 10(r+1)×2^lockN
+PET_AFF_LV_STEP 0.01 // 个体词条消费端成长：v × (1+0.01×(lv-1))，lv100 ≈ ×2
+petInstFeedCost(lv) = 1000×1.28^(lv-1)   petReleaseBones(r) = 10(r+1)^2
+```
+
+- **个体实例**：`petInsts[] = { uid, sp, r(品质带内), lv(1..100), affixes[], rerolls }`；`petSeq` 发号器；捕捉/合成/洗髓**全服务端掷**（`/api/pet/hunt|capture|fuse|reroll` + `GET /api/pet/pending`），成体 `uid=0` 下发、客户端重编（照装备掉落模式）。
+- **两阶段捕捉**：hunt 掷遭遇存 `save_ledger.pet_hunt` JSON 列（pending），capture 消费之；重看 pending（hunt 命中已有遭遇）原样返回不扣费不重掷。
+- **物种级熟练度保留**：亲密度（灵石，`state.pets[sp]`）、信物（碎屑）、内丹（兽骨，`CORE_TRAITS` 已扩 12 物种）不随个体放生回退；`petBonus(stat)`/`coreBonus(stat)` 改为 uid→实例→物种 聚合（天赋 ×亲密度 + 信物 + 个体词条 ×lv 成长），消费端在 `playerCombatStats`（六系全吃）与 `baseGain`（gain 只吃天赋）。
+- **出战**：`activePets` 现存实例 uid（迁移前旧档字符串物种 id 在服务端有兼容读）。
+- **服务端同界**：`server/pets.js rollPetInst` 与 `saves.js validateDeep petInsts`（物种白名单/uid 唯一/品质在带内/词条数=品质条数/值≤0.6）互为镜像；灵石/券扣费走账本原子扣款；战力包络 2500→3400（灵宠词条余量，只松不紧）。
+- **立绘**：`petArtHtml(sp)` = `assets/pet-<sp>.jpg` 优先 + 内置剪影 SVG 回退（`petSilhouetteSvg`）；生图提示词见 `assets/生图提示词.md` 灵宠篇（存图即生效，无需改代码）。
+
 ## 5. 存档 Schema
 
 `persist()` 直接 `JSON.stringify(state)` 存进 `lingxia_idle_v1`；`load()` 用 `Object.assign(defaults(), data)` 兜底，并逐项校验（详见 `load()`，结构错误字段会被重置修好 → **新增字段只要加进 `defaults()` 就自动兼容旧档**）。
@@ -369,15 +396,20 @@ ROGUE_BUFFS 8 种（攻/血/防/吸血/暴击/破甲/减伤 + 不灭·复活一�
   signMilestones: [天数]               // 已领的签到里程碑
   setCollection: { tower|stage|wild: [slotKey] }          // 套装图鉴「曾获得」
   petTickets: Number
-  pets: { [petId]: 亲密度 }      // 0..PET_MAX_LV，>0 才算已拥有
-  activePet: petId | ''
+  pets: { [物种id]: 亲密度 }     // 0..PET_MAX_LV，字段存在=图鉴已收（物种级熟练度）
+  petInsts: [{ uid, sp, r, lv, affixes, rerolls }]   // 灵宠个体（2026-11-02），uid 从 petSeq 发号
+  petSeq: Number                 // 个体 uid 发号器（max(uid)+1 起步）
+  petDex: { [物种id]: { met, got, bestR } }          // 缚灵谷图鉴
+  petHunt: { day, hunts }        // 今日探索数（服务端权威，本地展示镜像）
+  petMigrated: true              // 老档融合迁移标记（已招募物种各赠 1 只凡品个体）
+  activePet: ''                  // 旧单选出战（已废弃，仅存量兼容）
   cave: { array, garden, library }
   elixir: { owned: {id:n}, until, id, crafting: {id, doneAt}|null }   // 炼丹
   gongfa: { atk, hp, hui }       // 功法 0..5
   immortal: Number               // 仙位数
   petSlots: 1|2                  // 出战位
-  activePets: [petId]            // 出战中（旧单数 activePet 已迁移）
-  petTokens: { [petId]: lv }     // 信物 0..10
+  activePets: [uid]              // 出战中的灵宠个体 uid（2026-11-02 起存 uid，非物种 id）
+  petTokens: { [物种id]: lv }    // 信物 0..10（物种级）
   rogue: { best, run: {floor, buffs[], reviveUsed}|null }  // 探幽
   bestiary: { [怪名]: 击杀数 }
   title: '' | 称号名
@@ -634,6 +666,7 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 - **客户端玩法缺陷**：`applySaveData` 漏拷 `daily.gamble`（每次读档赌石计数归零，500 次/日上限失效）；`doInherit` 不查重（继承重复词条下次读档被静默删除，碎屑+材料白花）；战技/功法/灵宠文案标全值实际 ×0.25（GROWTH_SCALE 折算漏改文案，显示与效果差 4 倍）——三处文案/展示公式改按实际值；月度补签可把上月末日记入本月（白提前一天里程碑）；黑市货单 UTC 日与限购本地日两套日界（问答「0 点刷新」因此答错）→ 统一本地日；问答「宝石孔数随品质」四选项全错 → 改「仙位（飞升）」；赌石连开汇总从文案反解析（fmt 带「万」单位必不命中，汇总灵石恒 0）→ `gambleOnce` 改带数值返回；红尘录战斗计入锋芒/金身成就但回顾模式可无限重刷 → 与「百战」同口径只记秘境；回顾战胜负弹层宣称「收下奖励」实际不发 → 按 `f.review` 如实标注；胜利兜底文案「再接再厉」是败北语气 → 换中性句；跳过剧情漏记人物志结识 → `storySkipAll` 补 `storyMeet`（幂等）；`/api/guild` 失败后每秒 ~10 次重试风暴 → 60s 退避；捐献/传功/赠礼无在途锁（双击双倍扣款）→ 补 busy；灵药合丹按钮阈值（四成价）不入签名（跨 1200/2400 不重绘）→ 补 afford 位图；扫荡选关条与野外选区条共用 `wildGroupOpen` 互串展开组 → 拆 `sweepGroupOpen`；套装图鉴「n / 6」分母 12 部位后过期 → `min(n,6) / 6`。
 - **服务端杂项**：连点判定 `(clicks|0)` 32 位截断（每推恰 +2^32 增量恒 0，判定永不触发）→ 去截断；`acceptsGzip` 把 `gzip;q=0` 当接受 → 排除 q=0（curl 实测 q=0 不再压缩）；login 成功路径不查 `user.status`（停用号可「登录成功」后全 401）→ 对齐 403；`openDb` 补 `PRAGMA busy_timeout=5000`（CLI 与服务共用库撞锁）+ display_name 回填 try/catch（历史唯一冲突不再炸启动）；codes CLI `--max` 负数静默变「不限次」→ 显式报错；`game_saves.size` 存字符数 → `Buffer.byteLength`。
 - **明暗主题可读性（styles.css）**：明色 token 漏定义 `--orange/--red`（#fbbf24/#f87171 原样漏到纸底，天品/仙品名、五行金/火、图鉴 r4/r5、战败标题等十余处 ≈1.4-2.2:1）→ 补深色 token 并把品级/套装/五行字色全部 token 化（暗色逐一同值、像素不变）；明色 `--gold` 加深（#b8945a→#7d5d27，小字从 ≈2.1:1 到 ≈4.9:1）；`.cast-card b` 误入「浅字转墨」组（卡底恒深蓝 → 深字深底 ≈1.4:1）摘出；战斗飘字/战斗记录敌我行/日志分类色（明色被 `.log-list li` 高特异性压成全灰、品质语义全丢）/时辰徽章/宝点提示/凡品名/锁定页签/装备空槽/红尘录注释字/头像兜底首字逐一补明色深变体；暗色侧：选中页签 `--accent`（≈1.8:1，最高频导航）改亮金、「当前位置」格墨字金雾底（≈1.8:1）改金字、顶栏按钮 `--accent` 特异性压过 `.btn`（≈3.8:1）改回墨字；开匣匣面恒暗底字色固定亮金不再随 token 变深；game.js 两处 CSP 内联色（秘境偶遇名/装备查看品质名）补 `themeInk()` 明色 ×0.6 压暗（与说话人名同款）。对比度全部按 WCAG 程序化复核（正常字 ≥4.5 / 大字 ≥3）。
+- **深度校验误拒砖号（高，2026-11-03 正式环境事故）**：同批 validateDeep 补键两处口径写死，老玩家档被永久循环拒收——① `cave.fang` 写成必填，云坊上线前的旧客户端推档不带该键 → `isInt(undefined)` 恒 false →「洞府 fang 越界」（user26）；改可选键模式 `fang !== undefined` 才校验（同 gainLv/activePets 惯例）。② 灵宠品质按物种带 `band[0]..band[1]` 整体拒外，而老档融合迁移（game.js petMigrated）给旧四宠（狐[1,3]/龟[1,2]/鼠[1,2]/貔[2,4]，band[0] 全 ≥1）赠的是凡品 r=0 →「灵宠个体品质越界」（user25）；下界放宽到 0（低于带只是弱于合法下限，词条条数按实际 r 封顶、无放大面，上界 band[1] 保持）。③连带：品质层修复后老号会在 uid 水位层二次拒死——`pet_seq NULL` 行从「旧镜像最大 uid 种入」，但镜像早于灵宠个体化（迁移档自品质校验上线起从未落库）时种入 0；补「镜像无 petInsts 时以档内 petSeq 接续水位」（仅 NULL 行进入、发号时代账号 pet_seq 非 NULL 不受影响，伪造面不变）。全栈 E2E 15 例：两事故形态放行、上界/伪造/既有防线全保持。
 
 ## 11. 给下一个开发工具的工作约定
 

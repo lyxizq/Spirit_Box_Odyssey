@@ -72,7 +72,7 @@ const data = {
   gainLv: 40, speedLv: 30, luckLv: 10,
   trainAtk: 50, trainHp: 60, trainPierce: 70,
   gongfa: { atk: 80, hp: 90, hui: 40 },
-  cave: { array: 30, garden: 20, library: 25 },
+  cave: { array: 30, garden: 20, library: 25, fang: 200 },
   enh: { weapon: 10, armor: 8, helm: 6, boots: 4, artifact: 2, talisman: 1, bracelet: 3, ring: 5, wrist: 7, legs: 9, band: 11, wings: 12 },
   slotGems: {
     weapon: [{ k: 'atk', t: 3 }, { k: 'hp', t: 2 }, { k: 'crit', t: 1 }],
@@ -90,8 +90,18 @@ const data = {
   },
   pets: { fox: 20, turtle: 15, rat: 8, pixiu: 30 },
   petTokens: { fox: 3, pixiu: 5 },
-  petCores: { fox: 6, turtle: 10, rat: 3, pixiu: 1 },
-  activePets: ['fox', 'pixiu'],
+  petCores: { fox: 6, turtle: 10, rat: 3, pixiu: 10 },
+  // 灵宠个体化（2026-11-02）：activePets 现存实例 uid，天赋（物种亲密度/信物）
+  // + 个体词条（v × (1+0.01×(lv-1))）+ 内丹（物种级）三路都要吃到
+  petInsts: [
+    { uid: 1, sp: 'fox', r: 3, lv: 40, affixes: [{ k: 'atk', v: 0.07 }], rerolls: 2 },
+    { uid: 2, sp: 'pixiu', r: 4, lv: 12, affixes: [{ k: 'hp', v: 0.08 }, { k: 'crit', v: 0.015 }], rerolls: 0 },
+    { uid: 3, sp: 'kun', r: 5, lv: 66, affixes: [{ k: 'atk', v: 0.09 }, { k: 'hp', v: 0.11 }, { k: 'pierce', v: 0.028 }], rerolls: 5 },
+  ],
+  petDex: { fox: { met: 9, got: 2, bestR: 3 } },
+  // 三槽全开（2026-11-03）：fang 与 kun 不进合成存档时两端都按 0 算，fangMult 系数
+  // 打错（0.2% vs 2%）parity 照样 OK——测试盲区
+  activePets: [1, 2, 3],
   bestiary: { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1 },
   ordealDone: ['wuJiang', 'kuXing', 'fanYi'],
   setCollection: { tower: ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman'], stage: ['weapon', 'ring'], wild: ['legs'] },

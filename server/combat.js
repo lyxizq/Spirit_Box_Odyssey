@@ -271,7 +271,9 @@ export function createCombatService(db, staminaSvc) {
       let sweepBoughtMap = null;
       let countersTouched = false;
       let wildRepeatDay = led.wild_repeat_day || '';
-      let wildRepeatUsed = Math.floor(num(led.wild_repeat_used));
+      // 跨日归一（2026-11-03，下方 sweep 的 sameDayJson 同口径）：旧值直接回传会让客户端
+      // 把 daily.wildRepeat 污染成昨日值——本地预检拦截复战，当日 50 次额度全废
+      let wildRepeatUsed = wildRepeatDay === today ? Math.floor(num(led.wild_repeat_used)) : 0;
       let sweepUsedPost = sameDayJson(led.sweep_day, today, led.sweep_used) === '{}' ? 0
         : Math.floor(num(modeMapOf(led.sweep_used)[mode]));
       let sweepBoughtPost = sameDayJson(led.sweep_day, today, led.sweep_bought) === '{}' ? 0
@@ -504,11 +506,17 @@ export function createCombatService(db, staminaSvc) {
           const paid = deductN(ctx.user.id, wins, now);
           const winsPaid = paid.ok ? paid.spent : 0;
           if (winsPaid > 0) {
-            const cfg = MODES.wild;
-            const stoneEach = Math.floor(contentReq('wild', level, mirror) * cfg.stone);
-            const expEach = Math.floor(contentReq('wild', level, mirror) * cfg.exp * MODE_EXP_MULT *
-              (1 + 0.10 * num(mirror.cave && mirror.cave.library)) * (1 + 0.05 * num(mirror.gongfa && mirror.gongfa.hui)));
-            const trophyEach = 1 + Math.floor(level / cfg.trophyStep);
+            // 离线巡猎与在线结算同源（2026-11-03，settleGain 单一入口）：原手抄式只乘
+            // library/hui，漏了 ×60 修为 boost 与周/时辰/天象/内丹灵石增益——同关卡离线
+            // 每胜修为仅为在线复战的 1/30。rewardScale 取 1（野外扫荡档，审计口径）；
+            // boss/first 恒 false（离线只有复战语义）
+            const gains = settleGain({ mode: 'wild', level, first: false, rewardScale: 1,
+              boss: false, data: mirror, sweep: false }, {
+              ...env, weekend: isWeekend(), prodMult: dayProdMultOf(mirror),
+            });
+            const stoneEach = gains.stoneGain;
+            const expEach = gains.expGain;
+            const trophyEach = gains.trophy;
             const huntStones = winsPaid * stoneEach;
             const huntExp = winsPaid * expEach;
             // 灵石/修为不在此处入账：与开箱部分合并在离线末尾一次性 add+log（防双记）
@@ -629,7 +637,7 @@ export function createCombatService(db, staminaSvc) {
       db.exec('COMMIT');
       return sendJSON(res, 200, {
         pass: true, done, result, playerHp: player.hp,
-        enemy: enemyFor(def.enemy, level, mirror),
+        enemy, // 实战同一实例（2026-11-03：原响应里重掷 enemyFor 会换五行/词缀，弹窗展示与实战不一致）
         reward: { stones: TRIAL_REWARD.stones, dust: TRIAL_REWARD.dust, allClear },
       });
     } catch (e) {

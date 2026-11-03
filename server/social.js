@@ -130,10 +130,16 @@ export function createSocialService(db) {
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 0 AS bot
        FROM users WHERE id != ? AND status = 'active' AND pvp_snapshot IS NOT NULL
        ORDER BY ABS(pvp_rating - ?) LIMIT 8`),
+    // 假人候选：就近池（战力最近 12 个）里随机抽 6——纯 ORDER BY ABS(power_score-?)
+    // 是确定性排序，每次刷新都同一批假人（线上实测「总是刷出重复的剑影」）；
+    // 内层就近保匹配强度，外层 RANDOM() 保刷新多样性，假人不足 12 个时自然退化全量
     botCandidates: db.prepare(
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 1 AS bot
-       FROM users WHERE status = 'bot' AND pvp_snapshot IS NOT NULL
-       ORDER BY ABS(power_score - ?) LIMIT 6`),
+       FROM (
+         SELECT id, display_name, username, realm, power_score, pvp_rating, pvp_snapshot
+         FROM users WHERE status = 'bot' AND pvp_snapshot IS NOT NULL
+         ORDER BY ABS(power_score - ?) LIMIT 12
+       ) ORDER BY RANDOM() LIMIT 6`),
     pvpSelf: db.prepare('UPDATE users SET pvp_rating = ?, pvp_wins = ?, pvp_losses = ?, pvp_day = ?, pvp_used = ?, last_pvp_at = ? WHERE id = ?'),
     pvpBuy: db.prepare('UPDATE users SET pvp_buy_day = ?, pvp_buys = ? WHERE id = ?'),
     pvpOpp: db.prepare('UPDATE users SET pvp_rating = ?, pvp_wins = ?, pvp_losses = ? WHERE id = ?'),

@@ -398,19 +398,83 @@
   /* ---------------- 灵宠 / 洞府 / 日常 / 成就 ---------------- */
 
   const PET_CHANCE = 0.004;   // 每次开箱掉招募券概率
-  const PET_MAX_LV = 200;
-  const PETS = [
-    { id: 'fox', name: '雷灵狐', icon: '狐', stat: 'atk', per: 0.02, cost: 1, desc: '攻击' },
-    { id: 'turtle', name: '铁甲龟', icon: '龟', stat: 'hp', per: 0.025, cost: 1, desc: '生命' },
-    { id: 'rat', name: '灵瞳鼠', icon: '鼠', stat: 'crit', per: 0.004, cost: 2, desc: '暴击' },
-    { id: 'pixiu', name: '招财貔貅', icon: '貔', stat: 'gain', per: 0.03, cost: 2, desc: '灵石收益' },
+  const PET_MAX_LV = 200;     // 物种亲密度上限（天赋缩放，物种级熟练度）
+  // —— 灵宠个体化（2026-11-02 融合重构）：每只灵宠是独立实例 {uid, sp, r, lv, affixes} ——
+  // 物种表（server/pets.js 同源）：band = 品质带 [min,max]，捕捉/合成不越带；
+  // 天赋仍按物种亲密度/信物缩放（物种级熟练度），个体词条按品质 roll、随个体 lv 成长
+  const PET_SPECIES = [
+    { id: 'ying',   name: '幽萤蝶',   icon: '蝶', stat: 'hp',     per: 0.02,  band: [0, 1] },
+    { id: 'xi',     name: '青岩蜥',   icon: '蜥', stat: 'def',    per: 0.018, band: [0, 1] },
+    { id: 'rat',    name: '灵瞳鼠',   icon: '鼠', stat: 'crit',   per: 0.004, band: [1, 2] },
+    { id: 'turtle', name: '铁甲龟',   icon: '龟', stat: 'hp',     per: 0.025, band: [1, 2] },
+    { id: 'fox',    name: '雷灵狐',   icon: '狐', stat: 'atk',    per: 0.02,  band: [1, 3] },
+    { id: 'sun',    name: '风隼',     icon: '隼', stat: 'pierce', per: 0.005, band: [1, 3] },
+    { id: 'chan',   name: '玄冰蟾',   icon: '蟾', stat: 'def',    per: 0.022, band: [2, 3] },
+    { id: 'zhu',    name: '千机蛛',   icon: '蛛', stat: 'crit',   per: 0.005, band: [2, 4] },
+    { id: 'pixiu',  name: '招财貔貅', icon: '貔', stat: 'gain',   per: 0.03,  band: [2, 4] },
+    { id: 'baize',  name: '白泽',     icon: '泽', stat: 'ls',     per: 0.005, band: [3, 4] },
+    { id: 'qilin',  name: '烛麒麟',   icon: '麟', stat: 'hp',     per: 0.03,  band: [3, 5] },
+    { id: 'kun',    name: '鲲鹏雏',   icon: '鲲', stat: 'atk',    per: 0.028, band: [4, 5] },
   ];
+  const PET_SP_MAP = {};
+  for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
+  const PET_SP_INDEX = {};                       // 物种图鉴序（背包「灵宠」排序用）
+  PET_SPECIES.forEach((s, i) => { PET_SP_INDEX[s.id] = i; });
+  const petSpDef = (id) => PET_SP_MAP[id] || null;
+  // 缚灵谷五地（realm = 解锁境界下标，server/pets.js PET_ZONES 同源）
+  const PET_ZONES = [
+    { id: 'huang',  name: '荒山', realm: 4, pool: ['ying', 'xi', 'rat'],              w: [60, 30, 10] },
+    { id: 'gu',     name: '灵谷', realm: 5, pool: ['rat', 'turtle', 'fox', 'sun'],    w: [30, 30, 28, 12] },
+    { id: 'mijing', name: '秘境', realm: 6, pool: ['fox', 'sun', 'chan', 'zhu', 'pixiu'], w: [20, 18, 30, 20, 12] },
+    { id: 'guyuan', name: '古渊', realm: 7, pool: ['zhu', 'pixiu', 'baize', 'qilin'], w: [25, 25, 32, 18] },
+    { id: 'xianfu', name: '仙府', realm: 8, pool: ['qilin', 'kun'],                   w: [45, 55] },
+  ];
+  // 捕捉/合成/洗髓数值（server/pets.js 同源，改一处必改两处）
+  const PET_LV_MAX_INST = 100;      // 个体等级上限
+  const PET_INST_MAX = 100;         // 个体持有硬上限
+  // 灵宠背包容量（2026-11-02 用户指定）：基础 50 格，灵石扩容 +10/次，最多 5 次到 100
+  const PET_BAG_BASE = 50;
+  const PET_BAG_STEP = 10;
+  const PET_BAG_MAX_LV = 5;
+  const petBagCost = (lv) => Math.floor(1e5 * Math.pow(1.6, lv)); // 第 lv+1 次扩容价格
+  const petBagCap = () => PET_BAG_BASE + PET_BAG_STEP * (state.petBagLv | 0);
+  const PET_HUNT_STAMINA = 3;
+  const PET_HUNT_TICKET = 1;
+  const PET_HUNT_DAILY = 50;        // 每日基础探索次数（server/pets.js PET_HUNT_DAILY 同源）
+  const PET_HUNT_BUY_COST = 2e5;    // 灵石加购：20 万/次（2026-11-03 用户指定，服务端同源）
+  const PET_HUNT_BUY_DAILY = 50;    // 每日加购上限
+  const PET_MEET_RATE = 0.65;
+  const PET_MEET_PITY = 3;
+  const PET_CAPTURE_BASE = [0.9, 0.75, 0.6, 0.45, 0.3, 0.18];
+  const PET_CAPTURE_CAP = 0.95;
+  const PET_POLICY = {
+    bare: { name: '空手收服', add: 0, costText: '免费' },
+    feed: { name: '投喂灵果', add: 0.2, stones: (r) => Math.round(2e4 * Math.pow(8, r)) },
+    awe:  { name: '灵威镇压', add: 0.12, bones: (r) => 20 * (r + 1) * (r + 1) },
+  };
+  const PET_FUSE_COST = (r) => Math.round(5e4 * Math.pow(6, r));
+  const PET_REROLL_STONES = (r, times, lockN) =>
+    Math.floor((1e4 * Math.pow(4, r)) * Math.pow(1.3, times || 0) * Math.pow(2, lockN || 0));
+  const PET_REROLL_DUST = (r, lockN) => 10 * (r + 1) * Math.pow(2, lockN || 0);
+  const PET_AFF_LV_STEP = 0.01;
+  // 个体等级喂养费用（与亲密度 petFeedCost 曲线独立）：lv1 起 1000，lv100 约 4.8e11
+  const petInstFeedCost = (lv) => Math.floor(1000 * Math.pow(1.28, Math.max(0, lv - 1)));
+  // 放生返还兽骨（按品质平方，与威压消耗同曲线）
+  const petReleaseBones = (r) => 10 * (r + 1) * (r + 1);
   // 灵宠图标（SVG，currentColor 随 .pet-icon 金色；缺省回退 p.icon 文字）
   const PET_ICONS = {
     fox: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 3l4.6 2.6C10 5.2 11 5 12 5s2 .2 3.4.6L20 3l-1.4 4.8c.9 1.3 1.4 2.8 1.4 4.4 0 4.6-3.6 7.8-8 7.8s-8-3.2-8-7.8c0-1.6.5-3.1 1.4-4.4L4 3zm3.2 9.2a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm9.6 0a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 15.2c-1.2 0-2.2.6-2.2 1.2s1 .9 2.2.9 2.2-.3 2.2-.9-1-1.2-2.2-1.2z" fill-rule="evenodd"/></svg>',
     turtle: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4.5 12a7.5 6.5 0 0 1 15 0v2h-15v-2z"/><path fill="currentColor" d="M2.5 14.5h3v3.5h-3zM18.5 14.5h3v3.5h-3zM7.5 16.5h3V20h-3zM13.5 16.5h3V20h-3z"/><circle fill="currentColor" cx="21" cy="12.5" r="2"/></svg>',
     rat: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 15.5c0-4.4 4.1-7.5 8.5-7.5 2.6 0 4.8 1 6.3 2.7.9-.5 2-.8 3.2-.6-.6 1-1.5 1.8-2.6 2.2.4.9.6 1.9.6 3.2h-16zm9.9-6.3a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm1.6-1.7a3 3 0 1 1 0-4.3 3 3 0 0 1 0 4.3z"/></svg>',
     pixiu: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3.5l2.6 2.6h3.2l-1.2 3.4 1.9 2.7c.1 4.9-3.4 8.8-6.5 8.8s-6.6-3.9-6.5-8.8l1.9-2.7-1.2-3.4h3.2L12 3.5zm-3.5 8.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z" fill-rule="evenodd"/></svg>',
+    ying: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 4c2.6 2 4.4 4.4 5 7.2 1.8-.4 3.4-1.4 4.6-2.8-.4 2.8-2 5-4.4 6.2.9.5 2 .8 3.2.8-1.6 1.7-3.8 2.6-6.1 2.4L12 20l-2.3-2.2c-2.3.2-4.5-.7-6.1-2.4 1.2 0 2.3-.3 3.2-.8C4.4 13.4 2.8 11.2 2.4 8.4c1.2 1.4 2.8 2.4 4.6 2.8C7.6 8.4 9.4 6 12 4zm0 3.4c-1.4 1.4-2.3 3-2.6 4.7l2.6 2.4 2.6-2.4c-.3-1.7-1.2-3.3-2.6-4.7z"/></svg>',
+    xi: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M3 16c0-3.3 3.6-6 8-6 1.4 0 2.7.3 3.9.8L21 8l-1.6 4.2c1 .8 1.6 1.8 1.6 2.8v2H3v-1zm4.5-1.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zM20 18.5l1.5 2.5H18l2-2.5zM5 18.5L6.5 21H3.5L5 18.5z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M21 4c-2.4.3-4.5 1.3-6 3-1.2-.6-2.6-1-4-1-4.4 0-8 3.1-8 7 0 1.6.6 3 1.7 4.2L3 21l4.5-1.9c1 .4 2.2.7 3.5.7 4.4 0 8-3.1 8-7 0-.7-.1-1.4-.3-2 1.2-1.8 2-3.9 2.3-6.8zM8.5 12a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm6 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z"/></svg>',
+    chan: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 3c4.4 0 8 2.9 8 6.5 0 1.7-.8 3.2-2.1 4.3.7.9 1.1 2 1.1 3.2H5c0-1.2.4-2.3 1.1-3.2C4.8 12.7 4 11.2 4 9.5 4 5.9 7.6 3 12 3zm-3.5 6a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm7 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zM8 19h8v2H8v-2z"/></svg>',
+    zhu: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 3a6 6 0 0 1 6 6c0 1.5-.5 2.8-1.4 3.9L19 21l-3.4-2.3c-1.1.5-2.3.8-3.6.8s-2.5-.3-3.6-.8L5 21l2.4-8.1A5.9 5.9 0 0 1 6 9a6 6 0 0 1 6-6zm0 2.4a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zM8.8 7.6a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm6.4 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/></svg>',
+    baize: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M6 3c2 1.6 3.4 3.6 4 5.8C11.3 8.6 12.6 8.5 14 8.7c3.9.6 6.7 3.4 6.5 6.6-.1 2.5-2 4.6-4.7 5.4l.7 2.3h-3l-.5-1.8a12 12 0 0 1-3 0L9.5 23h-3l.7-2.3C4.5 19.9 2.6 17.8 2.5 15.3 2.3 12.5 4.6 10 8 9.3 7 7 6.7 4.9 6 3zm6 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>',
+    qilin: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M5 3l3 3h2L8.5 3.5 12 6h2.5L13 3.8 16.5 6c2.8 1.3 4.5 3.6 4.5 6.2 0 2.3-1.3 4.3-3.3 5.5l.8 4.3h-3l-.6-3.2a10 10 0 0 1-5.8 0L8.5 22h-3l.8-4.3C4.3 16.5 3 14.5 3 12.2 3 10.7 3.6 9.3 4.7 8.1L5 3zm7 6.5a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/></svg>',
+    kun: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 3c1.8 2.4 4.6 4 7.7 4.3-1 1.5-2.5 2.6-4.2 3.2 1.9.5 3.6 1.6 4.8 3.2-2.1.3-4.1 0-5.9-.9L12 21l-2.4-8.2c-1.8.9-3.8 1.2-5.9.9 1.2-1.6 2.9-2.7 4.8-3.2A8.1 8.1 0 0 1 4.3 7.3C7.4 7 10.2 5.4 12 3zm0 4.6c-.9 1-1.5 2.2-1.8 3.4L12 13.6l1.8-2.6c-.3-1.2-.9-2.4-1.8-3.4z"/></svg>',
   };
   const petFeedCost = (lv) => Math.floor(200 * Math.pow(1.6, lv));
 
@@ -418,12 +482,14 @@
     array: { name: '聚灵阵', icon: '阵', base: 500, growth: 1.7, max: 200, desc: '灵石收益 +8% / 级' },
     garden: { name: '药园', icon: '药', base: 800, growth: 1.75, max: 200, desc: '开箱暴击率 +0.4% / 级' },
     library: { name: '藏经阁', icon: '书', base: 1200, growth: 1.8, max: 200, desc: '修为收益 +10% / 级' },
+    fang: { name: '云坊', icon: '坊', base: 2000, growth: 1.8, max: 200, desc: '战力 +0.2% / 级' },
   };
   // 洞府建筑图标（SVG，currentColor 随 .cave-icon 金色；缺省回退 def.icon 文字）
   const CAVE_ICONS = {
     array: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l6 10.5H6z"/><path d="M12 20.5L6 10h12z"/></svg>',
     garden: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20 4C11 4 5 9.5 5 16.5c0 1.9.8 3.5 1.5 4.5.8-5 4-10 9.5-13-4.5 4-7.5 9-8 13 .9.6 2 1 3.5 1C18 22 21 14 20 4z"/></svg>',
     library: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 2h11a1 1 0 0 1 1 1v17a1 1 0 0 1-1 1H7a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3zm0 15a1.5 1.5 0 0 0 0 3h11v-3H7z"/></svg>',
+    fang: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 8.6 4.2 4.2 0 0 1 16.8 18z"/><path d="M9.5 14.5h5"/><path d="M12 12v5"/></svg>',
   };
   // 丹药图标（SVG）
   const ELIXIR_ICONS = {
@@ -618,7 +684,7 @@
       tiers: [3, 6, 10], base: 2e5, ratio: 2.5, names: ['初窥天道', '天道半卷', '天道全览'] },
     { id: 'ordeal', prefix: '苦修', cur: (s) => (s.ordealDone || []).length, label: (n) => '挑战修行功成 ' + n + ' 种',
       tiers: [1, 2, 3], base: 5e5, ratio: 2.5, names: ['一戒守心', '双戒护道', '三戒功圆'] },
-    { id: 'cave', prefix: '洞府', cur: (s) => (s.cave ? s.cave.array + s.cave.garden + s.cave.library : 0), label: (n) => '洞府建筑总级数达到 ' + n + ' 级',
+    { id: 'cave', prefix: '洞府', cur: (s) => (s.cave ? s.cave.array + s.cave.garden + s.cave.library + (s.cave.fang || 0) : 0), label: (n) => '洞府建筑总级数达到 ' + n + ' 级',
       tiers: [3, 6, 9, 12], base: 2e5, ratio: 2.5, names: ['初辟洞府', '洞天福地', '府邸生辉', '仙家气派'] },
     { id: 'forge', prefix: '神匠', cur: (s) => SLOTS.filter((sl) => (s.enh && s.enh[sl.key] || 0) >= MAX_ENHANCE).length, label: (n) => n + ' 个部位强化至 +' + MAX_ENHANCE,
       tiers: [3, 6], base: 5e5, ratio: 2, names: ['渐入化境', '登峰造极'] },
@@ -825,7 +891,9 @@
     { id: 'def', name: '金刚丹', icon: '御', desc: '防御 +20% · 5 分钟', cost: 3000, ms: 5 * 60000 },
     { id: 'gain', name: '聚财丹', icon: '财', desc: '灵石收益 +30% · 5 分钟', cost: 6000, ms: 5 * 60000 },
   ];
-  const PET_SLOT_COST = 5;      // 解锁第二出战位的券
+  // 出战位解锁券阶梯（2026-11-02 用户指定：第 5 位 100 券，向上递推前两档取整）
+  const PET_SLOT_MAX = 5;
+  const PET_SLOT_COSTS = { 2: 5, 3: 15, 4: 40, 5: 100 };
   const TOKEN_COST = (lv) => 30 * (lv + 1);
   const TOKEN_MAX = 200;
 
@@ -894,7 +962,7 @@
   const karma = () => Math.max(-10, Math.min(10, (state.wander && state.wander.karma) | 0));
   const karmaMult = (per) => Math.max(0.5, 1 + karma() * per);
 
-  const WANDER_COOLDOWN = 25 * 60000;   // 两次奇遇的间隔（在线游玩计时）
+  const WANDER_COOLDOWN = 10 * 60000;   // 两次奇遇的间隔（在线游玩计时）
   // fx：stones/dust/exp 为数组 [min,max] 或定值；ticket 招募券 / coupon 洗练券 /
   // item 天品装备 / elixir 限时丹药；cost 为选择的前置花费（灵石）
   const WANDER_EVENTS = [
@@ -976,12 +1044,21 @@
   const FISH_BAIT_COST = 5000;
   const FISH_ROD_MS = 12000;           // 抛竿后 12 秒不收竿跑鱼
   const FISH_TABLE = [
-    { p: 30, name: '小白鱼', stones: 800, text: '小家伙，放生都嫌小。' },
-    { p: 28, name: '灵鳞鱼', dust: 12, text: '鳞片泛着微光。' },
-    { p: 20, name: '霜华鳕', stones: 5000, text: '市集抢着要的肥美大鱼。' },
-    { p: 14, name: '金锦鲤', dust: 90, text: '金鳞耀目，是吉祥的兆头。' },
-    { p: 8, name: '灵龙鱼', big: true, text: '传说灵龙鱼通灵化形！' },
+    { id: 'xiaobai', p: 30, name: '小白鱼', stones: 800, text: '小家伙，放生都嫌小。' },
+    { id: 'linglin', p: 28, name: '灵鳞鱼', dust: 12, text: '鳞片泛着微光。' },
+    { id: 'shuanghua', p: 20, name: '霜华鳕', stones: 5000, text: '市集抢着要的肥美大鱼。' },
+    { id: 'jinli', p: 14, name: '金锦鲤', dust: 90, text: '金鳞耀目，是吉祥的兆头。' },
+    { id: 'linglong', p: 8, name: '灵龙鱼', big: true, text: '传说灵龙鱼通灵化形！' },
   ];
+  // 各鱼小图标（2026-11-03 用户指定）：id 与 FISH_TABLE 同源，.item-ic 前置位
+  const FISH_ICONS = {
+    xiaobai: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#9dd3f0" stroke="#3d7ea6" stroke-width=".8"/><circle cx="11.4" cy="7" r=".8" fill="#1d3a4d"/><path d="M2.5 8 1 5.8v4.4Z" fill="#7cc0e8"/></svg>',
+    linglin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#a5dfc5" stroke="#2f8f6b" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#e8fff5" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#123a2b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#8fd4b4"/></svg>',
+    shuanghua: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#d9ecff" stroke="#5a8fc0" stroke-width=".8"/><path d="M5.5 6.5c1 .4 1.6 1.2 1.8 2.3M8.5 5.8c1.2.5 2 1.4 2.4 2.7" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#234a6b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b6d8f5"/></svg>',
+    jinli: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#ffd76b" stroke="#c9973f" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#fff3d6" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#5c4208"/><path d="M2.5 8 1 5.8v4.4Z" fill="#f0c14b"/></svg>',
+    linglong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#c4b5fd" stroke="#7c5cd6" stroke-width=".8"/><path d="M8 4.6c.5 1.2.5 2.4 0 3.6M10.6 5.2c.6 1 .7 2 .2 3" stroke="#ede9fe" stroke-width=".9" fill="none" stroke-linecap="round"/><path d="M6.5 4.2 4.8 1.8l3.4.8Z" fill="#a78bfa"/><circle cx="11.4" cy="7" r=".8" fill="#2d1d5e"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b39dfa"/></svg>',
+  };
+  const fishIcon = (f) => (f && FISH_ICONS[f.id]) || '';
 
   // 灵宠内丹：兽骨喂养，3/6/10 级解锁特性（仅出战灵宠生效）
   const CORE_MAX = 10;
@@ -1007,11 +1084,52 @@
       { lv: 6, stat: 'dust', v: 0.04, name: '聚宝' },
       { lv: 10, stat: 'stone', v: 0.06, name: '吞金' },
     ],
+    // —— 2026-11-02 灵宠个体化新增物种（server/battle.js CORE_TRAITS 同源）——
+    ying: [
+      { lv: 3, stat: 'hp', v: 0.03, name: '莹羽' },
+      { lv: 6, stat: 'ls', v: 0.01, name: '蜕光' },
+      { lv: 10, stat: 'hp', v: 0.05, name: '化影' },
+    ],
+    xi: [
+      { lv: 3, stat: 'def', v: 0.03, name: '岩鳞' },
+      { lv: 6, stat: 'dr', v: 0.01, name: '盘石' },
+      { lv: 10, stat: 'def', v: 0.05, name: '岩铠' },
+    ],
+    sun: [
+      { lv: 3, stat: 'pierce', v: 0.015, name: '破风' },
+      { lv: 6, stat: 'crit', v: 0.01, name: '疾目' },
+      { lv: 10, stat: 'pierce', v: 0.03, name: '裂空' },
+    ],
+    chan: [
+      { lv: 3, stat: 'def', v: 0.03, name: '寒蟾' },
+      { lv: 6, stat: 'dr', v: 0.012, name: '玄霜' },
+      { lv: 10, stat: 'def', v: 0.05, name: '月魄' },
+    ],
+    zhu: [
+      { lv: 3, stat: 'crit', v: 0.012, name: '千机' },
+      { lv: 6, stat: 'pierce', v: 0.02, name: '毒牙' },
+      { lv: 10, stat: 'crit', v: 0.022, name: '天罗' },
+    ],
+    baize: [
+      { lv: 3, stat: 'ls', v: 0.012, name: '通灵' },
+      { lv: 6, stat: 'hp', v: 0.04, name: '祥瑞' },
+      { lv: 10, stat: 'ls', v: 0.025, name: '万识' },
+    ],
+    qilin: [
+      { lv: 3, stat: 'hp', v: 0.035, name: '烛照' },
+      { lv: 6, stat: 'def', v: 0.02, name: '麟甲' },
+      { lv: 10, stat: 'hp', v: 0.06, name: '圣火' },
+    ],
+    kun: [
+      { lv: 3, stat: 'atk', v: 0.03, name: '鲲啸' },
+      { lv: 6, stat: 'pierce', v: 0.02, name: '北冥' },
+      { lv: 10, stat: 'atk', v: 0.05, name: '鹏翼' },
+    ],
   };
-  // 出战灵宠内丹特性对某属性的合计加成
-  const coreBonus = (stat) => (state.activePets || []).reduce((sum, id) =>
-    sum + (CORE_TRAITS[id] || [])
-      .filter((t) => (state.petCores[id] | 0) >= t.lv && t.stat === stat)
+  // 出战灵宠内丹特性对某属性的合计加成（activePets 现存实例 uid，按物种取内丹）
+  const coreBonus = (stat) => activePetInstsList().reduce((sum, inst) =>
+    sum + (CORE_TRAITS[inst.sp] || [])
+      .filter((t) => (state.petCores[inst.sp] | 0) >= t.lv && t.stat === stat)
       .reduce((a, t) => a + t.v, 0), 0);
 
   // 灵圃采集：矿脉产矿石、药圃产灵药，灵药可折半价炼丹，矿石可锻器魂
@@ -1031,8 +1149,8 @@
   const HERB_ELIXIR_NEED = 10;   // 灵药合丹消耗
   const ORE_SOUL_NEED = 20;      // 矿石锻魂消耗
   const MELT_NEED = 5;           // 装备熔铸材料件数（2026-10-31 起仅天→仙、仙→仙升星两档）
-  // 熔铸成功率：每次在 5%~15% 均匀浮动（目标 10% 上下 5%，2026-10-31 用户指定）；失败材料与手续费不退
-  const MELT_RATE_MIN = 0.05;
+  // 熔铸成功率：每次在 30%~40% 均匀浮动（目标 35% 上下 5%，2026-11-03 用户指定）；失败材料与手续费不退
+  const MELT_RATE_MIN = 0.30;
   const MELT_RATE_SPAN = 0.10;
   const meltRate = () => MELT_RATE_MIN + Math.random() * MELT_RATE_SPAN;
 
@@ -1067,12 +1185,47 @@
     { id: 'kuXing', name: '苦行修行', desc: '不服用任何丹药完成一次飞升', reward: '攻击永久 +6%', atk: 0.06 },
   ];
 
+  // —— 方格牧场（2026-11-02 用户指定：灵田改 12×12 方格）——
+  // 默认只开中心 2×2，向外逐格开垦；第 k 次开垦（0 计）费用 = 1000×r^k，
+  // r = (2e7)^(1/139) 使第 140 块（全图最后一块）恰好 200 亿灵石
+  const FARM_GRID = 12;
+  const FARM_CELLS = FARM_GRID * FARM_GRID;            // 144
+  const FARM_HOME = [65, 66, 77, 78];                  // 默认开启的中心 2×2（行 5-6 × 列 5-6）
+  const FARM_UNLOCK_BASE = 1000;
+  const FARM_UNLOCK_RATIO = Math.pow(2e7, 1 / (FARM_CELLS - FARM_HOME.length - 1));
+  // owned = 已解锁格数；k = owned - 4 ∈ [0,139]，k=139 时恰为 2e10
+  const farmUnlockCost = (owned) =>
+    Math.round(FARM_UNLOCK_BASE * Math.pow(FARM_UNLOCK_RATIO, owned - FARM_HOME.length));
+  // 未解锁格的小锁图标（2026-11-02 用户指定）：currentColor 随格子状态着色
+  const FARM_LOCK_SVG = '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
+  // 种子生长时长上限 8 小时（2026-11-02 用户指定「不要太长时间」）：30 分 / 1 / 2 / 3 / 5 / 6 / 8 小时
+  // 服务端 shop.js FARM_SEED_MS 与本表同源（deposit 最小入账间隔），改这里必须同步那边
   const FARM_SEEDS = [
-    { id: 'cao', name: '灵草籽', cost: 800, ms: 30 * 60000, dust: 20, text: '30 分钟' },
-    { id: 'hua', name: '灵花籽', cost: 2000, ms: 2 * 3600000, dust: 60, text: '2 小时' },
-    { id: 'guo', name: '灵果籽', cost: 6000, ms: 8 * 3600000, dust: 200, text: '8 小时' },
+    { id: 'cao',  name: '灵草籽',   cost: 800,   ms: 30 * 60000,   dust: 20,  text: '30 分钟' },
+    { id: 'hua',  name: '灵花籽',   cost: 2000,  ms: 1 * 3600000,  dust: 60,  text: '1 小时' },
+    { id: 'guo',  name: '灵果籽',   cost: 6000,  ms: 2 * 3600000,  dust: 200, text: '2 小时' },
+    { id: 'sui',  name: '髓芝苗',   cost: 2e4,   ms: 3 * 3600000,  dust: 350, text: '3 小时' },
+    { id: 'lian', name: '灵莲籽',   cost: 6e4,   ms: 5 * 3600000,  dust: 500, text: '5 小时' },
+    { id: 'tong', name: '梧桐苗',   cost: 1.5e5, ms: 6 * 3600000,  dust: 650, text: '6 小时' },
+    { id: 'xing', name: '星髓藤苗', cost: 4e5,   ms: 8 * 3600000,  dust: 800, text: '8 小时' },
   ];
-  const FARM_PLOTS = 3;
+  // 收获随机掉落档位：洗炼石 randInt(1, farmStoneN(档))；种子 randInt(1, 10)
+  // 碎屑全表 ≤800：144 格爆收 = 11.5 万 < 碎屑包络绝对底（2e6×min-days ≈ 13.9 万），不击穿增速校验
+  const farmStoneN = (i) => 2 + Math.floor(i / 2);   // 1~2 … 1~5
+  const FARM_SEED_DROP_MAX = 10;
+
+  // —— 洗炼石（2026-11-02 用户指定）：六型对应六词条，牧场收获随机掉落，
+  // 工坊洗练按「未锁定词条的当前类型」逐条消耗 1 颗 ——
+  const REROLL_STONES = {
+    atk:    { name: '锋铓石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#f87171" stroke="#8a2f28" stroke-width=".9"/><path d="M6.4 6h3.2" stroke="#fff" stroke-width="1.1" stroke-linecap="round" opacity=".85"/></svg>' },
+    hp:     { name: '厚土石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#34d399" stroke="#1f7a42" stroke-width=".9"/><path d="M5.6 7.4h4.8M6.8 9.4h2.4" stroke="#04351f" stroke-width="1" stroke-linecap="round" opacity=".7"/></svg>' },
+    def:    { name: '金砺石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#fbbf24" stroke="#8a6a1c" stroke-width=".9"/><path d="M5.8 5.6 8 8l2.2-2.4" fill="none" stroke="#5c430a" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    crit:   { name: '惊雷石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#a78bfa" stroke="#5b3fa8" stroke-width=".9"/><path d="M8.6 4.4 6.6 8h2l-1.4 3.6 3.2-4.4h-2Z" fill="#2b1a5e" opacity=".85"/></svg>' },
+    ls:     { name: '饮血石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#fb7185" stroke="#9f3a4d" stroke-width=".9"/><path d="M8 5.6c1.6 1.7 1.6 3.3 0 4.6-1.6-1.3-1.6-2.9 0-4.6Z" fill="#5e1622" opacity=".8"/></svg>' },
+    pierce: { name: '穿云石', ic: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 12.5 6 8 14.5 3.5 6Z" fill="#38bdf8" stroke="#1c6390" stroke-width=".9"/><path d="M5.8 8.2h4.4M8 5.8v4.8" stroke="#08344d" stroke-width="1.1" stroke-linecap="round" opacity=".8"/></svg>' },
+  };
+  const RSTONE_KEYS = Object.keys(REROLL_STONES);
 
   /* ---------------- 第四批：融合 / 符文 / 心魔 / 悬赏 / 时辰 / 天劫 / 道侣 / 战功碑 ---------------- */
 
@@ -1248,7 +1401,13 @@
     activePets: [],
     petSlots: 1,
     petTokens: {},
-    cave: { array: 0, garden: 0, library: 0 },
+    petInsts: [],              // 灵宠个体（2026-11-02 个体化）：{uid, sp, r, lv, affixes, rerolls}
+    petSeq: 1,                 // 个体 uid 发号器
+    petBagLv: 0,               // 灵宠背包扩容次数（0..5，容量 = 50 + 10×lv）
+    petDex: {},                // 缚灵谷图鉴：sp → {met, got, bestR}
+    petHunt: { day: '', hunts: 0, buys: 0 }, // 今日探索/加购数（服务端权威，本地仅展示镜像）
+    petMigrated: false,        // 老档融合迁移一次性标记
+    cave: { array: 0, garden: 0, library: 0, fang: 0 },
     elixir: { owned: {}, until: 0, id: '', crafting: null },
     gongfa: { atk: 0, hp: 0, hui: 0 },
     immortal: 0,
@@ -1268,7 +1427,9 @@
     ordeal: { active: '', dirty: false },
     ordealDone: [],
     museum: emptyEquipped(),
-    farm: { plots: [null, null, null] },
+    farm: { unlocked: FARM_HOME.slice(), plots: {} },
+    farmSeeds: { cao: 3, hua: 1 },   // 首局赠送：新面板不至于无种可播（老档迁移同样补这份）
+    rerollStones: { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 },
     chapters: [],
     story: { cleared: [], met: [] },
     innerDemon: null,
@@ -1426,8 +1587,18 @@
     }, 2500);
   }
 
-  // 统一带 401 / 断服处理的 API 调用：会话失效自动回登录页；网络级失败交给断服看门狗
+  // 统一带 401 / 断服处理的 API 调用：会话失效自动回登录页；网络级失败交给断服看门狗。
+  // 15s 超时中止（2026-11-03，worldFetch 同款；调用方自带 signal 时不覆盖）：api 直调方
+  // （灵宠 hunt/capture/fuse/reroll 等）此前无超时——请求悬挂时 busy 锁永久占着，弹窗关不掉
+  const API_TIMEOUT_MS = 15000;
   async function api(pathname, opts = {}) {
+    let timer = null;
+    let ctrl = null;
+    if (!opts.signal) {
+      ctrl = new AbortController();
+      timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+      opts = Object.assign({}, opts, { signal: ctrl.signal });
+    }
     let res;
     try {
       res = await fetch(pathname, Object.assign({
@@ -1437,6 +1608,8 @@
     } catch (e) {
       if (!e || e.name !== 'AbortError') noteServerDown(); // 连接失败 = 停机信号；客户端主动超时中止不算
       throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     if (res.status === 401) {
       location.replace('/login.html');
@@ -1885,12 +2058,12 @@
       state.petTickets = fixInt(state.petTickets, 0, 1e9);
       if (!state.pets || typeof state.pets !== 'object' || Array.isArray(state.pets)) state.pets = {};
       const petLv = {};
-      for (const def of PETS) {
+      for (const def of PET_SPECIES) {
         if (state.pets[def.id] === undefined) continue; // 按「字段存在」判拥有，0 级也是拥有
         petLv[def.id] = fixInt(state.pets[def.id], 0, PET_MAX_LV);
       }
       state.pets = petLv;
-      if (!PETS.some((p) => p.id === state.activePet) || !state.pets[state.activePet]) state.activePet = '';
+      if (!PET_SPECIES.some((p) => p.id === state.activePet) || !state.pets[state.activePet]) state.activePet = '';
       if (!state.cave || typeof state.cave !== 'object' || Array.isArray(state.cave)) {
         state.cave = { array: 0, garden: 0, library: 0 };
       }
@@ -1898,6 +2071,7 @@
         array: fixInt(state.cave.array, 0, CAVE.array.max),
         garden: fixInt(state.cave.garden, 0, CAVE.garden.max),
         library: fixInt(state.cave.library, 0, CAVE.library.max),
+        fang: fixInt(state.cave.fang, 0, CAVE.fang.max),
       };
       state.endlessBest = fixInt(state.endlessBest, 0, 1e9);
       // 试炼 / 养成 / 调味：新面板字段兜底
@@ -1909,18 +2083,90 @@
         hp: fixInt(state.gongfa.hp, 0, GONGFA.hp.max),
         hui: fixInt(state.gongfa.hui, 0, GONGFA.hui.max),
       };
-      state.petSlots = state.petSlots === 2 ? 2 : 1;
+      state.petSlots = Math.min(PET_SLOT_MAX, Math.max(1, Math.floor(Number(state.petSlots)) || 1));
+      // —— 灵宠个体化（2026-11-02 融合重构）：个体表钳制 + 老档一次性迁移 ——
+      if (!Array.isArray(state.petInsts)) state.petInsts = [];
+      state.petBagLv = fixInt(state.petBagLv, 0, PET_BAG_MAX_LV);
+      if (!state.petDex || typeof state.petDex !== 'object' || Array.isArray(state.petDex)) state.petDex = {};
+      if (!state.petHunt || typeof state.petHunt !== 'object' || Array.isArray(state.petHunt)) {
+        state.petHunt = { day: '', hunts: 0, buys: 0 };
+      }
+      {
+        // 个体钳制：物种白名单 / uid 唯一正整数 / 品质在物种带内 / 等级 1..100 /
+        // 词条数 ≤ 品质条数 / 值 0..0.6 / 键不重复（server saves.js validateDeep 同界）
+        const seen = new Set();
+        const clean = [];
+        for (const p of state.petInsts) {
+          if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
+          const def = petSpDef(p.sp);
+          if (!def || !Number.isInteger(p.uid) || p.uid < 1 || p.uid > 1e9 || seen.has(p.uid)) continue;
+          if (!Number.isInteger(p.r) || p.r < def.band[0] || p.r > def.band[1]) continue;
+          const lv = fixInt(p.lv, 1, PET_LV_MAX_INST);
+          const count = AFFIX_COUNT[p.r] || 0;
+          const affixes = [];
+          const keys = new Set();
+          for (const a of Array.isArray(p.affixes) ? p.affixes : []) {
+            if (!a || typeof a !== 'object' || !AFFIXES.some((d) => d.k === a.k) || keys.has(a.k)) continue;
+            const v = Number(a.v);
+            if (!Number.isFinite(v) || v < 0 || v > 0.6) continue;
+            keys.add(a.k);
+            const entry = { k: a.k, v: Math.round(v * 1000) / 1000 };
+            if (a.lock) entry.lock = true;
+            affixes.push(entry);
+          }
+          if (affixes.length > count) affixes.length = count;
+          seen.add(p.uid);
+          clean.push({ uid: p.uid, sp: p.sp, r: p.r, lv, affixes, rerolls: fixInt(p.rerolls, 0, 1e6) });
+        }
+        state.petInsts = clean.slice(0, PET_INST_MAX);
+        state.petSeq = Math.max(fixInt(state.petSeq, 1, 1e9),
+          state.petInsts.reduce((m, p) => Math.max(m, p.uid), 0) + 1);
+        // 捕捉即解锁图鉴（2026-11-03 用户反馈）：已有该物种个体的补种子级熟练度记录
+        //（0 级也是拥有，与迁移块/服务端 validateDeep 同口径）——否则缚灵谷个体化捕捉
+        // 的物种永远「？？？」且无法喂养熟练度
+        for (const p of state.petInsts) {
+          if (state.pets[p.sp] === undefined) state.pets[p.sp] = 0;
+        }
+        const dex = {};
+        for (const def of PET_SPECIES) {
+          const d = state.petDex[def.id];
+          if (!d || typeof d !== 'object') continue;
+          const met = fixInt(d.met, 0, 1e9);
+          if (!met) continue;
+          dex[def.id] = { met, got: fixInt(d.got, 0, 1e9), bestR: fixInt(d.bestR, -1, 5) };
+        }
+        state.petDex = dex;
+      }
+      if (!state.petMigrated) {
+        // 融合迁移：已招募物种各赠 1 只凡品 lv1 个体；旧 activePets（物种 id）换成对应 uid。
+        // 亲密度/信物/内丹是物种级熟练度，原样保留作用于该物种所有个体
+        const grantUid = {};
+        for (const def of PET_SPECIES) {
+          if (state.pets[def.id] === undefined) continue;
+          const uid = state.petSeq++;
+          state.petInsts.push({ uid, sp: def.id, r: 0, lv: 1, affixes: [], rerolls: 0 });
+          grantUid[def.id] = uid;
+        }
+        if (Array.isArray(state.activePets) && state.activePets.length) {
+          // 旧 activePets 是物种 id 字符串：映射到赠出的个体 uid（物种未招募过的丢弃）
+          const mapped = state.activePets
+            .map((x) => (typeof x === 'string' ? grantUid[x] : x))
+            .filter((x) => Number.isInteger(x));
+          if (mapped.length) state.activePets = mapped;
+        }
+        state.petMigrated = true;
+      }
       if (!Array.isArray(state.activePets)) {
-        state.activePets = state.activePet && state.pets[state.activePet] !== undefined ? [state.activePet] : [];
+        state.activePets = [];
       }
       state.activePets = state.activePets
-        .filter((id) => PETS.some((p) => p.id === id) && state.pets[id] !== undefined)
+        .filter((uid) => state.petInsts.some((p) => p.uid === uid))
         .slice(0, state.petSlots);
       if (!state.petTokens || typeof state.petTokens !== 'object' || Array.isArray(state.petTokens)) {
         state.petTokens = {};
       }
       const tokens = {};
-      for (const def of PETS) {
+      for (const def of PET_SPECIES) {
         const lv = fixInt(state.petTokens[def.id], 0, TOKEN_MAX);
         if (lv > 0) tokens[def.id] = lv;
       }
@@ -1959,8 +2205,8 @@
         state.petCores = {};
       }
       const cores = {};
-      for (const def of PETS) {
-        if (state.pets[def.id] === undefined) continue; // 未拥有的宠（放生/未招募）不保留内丹
+      for (const def of PET_SPECIES) {
+        if (state.pets[def.id] === undefined) continue; // 未拥有的物种（未捕捉）不保留内丹
         const lv = fixInt(state.petCores[def.id], 0, CORE_MAX);
         if (lv > 0) cores[def.id] = lv;
       }
@@ -2317,16 +2563,52 @@
         const it = state.museum[s.key];
         state.museum[s.key] = (it && it.slot === s.key && isFinite(it.power) && RARITIES[it.r]) ? it : null;
       }
-      if (!state.farm || typeof state.farm !== 'object' || Array.isArray(state.farm) ||
-        !Array.isArray(state.farm.plots)) {
-        state.farm = { plots: [null, null, null] };
+      // —— 方格牧场（2026-11-02）：plots 改按格键对象；老灵田数组迁到中心 4 格 ——
+      if (!state.farm || typeof state.farm !== 'object' || Array.isArray(state.farm)) {
+        state.farm = { unlocked: FARM_HOME.slice(), plots: {} };
       }
+      if (Array.isArray(state.farm.plots)) {
+        const legacy = state.farm.plots;
+        state.farm.plots = {};
+        FARM_HOME.forEach((cell, i) => {
+          const p = legacy[i];
+          if (p && FARM_SEEDS.some((sd) => sd.id === p.id) && isFinite(p.doneAt)) {
+            state.farm.plots[cell] = { id: p.id, doneAt: Number(p.doneAt) };
+          }
+        });
+      }
+      // 解锁格：钳 0..143、去重封顶 144、必含中心 4 格（手改缺省自动补回）
+      let farmUnlocked = Array.isArray(state.farm.unlocked) ? state.farm.unlocked : [];
+      farmUnlocked = Array.from(new Set(farmUnlocked.map((n) => fixInt(n, 0, FARM_CELLS - 1)))).slice(0, FARM_CELLS);
+      for (const c of FARM_HOME) if (!farmUnlocked.includes(c)) farmUnlocked.push(c);
+      state.farm.unlocked = farmUnlocked;
+      // 作物：键必须是已解锁格，id 白名单，成熟时刻钳「最长寿种子」上界（坏值丢弃）
       const farmMsMax = Math.max(...FARM_SEEDS.map((sd) => sd.ms));
-      state.farm.plots = state.farm.plots.slice(0, FARM_PLOTS).map((p) =>
-        p && FARM_SEEDS.some((sd) => sd.id === p.id) && isFinite(p.doneAt)
-          ? { id: p.id, doneAt: Math.min(Number(p.doneAt), Date.now() + farmMsMax) }
-          : null);
-      while (state.farm.plots.length < FARM_PLOTS) state.farm.plots.push(null);
+      const unlockedSet = new Set(state.farm.unlocked);
+      const plotsIn = state.farm.plots && typeof state.farm.plots === 'object' && !Array.isArray(state.farm.plots)
+        ? state.farm.plots : {};
+      const farmPlots = {};
+      for (const key of Object.keys(plotsIn)) {
+        const cell = Number(key);
+        const p = plotsIn[key];
+        if (!Number.isInteger(cell) || cell < 0 || cell >= FARM_CELLS || !unlockedSet.has(cell)) continue;
+        if (!p || typeof p !== 'object' || !FARM_SEEDS.some((sd) => sd.id === p.id) || !isFinite(p.doneAt)) continue;
+        farmPlots[cell] = { id: p.id, doneAt: Math.min(Number(p.doneAt), Date.now() + farmMsMax) };
+      }
+      state.farm.plots = farmPlots;
+      // 种子库存 / 洗炼石库存（首次迁移赠灵草籽×3 + 灵花籽×1，与新建号默认一致）
+      const seedsIn = state.farmSeeds && typeof state.farmSeeds === 'object' && !Array.isArray(state.farmSeeds)
+        ? state.farmSeeds : null;
+      state.farmSeeds = {};
+      for (const sd of FARM_SEEDS) {
+        state.farmSeeds[sd.id] = seedsIn
+          ? fixInt(seedsIn[sd.id], 0, 1e6)
+          : (sd.id === 'cao' ? 3 : sd.id === 'hua' ? 1 : 0);
+      }
+      const rstonesIn = state.rerollStones && typeof state.rerollStones === 'object' && !Array.isArray(state.rerollStones)
+        ? state.rerollStones : {};
+      state.rerollStones = {};
+      for (const k of RSTONE_KEYS) state.rerollStones[k] = fixInt(rstonesIn[k], 0, 1e6);
       if (!Array.isArray(state.chapters)) state.chapters = [];
       state.chapters = Array.from(new Set(state.chapters.map((n) => fixInt(n, 0, CHAPTERS.length - 1))));
       // —— 第四批（融合 / 符文 / 心魔 / 悬赏 / 时辰 / 天劫 / 道侣 / 战功碑）——
@@ -2557,15 +2839,31 @@
     return { gain, combat };
   }
 
-  function activePetDefs() {
+  // 出战中的灵宠个体实例（activePets 存 uid，2026-11-02 个体化）
+  function activePetInstsList() {
     return (state.activePets || [])
-      .map((id) => PETS.find((p) => p.id === id))
-      .filter((p) => p && state.pets[p.id] !== undefined);
+      .map((uid) => (state.petInsts || []).find((p) => p.uid === uid))
+      .filter((p) => p && petSpDef(p.sp));
   }
-  const petBonus = (stat) => activePetDefs().reduce((sum, p) =>
-    sum + (p.stat === stat
-      ? p.per * state.pets[p.id] + 0.005 * (state.petTokens[p.id] || 0)
-      : 0), 0);
+  // 出战灵宠加成聚合（server/battle.js petAggOf 同源口径）：
+  // 物种天赋（per × 亲密度 + 信物 0.005/级）+ 个体词条（v × (1 + 0.01×(lv-1))）。
+  // gain 只吃天赋（词条池无经济键），展示与实际效果对齐
+  const petBonus = (stat) => activePetInstsList().reduce((sum, inst) => {
+    const def = petSpDef(inst.sp);
+    if (!def) return sum;
+    // 无亲密度记录的物种按 0 计（2026-11-03 对齐 server/battle.js petAggOf）：原整只
+    // return 会把个体词条一并丢掉——捕捉的个体可以先于旧招募系统存在，词条必须照算
+    let add = 0;
+    if (def.stat === stat) {
+      add += def.per * (state.pets[inst.sp] !== undefined ? state.pets[inst.sp] : 0) +
+        0.005 * (state.petTokens[inst.sp] || 0);
+    }
+    const lvMult = 1 + PET_AFF_LV_STEP * (Math.max(1, inst.lv | 0 || 1) - 1);
+    for (const a of inst.affixes || []) {
+      if (a && a.k === stat) add += (a.v || 0) * lvMult;
+    }
+    return sum + add;
+  }, 0);
 
   const caveGainBonus = () => 0.08 * state.cave.array;
   const expMult = () => (1 + 0.10 * state.cave.library) * (1 + 0.05 * state.gongfa.hui);
@@ -2914,7 +3212,7 @@
       desc: '分解专属件积攒器魂，定向打造指定部位的天品装备。' },
     { id: 'melt', name: '装备熔铸', where: '征战 · 装备', cond: '境界「金丹」',
       check: () => featureOpen('melt'),
-      desc: '五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率 10%±5%，失败材料与手续费不退，部位随机。' },
+      desc: '五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率 35%±5%，失败材料与手续费不退，部位随机。' },
     { id: 'trials', name: '条件试炼', where: '征战 · 试炼', cond: '境界「化神」',
       check: () => featureOpen('trials'),
       desc: '每日三项限制试炼（速杀 / 禁吸血 / 限承伤），全通额外 60 碎屑。' },
@@ -2923,7 +3221,7 @@
       desc: '每日白 / 绿 / 蓝 / 紫四单悬赏自动计数，0 点换榜，可刷新两次，四单全清加奖。' },
     { id: 'pets', name: '灵宠', where: '闲趣', cond: '境界「化神」',
       check: () => featureOpen('pets'),
-      desc: '开箱掉招募券，喂养提亲密度，出战给全局加成；兽骨养内丹觉醒特性，双宠位与融合在后方。' },
+      desc: '缚灵谷探索捕捉灵宠个体，三合一合成提品质，洗髓重随词条；亲密度/信物/内丹为物种级熟练度，出战给全局加成。' },
     { id: 'map', name: '秘境图', where: '征战', cond: '境界「化神」',
       check: () => featureOpen('map'),
       desc: '每日 12 点行动力探雾开格：采矿、拾尘、斩妖、闯藏宝窟，越远越肥。' },
@@ -3066,6 +3364,12 @@
     atk *= ascMult;
     hp *= ascMult;
 
+    // 云坊（2026-11-02 用户指定）：战力 +0.2%/级，攻血防同乘（server battle.js 同源位）
+    const fangMult = 1 + 0.002 * (state.cave.fang || 0);
+    atk *= fangMult;
+    hp *= fangMult;
+    def *= fangMult;
+
     // 词条与宝石：词条逐装备汇总；宝石绑部位（2026-10-31），不随装备离手失效
     const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
     for (const s of SLOTS) {
@@ -3086,11 +3390,14 @@
     lifesteal += agg.ls * GROWTH_SCALE;
     pierce += agg.pierce * GROWTH_SCALE;
 
-    // 灵宠出战加成 + 套装图鉴收集加成 + 功法 + 丹药 + 怪物图鉴
+    // 灵宠出战加成（天赋 + 个体词条六系，server/battle.js 消费端同位）+ 图鉴收集 + 功法
     const colB = collectionBonus();
     atk *= 1 + (petBonus('atk') + 0.02 * state.gongfa.atk) * GROWTH_SCALE + colB.combat;
     hp *= 1 + (petBonus('hp') + 0.02 * state.gongfa.hp) * GROWTH_SCALE + colB.combat;
+    def *= 1 + petBonus('def') * GROWTH_SCALE;
     crit += petBonus('crit') * GROWTH_SCALE;
+    lifesteal += petBonus('ls') * GROWTH_SCALE;
+    pierce += petBonus('pierce') * GROWTH_SCALE;
     // 出战灵宠内丹特性
     atk *= 1 + coreBonus('atk') * GROWTH_SCALE;
     hp *= 1 + coreBonus('hp') * GROWTH_SCALE;
@@ -3187,8 +3494,13 @@
   }
 
   function makeSpecialItem(mode, level, slotKey) {
-    const slotDef = SLOT_MAP[slotKey] || SLOTS[Math.floor(Math.random() * SLOTS.length)];
+    // 部位收窄（2026-11-02 用户指定，server/items.js makeSpecialItem 同源）：
+    // 请求部位不在 pieces 6 部位内时改在 6 部位内重随机，不再出 6 部位之外的套装件
     const set = SETS[mode];
+    const setSlotKeys = Object.keys(set.pieces);
+    const useKey = setSlotKeys.includes(slotKey) ? slotKey
+      : setSlotKeys[Math.floor(Math.random() * setSlotKeys.length)];
+    const slotDef = SLOT_MAP[useKey];
     // 兜底命名：套装件名必须为字符串（服务端 validateItem 拒收非字符串名，整档 400）
     const pieceName = set.pieces[slotDef.key] || (set.name + '·' + slotDef.name);
     // 套装件不参与装备等级体系（2026-11-01 用户指定：套装维持现有，战力只随内容深度/仙位走），
@@ -3274,6 +3586,36 @@
     beastBones: '<svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13 12 4l1-2 2 1-1.5 2L4.5 13.8Z" fill="#4ade80" stroke="#1f7a42" stroke-width=".8"/><circle cx="3.6" cy="12.4" r="1.6" fill="#86efac" stroke="#1f7a42" stroke-width=".8"/></svg>',
   };
   const resIcon = (key) => RES_ICONS[key] || '';
+
+  // 物品小图标（2026-11-03 用户指定「所有物品加图标」）：坊市原料（键=server/shop.js MATS 同源，
+  // 牧场种子共用同一键）、坊市成品（键=配方 id）。挂在文字前的用 .item-ic（margin-right），
+  // 与后缀位 .res-ic（margin-left）区分
+  const ITEM_ICONS = {
+    // —— 原料：牧场七种 ——
+    cao: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14V6" stroke="#2f9e44" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M8 8C5.8 8 4 6.4 3.6 3.8 6.2 4.2 8 6 8 8Z" fill="#51cf66"/><path d="M8 6.5c2.2 0 4-1.6 4.4-4.2C9.8 2.7 8 4.5 8 6.5Z" fill="#8ce99a"/></svg>',
+    hua: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><g fill="#f783ac"><circle cx="8" cy="4.6" r="2"/><circle cx="11.2" cy="7" r="2"/><circle cx="10" cy="10.8" r="2"/><circle cx="6" cy="10.8" r="2"/><circle cx="4.8" cy="7" r="2"/></g><circle cx="8" cy="8" r="1.6" fill="#f9c74f"/></svg>',
+    guo: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9.2" r="4.6" fill="#ff922b" stroke="#d9480f" stroke-width=".8"/><path d="M8 4.8c.2-1.4 1.2-2.4 2.8-2.6" stroke="#2f9e44" stroke-width="1.3" fill="none" stroke-linecap="round"/><ellipse cx="6.4" cy="7.6" rx="1.1" ry=".8" fill="#ffe8cc" opacity=".8"/></svg>',
+    sui: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c0-3.3 2.5-5.5 5.5-5.5S13.5 4.7 13.5 8c0 .8-.6 1.3-1.4 1.3H3.9C3.1 9.3 2.5 8.8 2.5 8Z" fill="#9775fa"/><path d="M6.4 9.3h3.2l-.5 4a1 1 0 0 1-1 .9h-.2a1 1 0 0 1-1-.9l-.5-4Z" fill="#d0bfff"/><circle cx="6" cy="5.6" r=".9" fill="#e5dbff"/><circle cx="9.8" cy="6.4" r=".7" fill="#e5dbff"/></svg>',
+    lian: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2c1.5 1.3 2.3 2.9 2.3 4.6L8 9.3 5.7 7.8c0-1.7.8-3.3 2.3-4.6Z" fill="#f8a5c2"/><path d="M2.6 6.4c1.8.4 3.1 1.6 3.6 3.2l-2.8 1c-.8-1.4-1-2.8-.8-4.2Z" fill="#fbb6c6"/><path d="M13.4 6.4c.2 1.4 0 2.8-.8 4.2l-2.8-1c.5-1.6 1.8-2.8 3.6-3.2Z" fill="#fbb6c6"/><path d="M2.8 11.2h10.4c-.6 1.4-2 2.2-3.6 2.2H6.4c-1.6 0-3-.8-3.6-2.2Z" fill="#74c0fc"/></svg>',
+    tong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="6.6" y="3" width="2.8" height="10" rx="1" fill="#a9744f" stroke="#83502c" stroke-width=".7"/><path d="M8 6.5C6.5 5.7 5.8 4.4 5.8 2.8c1.6.3 2.6 1.4 2.9 3Z" fill="#69db7c"/><path d="M8 8.6c1.7-.3 3-1.5 3.5-3.3-1.9.2-3.1 1.5-3.5 3.3Z" fill="#8ce99a"/></svg>',
+    xing: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 10 6.5 15 8 10 9.5 8 14.5 6 9.5 1 8 6 6.5Z" fill="#66d9e8" stroke="#0ca678" stroke-width=".7"/></svg>',
+    // —— 原料：灵圃 ——
+    ore: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5 9 3l4 3.5-.8 5.2-5.7 1.1-3.3-3.8Z" fill="#94a3b8" stroke="#495867" stroke-width=".8"/><path d="M5.8 6.2 8.4 5l2.6 2-1 3.4-3.2.6Z" fill="#cbd5e1"/></svg>',
+    herb: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="6.4" y="1.6" width="3.2" height="2.4" rx=".6" fill="#868e96"/><path d="M5.5 4h5l.7 3.2c.5 2.2-.4 4.6-2 6.2H6.8c-1.6-1.6-2.5-4-2-6.2Z" fill="#b2f2bb" stroke="#2f9e44" stroke-width=".8"/><path d="M4.9 8.6h6.2c-.2 1.8-1 3.5-2.3 4.8H7.2C5.9 12.1 5.1 10.4 4.9 8.6Z" fill="#69db7c"/></svg>',
+    // —— 成品：丹房三丹 ——
+    huiqi: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" fill="#69db7c" stroke="#2b8a3e" stroke-width=".9"/><path d="M5.2 6.4a3.4 3.4 0 0 1 2.2-1.8" stroke="#d3f9d8" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>',
+    ningshen: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" fill="#74c0fc" stroke="#1971c2" stroke-width=".9"/><path d="M5.2 6.4a3.4 3.4 0 0 1 2.2-1.8" stroke="#d0ebff" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>',
+    pojing: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" fill="#ffd43b" stroke="#e8590c" stroke-width=".9"/><path d="M5.2 6.4a3.4 3.4 0 0 1 2.2-1.8" stroke="#fff3bf" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>',
+    // —— 成品：器坊 ——
+    tiejian: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 2.5 6.6 9.4" stroke="#ced4da" stroke-width="2" stroke-linecap="round"/><path d="M5.2 8.2l2.6 2.6-1.5 1.5-2.6-2.6Z" fill="#f08c00"/><path d="M3.2 11.2l1.6 1.6-1.7 1.7-1.6-1.6Z" fill="#868e96"/></svg>',
+    huxin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="7" r="4.6" fill="#ffd43b" stroke="#e67700" stroke-width=".9"/><circle cx="8" cy="7" r="2.3" fill="#ffe066"/><path d="M6.6 11.4h2.8l.6 2.3H6Z" fill="#e67700"/></svg>',
+    juling: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="#d0bfff" stroke="#7048e8" stroke-width=".9"/><circle cx="8" cy="8" r="3" fill="none" stroke="#7048e8" stroke-width=".8"/><circle cx="8" cy="8" r="1.2" fill="#7048e8"/></svg>',
+    // —— 成品：符箓铺 ——
+    lingfu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.6" y="2.4" width="6.8" height="11.2" rx="1" fill="#ffe066" stroke="#e67700" stroke-width=".8"/><path d="M8 4.6v6.8M6.2 6.4h3.6" stroke="#e03131" stroke-width="1.1" fill="none" stroke-linecap="round"/></svg>',
+    hushen: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2c2.3 0 3.8 1.5 3.8 3.6 0 1-.4 1.9-1.1 2.6L8 13.8 5.3 8.4a3.8 3.8 0 0 1-1.1-2.6C4.2 3.7 5.7 2.2 8 2.2Z" fill="#faa2c1" stroke="#c2255c" stroke-width=".8"/><circle cx="8" cy="6" r="1.4" fill="#fff0f6"/></svg>',
+    dukong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.6" y="2.4" width="6.8" height="11.2" rx="1" fill="#99e9f2" stroke="#0c8599" stroke-width=".8"/><path d="M6.2 5.4 9.8 8l-3.6 2.6" stroke="#0b7285" stroke-width="1.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+  const itemIcon = (key) => ITEM_ICONS[key] || '';
 
   // 装备部位小图标：金铜色系，形状区分六部位
   const SLOT_ICONS = {
@@ -3900,8 +4242,12 @@
     save();
   }
 
+  // 飞升门槛（2026-11-03 用户指定）：需持有 1000 亿灵石方可飞升（飞升本就清零灵石，
+  // 门槛即「消耗」；服务端 economy.js 飞升配额公式同口径收紧）
+  const ASCEND_STONES = 1e11;
+
   function ascend() {
-    if (state.realm < REALMS.length - 1 || state.stones < 1e8) return;
+    if (state.realm < REALMS.length - 1 || state.stones < ASCEND_STONES) return;
     if (!confirm('飞升会重置灵石、境界与淬炼，保留装备、背包、图鉴和仙缘。确定继续？')) return;
     if (state.ordeal.active && !state.ordeal.dirty) {
       const def = ORDEALS.find((o) => o.id === state.ordeal.active);
@@ -3912,7 +4258,7 @@
     state.ordeal.active = '';
     state.ordeal.dirty = false;
     // 仙缘固定 +1/次（2026-11-01 用户指定）：原 √(灵石/1亿) 阶梯废除，飞升次数=仙缘点数；
-    // 1 亿灵石仍是发起飞升的门槛（上方 stones 判定），只是不再影响获得量
+    // 1000 亿灵石是发起飞升的门槛（上方 stones 判定），只是不再影响获得量
     const gain = 1;
     state.ascensions += gain;
     state.stones = 0;
@@ -4008,8 +4354,8 @@
     const sceneNames = { stage: '闯关', wild: '野外', tower: '爬塔', endless: '无尽秘境' };
     const idleParts = [];
     if (featureOpen('farm')) {
-      const ready = state.farm.plots.filter((p) => p && Date.now() >= p.doneAt).length;
-      if (ready) idleParts.push('灵田 <b>' + ready + '</b> 块待收');
+      const ready = Object.values(state.farm.plots).filter((p) => p && Date.now() >= p.doneAt).length;
+      if (ready) idleParts.push('牧场 <b>' + ready + '</b> 块待收');
     }
     if (featureOpen('gather')) {
       const rdy = Object.keys(GATHER_NODES).filter((k) => {
@@ -4500,6 +4846,9 @@
     }
 
     $('forgeDust').textContent = fmt(state.dust);
+    $('forgeStones').innerHTML = RSTONE_KEYS.map((k) =>
+      '<span class="farm-chip">' + REROLL_STONES[k].ic + REROLL_STONES[k].name +
+      ' <b>' + fmt(state.rerollStones[k] | 0) + '</b></span>').join('');
     $('forgeKicker').textContent =
       it.name + (it.special ? '' : ' · Lv.' + (it.lv || 0)) + ' · ' + RARITIES[it.r].name +
       ' · 已洗练 ' + (it.rerolls || 0) + ' 次';
@@ -4508,6 +4857,8 @@
     const arr = it.affixes || [];
     const affixBox = $('forgeAffixes');
     const rc = rerollCostNow(it); // 一次算好：下面按钮文案与禁用态共用（原先连算 3 次）
+    const need = rerollStonesNeeded(it); // 洗炼石：未锁定词条按当前类型逐条 1 颗
+    const needOk = Object.keys(need).every((k) => (state.rerollStones[k] | 0) >= need[k]);
     if (!count) {
       affixBox.innerHTML = '<p class="forge-empty">凡 / 灵 / 玄品装备没有词条，可镶嵌宝石。</p>';
     } else {
@@ -4517,7 +4868,8 @@
           const def = affixDef(a.k);
           return (
             '<div class="affix-row' + (a.lock ? ' locked' : '') + '">' +
-              '<span class="affix-name">' + def.name + '</span>' +
+              '<span class="affix-name">' + (REROLL_STONES[a.k] ? REROLL_STONES[a.k].ic : '') +
+                def.name + '</span>' +
               '<b>+' + fmtPct(a.v) + '</b>' +
               '<button class="mini ghost" data-act="lock" data-idx="' + i + '">' +
                 (a.lock ? '已锁' : '锁定') + '</button>' +
@@ -4527,11 +4879,16 @@
         '<div class="forge-reroll">' +
           '<button class="btn" data-act="reroll">洗练 ' + fmt(rc.cost) + resIcon('stones') +
             (rc.coupon ? '（券）' : '') + '</button>' +
-          '<p>可锁多条，其余重随机<br>每锁 1 条费用 ×2 · 每次洗练 ×1.3' +
-            (state.rerollCoupon ? '<br>持有半价券 ×' + state.rerollCoupon : '') + '</p>' +
+          (Object.keys(need).length
+            ? '<div class="farm-seedbar" style="margin:4px 0 0">' + Object.keys(need).map((k) =>
+                '<span class="farm-chip' + ((state.rerollStones[k] | 0) < need[k] ? ' lack' : '') + '" title="' +
+                REROLL_STONES[k].name + '">' + REROLL_STONES[k].ic + '×' + need[k] + '</span>').join('') + '</div>'
+            : '') +
+          '<p>未锁词条逐条耗 1 颗对应洗炼石（按词条当前类型）<br>可锁多条，其余重随机 · 每锁 1 条费用 ×2 · 每次洗练 ×1.3' +
+            (state.rerollCoupon ? '<br>持有半价券 ×' + state.rerollCoupon + '（只减灵石）' : '') + '</p>' +
         '</div>';
       const rerollBtn = affixBox.querySelector('button[data-act="reroll"]');
-      if (rerollBtn) rerollBtn.disabled = state.stones < rc.cost;
+      if (rerollBtn) rerollBtn.disabled = state.stones < rc.cost || !needOk;
     }
 
     // 宝石区走部位孔位（2026-10-31 部位化），与穿戴件无关
@@ -4635,6 +4992,15 @@
     renderForge();
   }
 
+  // 洗练消耗的洗炼石：未锁定词条按「当前类型」逐条 1 颗（2026-11-02 用户指定六型洗炼石）
+  const rerollStonesNeeded = (it) => {
+    const need = {};
+    for (const a of it.affixes || []) {
+      if (!a.lock && REROLL_STONES[a.k]) need[a.k] = (need[a.k] | 0) + 1;
+    }
+    return need;
+  };
+
   // 洗练实际费用：锁定条数 2^n 指数加价在前；持半价券自动折半并消耗一张；工坊周全局 -30%
   function rerollCostNow(it) {
     const lockN = (it.affixes || []).filter((a) => a.lock).length;
@@ -4656,8 +5022,17 @@
       forgeMsg('灵石不足');
       return;
     }
+    const need = rerollStonesNeeded(it);
+    for (const k of Object.keys(need)) {
+      if ((state.rerollStones[k] | 0) < need[k]) {
+        forgeMsg('洗炼石不足：缺 ' + REROLL_STONES[k].name + '×' + (need[k] - (state.rerollStones[k] | 0)) +
+          '（牧场收获可得）');
+        return;
+      }
+    }
     if (coupon) state.rerollCoupon--;
     state.stones -= cost;
+    for (const k of Object.keys(need)) state.rerollStones[k] -= need[k];
     rerollAffixes(it);
     if (state.ordeal.active === 'wuJiang') {
       state.ordeal.dirty = true;
@@ -4669,7 +5044,9 @@
     state.daily.forge++;
     equipDirty = true;
     combatDirty = true;
-    pushLog('洗练「' + it.name + '」词条，花费 ' + fmt(cost) + ' 灵石' + (coupon ? '（半价券）' : ''), 'sys');
+    pushLog('洗练「' + it.name + '」词条，花费 ' + fmt(cost) + ' 灵石' +
+      (coupon ? '（半价券）' : '') +
+      Object.keys(need).map((k) => ' · ' + REROLL_STONES[k].name + '-' + need[k]).join(''), 'sys');
     beep(700, 0.08);
     renderForge();
     save();
@@ -5258,7 +5635,7 @@
       text = tier.name + '，+' + tier.dust + ' 碎屑';
       chime([523, 659]);
     }
-    fishMsg = { text, cls };
+    fishMsg = { text, cls, ic: fishIcon(tier) };
     pushLog('钓得' + text + (acc > 0.85 ? '（妙手！）' : ''), 'special');
     render();
     save();
@@ -5300,27 +5677,31 @@
       state.fishing.bestT + '|' + (canBuy ? 1 : 0) + '|' + (fishMsg ? fishMsg.text : '');
     if (panelSigs.fishing === sig) return;
     panelSigs.fishing = sig;
-    const best = state.fishing.bestT >= 0 ? FISH_TABLE[state.fishing.bestT].name : '—';
+    const best = state.fishing.bestT >= 0
+      ? fishIcon(FISH_TABLE[state.fishing.bestT]) + FISH_TABLE[state.fishing.bestT].name
+      : '—';
     box.innerHTML =
       '<p class="hint">鱼饵 ' + state.fishing.bait + ' 枚（每日 0 点补 5）· 已钓 ' + state.fishing.casts +
         ' 竿 · 最旺 ' + best + '</p>' +
       '<div class="fish-track"><span class="fish-zone"></span>' +
         '<span class="fish-cursor' + (fishRod ? '' : ' hidden') + '" id="fishCursor"></span></div>' +
-      '<button class="btn wide" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + '>' +
-        (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
+      '<div class="fish-actions">' +
+        '<button class="btn" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + '>' +
+          (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
+        '<button class="btn" id="fishBaitBtn"' + (canBuy ? '' : ' disabled') + '>补饵 ' +
+          fmt(FISH_BAIT_COST) + resIcon('stones') + '</button>' +
+      '</div>' +
       (fishMsg
-        ? '<p class="gamble-result ' + fishMsg.cls + '">' + fishMsg.text + '</p>'
+        ? '<p class="gamble-result ' + fishMsg.cls + '">' + (fishMsg.ic || '') + fishMsg.text + '</p>'
         : '');
-    // 补饵钮常驻垂钓标题右侧（静态元素），此处只同步文案与可用态
-    const baitBtn = $('fishBaitBtn');
-    baitBtn.innerHTML = '补饵 ' + fmt(FISH_BAIT_COST) + resIcon('stones');
-    baitBtn.disabled = !canBuy;
+    // 补饵钮随渲染内联在抛竿右侧（2026-11-03 用户指定），随 fishingBox 重建逐次绑事件
     $('fishBtn').addEventListener('click', fishRod ? reelRod : castRod);
+    $('fishBaitBtn').addEventListener('click', buyBait);
   }
 
   // —— 灵宠内丹 ——
   function feedCore(id) {
-    const def = PETS.find((p) => p.id === id);
+    const def = petSpDef(id);
     if (!def || state.pets[id] === undefined) return;
     const lv = state.petCores[id] | 0;
     if (lv >= CORE_MAX) return;
@@ -5362,11 +5743,13 @@
     const node = state.gather.nodes[key];
     if (!def || !node || node.until === 0 || Date.now() < node.until) return;
     const n = gatherYield(key);
+    const until = node.until;
     node.until = 0;
     if (key === 'ore') state.gather.ore = Math.min(1e6, state.gather.ore + n);
     else state.gather.herb = Math.min(1e6, state.gather.herb + n);
     pushLog('「' + def.name + '」采集完成，' + (key === 'ore' ? '矿石' : '灵药') + ' +' + n, 'special');
     chime([784, 988]);
+    shopDeposit({ kind: 'gather', key, ts: until, lv: node.lv });
     render();
     save();
   }
@@ -5415,9 +5798,9 @@
           '<span class="cave-icon" aria-hidden="true">' + (GATHER_ICONS[key] || def.icon) + '</span>' +
           '<div class="cave-main"><span class="cave-name">' + def.name + ' <em>' + node.lv + ' 级</em></span>' +
           '<p class="cave-desc">' + (busy ? '采集中 · 剩 ' + left : canCollect
-            ? '可收取 ' + gatherYield(key) + ' ' + (key === 'ore' ? '矿石' : '灵药')
+            ? '可收取 ' + gatherYield(key) + ' ' + itemIcon(key) + (key === 'ore' ? '矿石' : '灵药')
             : '闲置 · ' + Math.round(def.ms / 60000) + ' 分钟一轮') +
-            ' · 存量 ' + fmt(stock) + '</p></div>' +
+            ' · 存量 ' + itemIcon(key) + fmt(stock) + '</p></div>' +
           '<div class="gather-actions">' +
             '<button class="mini" data-gather="collect" data-key="' + key + '"' + (canCollect ? '' : ' disabled') + '>收取</button>' +
             '<button class="mini" data-gather="start" data-key="' + key + '"' + (busy || canCollect ? ' disabled' : '') + '>' +
@@ -5473,6 +5856,30 @@
   // 装备熔铸（2026-10-31 收敛为两档）：天品 ×5 → 仙品；仙品 ×5 → 星级 +1 的仙品
   //（封顶 ★5，星级只乘算战力、不改 power 字段，服务端校验口径不变）。材料取最弱
   // MELT_NEED 件（套装/专属件不入料），部位随机，手续费按档位固定。
+  // 熔铸结果弹层（2026-11-03 用户指定）：成功/失败都弹层告知——成功亮成品卡
+  //（部位图标 + 品质色 + 星级战力），失败明示损耗
+  function showMeltResult(ok, item, r, fee) {
+    const body = $('meltResultBody');
+    if (!body) return;
+    $('meltResultTitle').textContent = ok ? '熔铸成功' : '熔铸失败';
+    if (ok) {
+      body.innerHTML =
+        '<div class="equip-slot item-r' + item.r + ' melt-item-card">' +
+          '<div class="slot-head"><span class="slot-icon">' + slotIcon(item.slot) + '</span>' +
+            '<span class="slot-name">' + esc(SLOT_MAP[item.slot].name) + '</span></div>' +
+          '<p class="slot-item-name">' + esc(item.name) + (item.star ? ' ★' + item.star : '') + '</p>' +
+          '<p class="slot-power">战力 <b>' + fmt(itemPower(item)) + '</b> · ' +
+            RARITIES[item.r].name + ' · Lv.' + item.lv + '</p>' +
+        '</div>' +
+        '<p class="hint">已熔出并入背包 · 花费 ' + fmt(fee) + resIcon('stones') + '</p>';
+    } else {
+      body.innerHTML =
+        '<p class="melt-fail-text">「' + RARITIES[r].name + '」×' + MELT_NEED + ' 与 ' +
+          fmt(fee) + resIcon('stones') + ' 手续费俱耗，仙火未成。</p>' +
+        '<p class="hint">材料与手续费不退，可再试一次。</p>';
+    }
+    $('meltResultModal').classList.add('show');
+  }
   const meltStock = (r) => state.bag.filter((it) => it.r === r && !it.special).length;
   const meltFee = (r) => (r === 4 ? RARITIES[5].stone * 10 : RARITIES[5].stone * 25);
   function meltItem(r) {
@@ -5495,7 +5902,7 @@
       : '熔出 1 件星级更高的仙品（封顶 ★5）';
     const rate = meltRate();
     if (!confirm('熔铸：消耗 ' + MELT_NEED + ' 件' + RARITIES[r].name + '装备（取最弱 ' + MELT_NEED +
-      ' 件）+' + fmt(fee) + ' 灵石，成功率 ' + Math.round(rate * 100) + '%（10% 上下浮动 5%），' +
+      ' 件）+' + fmt(fee) + ' 灵石，成功率 ' + Math.round(rate * 100) + '%（35% 上下浮动 5%），' +
       outLabel + '。失败材料与手续费不退。确定？')) return;
     mats.forEach((it) => state.bag.splice(state.bag.indexOf(it), 1));
     state.stones -= fee;
@@ -5504,6 +5911,7 @@
       pushLog('熔铸失败：' + RARITIES[r].name + ' ×' + MELT_NEED + ' 与 ' + fmt(fee) +
         ' 灵石手续费俱耗，仙火未成', 'sys');
       beep(220, 0.1);
+      showMeltResult(false, null, r, fee);
       panelSigs.melt = null;
       render();
       paintBag(true);
@@ -5523,6 +5931,7 @@
     pushLog('熔铸成功：「' + item.name + '」（' + RARITIES[item.r].name +
       (item.star ? ' ★' + item.star : '') + '）', 'special');
     chime([659, 784]);
+    showMeltResult(true, item, r, fee);
     panelSigs.melt = null;
     render();
     paintBag(true);
@@ -5925,34 +6334,400 @@
     save();
   }
 
-  // 灵田
-  function plantSeed(plotIdx, seedId) {
-    const def = FARM_SEEDS.find((sd) => sd.id === seedId);
-    if (!def || state.farm.plots[plotIdx]) return;
-    if (state.stones < def.cost) {
-      floatText('灵石不足', '#f87171');
-      return;
+  // —— 方格牧场：开垦 / 播种 / 购种 / 收获 ——
+  const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  const farmCellAdjacent = (cell) => {
+    const r = Math.floor(cell / FARM_GRID);
+    const c = cell % FARM_GRID;
+    const u = new Set(state.farm.unlocked);
+    return u.has(cell - FARM_GRID) && r > 0 || u.has(cell + FARM_GRID) && r < FARM_GRID - 1 ||
+      u.has(cell - 1) && c > 0 || u.has(cell + 1) && c < FARM_GRID - 1;
+  };
+
+  function unlockFarmCell(cell) {
+    if (cell < 0 || cell >= FARM_CELLS || state.farm.unlocked.includes(cell)) return false;
+    if (!farmCellAdjacent(cell)) { floatText('只能开垦与已开土地相邻的格子', '#f87171'); return false; }
+    const cost = farmUnlockCost(state.farm.unlocked.length);
+    if (state.stones < cost) { floatText('灵石不足', '#f87171'); return false; }
+    state.stones -= cost;
+    state.farm.unlocked.push(cell);
+    pushLog('牧场开垦第 ' + state.farm.unlocked.length + ' 块地，花费 ' + fmt(cost) + ' 灵石', 'sys');
+    beep(520, 0.08);
+    render();
+    save();
+    return true;
+  }
+
+  // 开垦确认弹层（2026-11-02 用户指定）：点未解锁格先问「是否用 X 灵石解锁」
+  let farmPendingCell = -1;
+  function farmUnlockAsk(cell) {
+    if (cell < 0 || cell >= FARM_CELLS || state.farm.unlocked.includes(cell)) return;
+    if (!farmCellAdjacent(cell)) { floatText('只能开垦与已开土地相邻的格子', '#f87171'); return; }
+    farmPendingCell = cell;
+    const cost = farmUnlockCost(state.farm.unlocked.length);
+    $('farmUnlockText').innerHTML =
+      '开垦这块方格需要 <b>' + fmt(cost) + '</b> ' + resIcon('stones') + '，且只能开垦与已开土地相邻的格子。是否解锁？';
+    $('farmUnlockOk').disabled = state.stones < cost;
+    $('farmUnlockModal').classList.add('show');
+  }
+
+  function plantSeed(cell, seedId) {
+    if (!state.farm.unlocked.includes(cell) || state.farm.plots[cell]) return false;
+    const def = FARM_SEEDS.find((sd) => sd.id === seedId) || FARM_SEEDS[0];
+    if ((state.farmSeeds[def.id] | 0) <= 0) { floatText('没有' + def.name + '了，先购种或收获', '#f87171'); return false; }
+    state.farmSeeds[def.id]--;
+    state.farm.plots[cell] = { id: def.id, doneAt: Date.now() + def.ms };
+    pushLog('牧场种下「' + def.name + '」（' + def.text + '）', 'sys');
+    beep(620, 0.07);
+    render();
+    save();
+    return true;
+  }
+
+  // 购种弹层（2026-11-02 用户指定）：一键开层列出全部菜籽，逐行填数量统一购买
+  const FARM_BUY_MAX = 99; // 单种单次上限（沿用原 buySeed 钳制）
+  function farmBuyQtyOf(id) {
+    const el = document.querySelector('[data-buyqty="' + id + '"]');
+    const n = Math.floor(Number(el && el.value));
+    return Number.isFinite(n) ? Math.max(0, Math.min(FARM_BUY_MAX, n)) : 0;
+  }
+  function farmBuyTotal() {
+    return FARM_SEEDS.reduce((sum, sd) => sum + farmBuyQtyOf(sd.id) * sd.cost, 0);
+  }
+  function farmBuyPaint() {
+    const total = farmBuyTotal();
+    $('farmBuyTotal').innerHTML = '合计 <b>' + fmt(total) + '</b> ' + resIcon('stones') +
+      '（余额 ' + fmt(state.stones) + '）';
+    $('farmBuyOk').disabled = total <= 0 || state.stones < total;
+  }
+  function farmBuyOpen() {
+    $('farmBuyList').innerHTML = FARM_SEEDS.map((sd) =>
+      '<div class="farm-buy-row">' +
+        '<span class="farm-buy-name">' + itemIcon(sd.id) + sd.name + '<i> ' + sd.text + ' · 单价 ' + fmt(sd.cost) + '</i></span>' +
+        '<span class="farm-buy-own">有 ' + (state.farmSeeds[sd.id] | 0) + '</span>' +
+        '<input type="number" min="0" max="' + FARM_BUY_MAX + '" step="1" value="0" data-buyqty="' + sd.id + '"' +
+        ' aria-label="' + sd.name + '购买数量">' +
+      '</div>').join('');
+    farmBuyPaint();
+    $('farmBuyModal').classList.add('show');
+  }
+  function farmBuyConfirm() {
+    const total = farmBuyTotal();
+    if (total <= 0 || state.stones < total) { floatText('灵石不足', '#f87171'); return; }
+    const parts = [];
+    for (const sd of FARM_SEEDS) {
+      const n = farmBuyQtyOf(sd.id);
+      if (n > 0) {
+        state.farmSeeds[sd.id] = (state.farmSeeds[sd.id] | 0) + n;
+        parts.push(sd.name + '×' + n);
+      }
     }
-    state.stones -= def.cost;
-    state.farm.plots[plotIdx] = { id: seedId, doneAt: Date.now() + def.ms };
-    pushLog('灵田种下「' + def.name + '」（' + def.text + '）', 'sys');
+    if (!parts.length) return;
+    state.stones -= total;
+    pushLog('购入 ' + parts.join('、') + '，花费 ' + fmt(total) + ' 灵石', 'sys');
+    beep(600, 0.06);
+    $('farmBuyModal').classList.remove('show');
+    render();
+    save();
+  }
+
+  // 种植选种弹层（2026-11-02 用户指定）：点空白格先弹层选要种什么
+  let farmPendingPlot = -1;
+  function farmPlantAsk(cell) {
+    if (!state.farm.unlocked.includes(cell) || state.farm.plots[cell]) return;
+    farmPendingPlot = cell;
+    $('farmPlantList').innerHTML = FARM_SEEDS.map((sd) => {
+      const own = state.farmSeeds[sd.id] | 0;
+      return '<button class="farm-plant-row" data-plantseed="' + sd.id + '"' + (own > 0 ? '' : ' disabled') +
+        ' title="' + sd.name + ' · 生长 ' + sd.text + ' · 收获碎屑 ' + sd.dust + (own > 0 ? '' : ' · 没有存货，先购种') + '">' +
+        '<span>' + itemIcon(sd.id) + sd.name + '</span><i>' + sd.text + ' · 碎屑 ' + sd.dust + '</i><b>×' + own + '</b></button>';
+    }).join('');
+    $('farmPlantModal').classList.add('show');
+  }
+
+  function harvestPlot(cell) {
+    const plot = state.farm.plots[cell];
+    if (!plot || Date.now() < plot.doneAt) return;
+    const idx = Math.max(0, FARM_SEEDS.findIndex((sd) => sd.id === plot.id));
+    const def = FARM_SEEDS[idx];
+    delete state.farm.plots[cell];
+    const parts = [];
+    if (def.dust) {
+      addDust(def.dust);
+      parts.push('碎屑 +' + def.dust);
+    }
+    // 随机洗炼石：类型六选一，数量随种子档位走（1~2 … 1~5）
+    const sk = RSTONE_KEYS[randInt(0, RSTONE_KEYS.length - 1)];
+    const sn = randInt(1, farmStoneN(idx));
+    state.rerollStones[sk] = (state.rerollStones[sk] | 0) + sn;
+    parts.push(REROLL_STONES[sk].name + ' +' + sn);
+    // 随机种子 1~10
+    const sd = FARM_SEEDS[randInt(0, FARM_SEEDS.length - 1)];
+    const dn = randInt(1, FARM_SEED_DROP_MAX);
+    state.farmSeeds[sd.id] = (state.farmSeeds[sd.id] | 0) + dn;
+    parts.push(sd.name + ' +' + dn);
+    pushLog('牧场收获「' + def.name + '」：' + parts.join(' · '), 'special');
+    chime([784, 988]);
+    shopDeposit({ kind: 'farm', cell, seed: plot.id, ts: plot.doneAt });
+    render();
+    save();
+  }
+
+  // 一键收获（2026-11-03 用户指定）：全部熟格一次收。逐格随机掉落/入账与单格口径完全一致
+  //（含 shopDeposit 逐格 POST，服务端墙钟限速 300/分本就按 144 格连点放宽），只把
+  // 日志/音效/重绘/存档合并成一次，避免上百格逐格 render+save
+  function farmHarvestAll() {
+    const now = Date.now();
+    const cells = Object.keys(state.farm.plots).map(Number)
+      .filter((cell) => state.farm.plots[cell] && state.farm.plots[cell].doneAt <= now);
+    if (!cells.length) { floatText('没有可收获的庄稼', '#f87171'); return; }
+    let dust = 0;
+    const stoneGain = {};
+    const seedGain = {};
+    for (const cell of cells) {
+      const plot = state.farm.plots[cell];
+      const idx = Math.max(0, FARM_SEEDS.findIndex((sd) => sd.id === plot.id));
+      const def = FARM_SEEDS[idx];
+      delete state.farm.plots[cell];
+      dust += def.dust | 0;
+      const sk = RSTONE_KEYS[randInt(0, RSTONE_KEYS.length - 1)];
+      stoneGain[sk] = (stoneGain[sk] | 0) + randInt(1, farmStoneN(idx));
+      const sd = FARM_SEEDS[randInt(0, FARM_SEEDS.length - 1)];
+      seedGain[sd.id] = (seedGain[sd.id] | 0) + randInt(1, FARM_SEED_DROP_MAX);
+      shopDeposit({ kind: 'farm', cell, seed: plot.id, ts: plot.doneAt });
+    }
+    addDust(dust);
+    for (const k of Object.keys(stoneGain)) state.rerollStones[k] = (state.rerollStones[k] | 0) + stoneGain[k];
+    for (const k of Object.keys(seedGain)) state.farmSeeds[k] = (state.farmSeeds[k] | 0) + seedGain[k];
+    const gains = ['碎屑 +' + fmt(dust)]
+      .concat(Object.keys(stoneGain).map((k) => REROLL_STONES[k].name + ' +' + stoneGain[k]))
+      .concat(Object.keys(seedGain).map((k) =>
+        ((FARM_SEEDS.find((sd) => sd.id === k) || {}).name || k) + ' +' + seedGain[k]));
+    pushLog('一键收获 ' + cells.length + ' 块：' + gains.join(' · '), 'special');
+    chime([784, 988]);
+    render();
+    save();
+  }
+
+  // 一键播种（2026-11-03 用户指定）：空格逐格从「有存货」的种子里随机挑一种种下
+  function farmPlantAll() {
+    const empties = state.farm.unlocked.filter((cell) => !state.farm.plots[cell]);
+    if (!empties.length) { floatText('没有空格可种', '#f87171'); return; }
+    const used = {};
+    let planted = 0;
+    for (const cell of empties) {
+      const avail = FARM_SEEDS.filter((sd) => (state.farmSeeds[sd.id] | 0) > (used[sd.id] | 0));
+      if (!avail.length) break;
+      const def = avail[randInt(0, avail.length - 1)];
+      used[def.id] = (used[def.id] | 0) + 1;
+      state.farmSeeds[def.id]--;
+      state.farm.plots[cell] = { id: def.id, doneAt: Date.now() + def.ms };
+      planted++;
+    }
+    if (!planted) { floatText('没有种子了，先购种', '#f87171'); return; }
+    pushLog('一键播种 ' + planted + ' 格：' +
+      FARM_SEEDS.filter((sd) => used[sd.id]).map((sd) => sd.name + '×' + used[sd.id]).join('、'), 'sys');
     beep(620, 0.07);
     render();
     save();
   }
 
-  function harvestPlot(plotIdx) {
-    const plot = state.farm.plots[plotIdx];
-    if (!plot || Date.now() < plot.doneAt) return;
-    const def = FARM_SEEDS.find((sd) => sd.id === plot.id);
-    state.farm.plots[plotIdx] = null;
-    if (def) {
-      addDust(def.dust);
-      pushLog('灵田收获「' + def.name + '」，+' + def.dust + ' 碎屑', 'special');
-      chime([784, 988]);
+  /* ---------------- 云来坊市（2026-11-02 模拟经营 P1） ----------------
+     全量服务端权威：建筑/库存/订单/商誉都在服务端 shop_state，客户端只渲染 view；
+     灵石收支本地同步对账（支出照 pvpBuy 口径本地扣、收入照服务端实额本地加）后推档。
+     目录（名称/价格/配方）随 view.catalog 下发，本地不复制数值表防口径漂移。 */
+  const SHOP = { view: null, locked: true, loaded: false, loading: false, busy: {}, lastPaint: 0 };
+
+  // 坊市建筑图标（2026-11-02 用户指定：不显示文字，SVG 随 .shop-b-name 金色）：
+  // 丹房=炼丹炉 · 器坊=交叉双剑 · 符箓铺=符纸；缺省回退服务端文字 icon
+  const SHOP_BUILD_ICONS = {
+    dan: '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.3v1.9"/><path d="M8.6 4.2h6.8"/><path d="M5.4 8.1c-.3 4.9 1.7 8.6 6.6 10.5 4.9-1.9 6.9-5.6 6.6-10.5z"/><path d="m9.1 19 -1.5 2.2M14.9 19l1.5 2.2"/></svg>',
+    qi: '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 6.5 4-4 3 3-4 4z"/><path d="M16 9 5.5 19.5"/><path d="m4 18 3 3"/><path d="m9.5 6.5-4-4-3 3 4 4z"/><path d="m8 9 10.5 10.5"/><path d="m20 18-3 3"/></svg>',
+    fu: '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5V1.8"/><rect x="8" y="3.5" width="8" height="17" rx="1.2"/><path d="M12 7.2v9.6"/><path d="M9.7 9.7h4.6"/><path d="M9.7 14.3h4.6"/></svg>',
+  };
+
+  function shopDeposit(payload) {
+    // 收获即入账（幂等：服务端按时间戳严格递增去重）；失败静默——单笔损失只是一份原料
+    worldFetch('/api/shop/deposit', { method: 'POST', body: JSON.stringify(payload) })
+      .then((out) => {
+        if (out && out.got && SHOP.view) {
+          for (const k of Object.keys(out.got)) {
+            SHOP.view.mats[k] = Math.min(1e6, (SHOP.view.mats[k] || 0) + out.got[k]);
+          }
+          if (document.querySelector('#topTabs .top-tab.active')?.dataset.tab === 'xian') renderShop();
+        }
+      })
+      .catch(() => {});
+  }
+
+  async function shopLoad() {
+    if (SHOP.loading) return;
+    if (SHOP.loaded) { renderShop(); return; }
+    SHOP.loading = true;
+    try {
+      const out = await worldFetch('/api/shop');
+      SHOP.locked = !!out.locked;
+      SHOP.view = out.view || null;
+      SHOP.loaded = true;
+      renderShop();
+    } catch (e) { /* 加载失败保持未加载态，下次切到闲趣页重试 */ }
+    finally { SHOP.loading = false; }
+  }
+
+  function shopMatText(mats) {
+    return Object.keys(mats).map((k) =>
+      itemIcon(k) + esc(SHOP.view.catalog.mats[k] || k) + '×' + mats[k]).join(' ');
+  }
+
+  function renderShop() {
+    const box = $('shopBox');
+    if (!box) return;
+    if (SHOP.locked) {
+      $('shopRep').textContent = '';
+      box.innerHTML = '<p class="hint">坊市随卷三「坊市风云」剧情解锁（境界到达金丹）。</p>';
+      return;
     }
-    render();
-    save();
+    const v = SHOP.view;
+    if (!v) { box.innerHTML = '<p class="hint">坊市加载中…</p>'; return; }
+    $('shopRep').textContent = '商誉 ' + fmt(v.rep);
+    const cat = v.catalog;
+    const nowT = Date.now();
+    const lvOf = (b) => v.lv[b] || 0;
+    const slotsOf = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 17); // server SLOTS_AT_LV 同口径（仅展示）
+
+    // —— 建筑与配方 ——
+    let html = '';
+    for (const b of Object.keys(cat.buildings)) {
+      const def = cat.buildings[b];
+      const lv = lvOf(b);
+      const myCrafts = v.crafts.filter((c) => c.b === b);
+      const open = lv > 0;
+      const lockedByRep = v.rep < def.repNeed;
+      html += '<div class="shop-b' + (open ? '' : ' shop-b-locked') + '">';
+      html += '<div class="shop-b-head"><span class="shop-b-name"><span class="shop-b-ic">' +
+        (SHOP_BUILD_ICONS[b] || esc(def.icon)) + '</span>' + esc(def.name) +
+        (open ? ' <em>Lv.' + lv + '</em> <i>' + myCrafts.length + '/' + slotsOf(lv) + ' 席</i>' : '') + '</span>';
+      if (open && lv < def.max) {
+        const up = Math.floor(def.cost * Math.pow(def.growth, lv));
+        html += '<button class="mini" data-shop="build" data-b="' + b + '"' +
+          (state.stones < up ? ' disabled' : '') + '>升级 ' + fmt(up) + '</button>';
+      } else if (open) {
+        html += '<span class="shop-max">满级</span>';
+      } else if (lockedByRep) {
+        html += '<button class="mini" disabled>商誉 ' + def.repNeed + ' 解锁</button>';
+      } else {
+        html += '<button class="mini" data-shop="build" data-b="' + b + '"' +
+          (state.stones < def.cost ? ' disabled' : '') + '>开业 ' + fmt(def.cost) + '</button>';
+      }
+      html += '</div>';
+      if (open) {
+        // 在制/可收行
+        for (const c of myCrafts) {
+          const r = cat.recipes[c.id];
+          const done = c.doneAt <= nowT;
+          html += '<div class="shop-craft"><span>' + itemIcon(c.id) + esc(r.name) + '</span><i>' +
+            (done ? '已出炉' : '制作中 ' + fmtDuration((c.doneAt - nowT) / 1000)) + '</i>' +
+            (done ? '<button class="mini" data-shop="collect" data-b="' + b + '">收取</button>' : '') + '</div>';
+        }
+        // 配方行
+        for (const r of Object.values(cat.recipes)) {
+          if (r.b !== b) continue;
+          const unlocked = lv >= r.req;
+          const okMat = Object.keys(r.mats).every((m) => (v.mats[m] || 0) >= r.mats[m]);
+          const can = unlocked && myCrafts.length < slotsOf(lv) && okMat && state.stones >= r.fee;
+          html += '<div class="shop-recipe' + (unlocked ? '' : ' shop-r-locked') + '"' +
+            (r.desc ? ' title="' + esc(r.desc) + '"' : '') + '>' +
+            '<span class="shop-r-name">' + itemIcon(r.id) + esc(r.name) + '</span>' +
+            '<span class="shop-r-info">' + fmtDuration(r.ms / 1000) + ' · ' + shopMatText(r.mats) +
+            ' · 费 ' + fmt(r.fee) + (unlocked ? '' : ' · Lv.' + r.req + ' 解锁') + '</span>' +
+            (unlocked ? '<button class="mini" data-shop="craft" data-b="' + b + '" data-id="' + r.id + '"' +
+              (can ? '' : ' disabled') + '>开工</button>' : '') + '</div>';
+        }
+      }
+      html += '</div>';
+    }
+
+    // —— 库存（直售）——
+    const invIds = Object.keys(cat.recipes).filter((id) => (v.inv[id] || 0) > 0);
+    if (invIds.length) {
+      html += '<p class="side-title">成品库存</p>';
+      for (const id of invIds) {
+        const r = cat.recipes[id];
+        const mult = 1 + 0.05 * (lvOf(r.b) - 1);
+        html += '<div class="shop-inv"' + (r.desc ? ' title="' + esc(r.desc) + '"' : '') +
+          '><span>' + itemIcon(id) + esc(r.name) + ' ×' + v.inv[id] +
+          '<i> 售价 ' + fmt(Math.floor(r.sell * mult)) + '</i></span>' +
+          '<button class="mini" data-shop="sell" data-id="' + id + '">直售</button></div>';
+      }
+    }
+
+    // —— 订单 ——
+    html += '<p class="side-title">坊市订单 <i class="shop-refresh">刷新 ' + fmtDuration(v.nextSlotIn / 1000) + '</i></p>';
+    if (!v.orders.length) {
+      html += '<p class="hint">先开一座建筑，坊市才有订单上门。</p>';
+    } else {
+      v.orders.forEach((o, i) => {
+        const r = cat.recipes[o.id];
+        const ok = (v.inv[o.id] || 0) >= o.qty && !v.done.includes(i);
+        html += '<div class="shop-order' + (v.done.includes(i) ? ' shop-o-done' : '') + '"' +
+          (r.desc ? ' title="' + esc(r.desc) + '"' : '') + '>' +
+          '<span>' + itemIcon(o.id) + esc(r.name) + ' ×' + o.qty + '</span>' +
+          '<span class="shop-o-pay">' + fmt(o.stones) + ' + 商誉' + o.rep + '</span>' +
+          (v.done.includes(i) ? '<i>已交付</i>' :
+            '<button class="mini" data-shop="order" data-idx="' + i + '"' + (ok ? '' : ' disabled') + '>交付</button>') +
+          '</div>';
+      });
+    }
+
+    // —— 原料仓库 ——
+    html += '<p class="side-title">原料仓库</p><div class="shop-mats">';
+    for (const m of Object.keys(cat.mats)) {
+      html += '<span class="shop-mat' + ((v.mats[m] || 0) > 0 ? '' : ' shop-mat-zero') + '">' +
+        itemIcon(m) + esc(cat.mats[m]) + ' ' + (v.mats[m] || 0) + '</span>';
+    }
+    html += '</div>';
+    // 内容无变化不重写（2026-11-03）：500ms 全量 innerHTML 重绘会吞掉重绘瞬间落在按钮上
+    // 的 click（节点被替换）；倒计时文本每秒才变一格，多数节拍可整段跳过
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  async function shopAct(act, el) {
+    if (!SHOP.view) return;
+    // 直售防手滑（2026-11-03 用户指定）：该成品还有未交付订单需要时，先确认再卖
+    if (act === 'sell') {
+      const needByOrder = SHOP.view.orders.some((o, i) =>
+        o.id === el.dataset.id && !SHOP.view.done.includes(i));
+      if (needByOrder && !confirm('有订单未提交，是否直售？')) return;
+    }
+    const body = act === 'build' ? { b: el.dataset.b }
+      : act === 'craft' ? { b: el.dataset.b, id: el.dataset.id }
+      : act === 'collect' ? { b: el.dataset.b }
+      : act === 'sell' ? { id: el.dataset.id, n: 1 }
+      : act === 'order' ? { idx: Number(el.dataset.idx), slot: SHOP.view.orderSlot | 0 } : null;
+    if (!body) return;
+    const key = act + (body.b || body.id || body.idx);
+    if (SHOP.busy[key]) return;
+    SHOP.busy[key] = true;
+    try {
+      const out = await worldFetch('/api/shop/' + act, { method: 'POST', body: JSON.stringify(body) });
+      // 灵石对账（服务端实额，不走 addStones 增益链——坊市收益不吃时辰/周增益）
+      if (act === 'build' || act === 'craft') state.stones -= (out.cost || out.fee || 0);
+      if (act === 'sell' || act === 'order') { state.stones += out.stones; state.totalStones += out.stones; }
+      SHOP.view = out.view;
+      if (act === 'build') { pushLog('坊市建筑扩建成功' + (out.cost ? '，花费 ' + fmt(out.cost) + ' 灵石' : ''), 'sys'); beep(660, 0.08); }
+      if (act === 'craft') pushLog('开工制作（手续费 ' + fmt(out.fee) + ' 灵石）', 'sys');
+      if (act === 'sell') { pushLog('直售成品，入账 ' + fmt(out.stones) + ' 灵石', 'special'); floatText('+' + fmt(out.stones), '#f0d9a8'); chime([784, 988]); }
+      if (act === 'order') { pushLog('交付订单，入账 ' + fmt(out.stones) + ' 灵石', 'special'); floatText('+' + fmt(out.stones), '#4ade80'); chime([659, 880]); }
+      save();
+      paintResources();
+      renderShop();
+    } catch (e) {
+      // 订单槽翻转（409）：worldFetch 只透出 error 消息，置未加载态让节拍/切页重取新订单
+      if (e && e.status === 409) { SHOP.loaded = false; shopLoad(); }
+      floatText(e.message, '#f87171');
+    } finally {
+      SHOP.busy[key] = false;
+    }
   }
 
   // 天道录
@@ -6612,7 +7387,7 @@
       const data = await res.json().catch(() => ({}));
       if (res.ok) return { ok: true, stones: Number(data.stones) || 0 }; // tide 类以服务端自算数额为准
       floatText('领取失败：' + (data.error || '请稍后再试'), '#f87171');
-      return { ok: false, stones: 0 };
+      return { ok: false, stones: 0, error: data.error || '' };
     } catch (e) {
       return { ok: false, stones: 0 }; // 网络失败：noteServerDown 已接管提示
     }
@@ -7006,9 +7781,9 @@
       (st.worstCut > 0 ? ' · 最深倒扣 ' + fmt(st.worstCut) + ' 灵石' : '');
   }
 
-  function signLogHtml() {
+  function signLogHtml(max) {
     if (!state.signLog.length) return '<p class="hint">暂无流水，今日签到后开始记录。</p>';
-    return state.signLog.slice(0, SIGN_LOG_SHOW).map((e) => {
+    return state.signLog.slice(0, max || SIGN_LOG_SHOW).map((e) => {
       const parts = [];
       if (e.s) parts.push((e.s > 0 ? '+' : '-') + fmt(Math.abs(e.s)) + ' 灵石');
       if (e.u) parts.push((e.u > 0 ? '+' : '-') + fmt(Math.abs(e.u)) + ' 碎屑');
@@ -7019,13 +7794,28 @@
     }).join('');
   }
 
+  // 签到战绩·流水弹层（2026-11-03 用户指定）：面板收起为入口按钮，全量流水进弹层
+  function openSignLog() {
+    $('signLogStats').textContent = signStatsText();
+    $('signLogModalList').innerHTML = signLogHtml(SIGN_LOG_MAX);
+    $('signLogModal').classList.add('show');
+  }
+
   async function claimTask(id) {
     ensureDaily();
     const def = DAILY_TASKS.find((t) => t.id === id);
     if (!def || state.daily.claimed.includes(id)) return;
     if ((state.daily[id] || 0) < def.target) return;
     const gt = await claimGate('task_' + id, stoneGainEstimate(def.reward.stones || 0));
-    if (!gt.ok) return;
+    if (!gt.ok) {
+      // 服务端权威对齐（2026-11-03）：同 claimWeekly——漂移时按服务端判定补记领取态
+      if (/已领取/.test(gt.error || '') && !state.daily.claimed.includes(id)) {
+        state.daily.claimed.push(id);
+        render();
+        save();
+      }
+      return;
+    }
     // 全勤奖与最后一项任务同帧领取：一并过确认，避免任务入账而全勤奖挂起
     const allDone = state.daily.claimed.length + 1 >= DAILY_TASKS.length;
     if (allDone) {
@@ -7054,7 +7844,17 @@
     if (!def || state.weekly.claimed.includes(id)) return;
     if ((state.weekly[id] || 0) < def.target) return;
     const gw = await claimGate('wtask_' + id, stoneGainEstimate(def.reward.stones || 0));
-    if (!gw.ok) return;
+    if (!gw.ok) {
+      // 服务端权威对齐（2026-11-03 用户反馈）：本地领取态与云端 claim_days 漂移
+      // （换设备/刷新丢本地态/双击竞态）时，服务端判「已领取」即先前已发放过——
+      // 本地补记领取态消除反复报错的卡死按钮
+      if (/已领取/.test(gw.error || '') && !state.weekly.claimed.includes(id)) {
+        state.weekly.claimed.push(id);
+        render();
+        save();
+      }
+      return;
+    }
     // 周常全勤奖与最后一项同帧领取：一并过确认
     const allDone = state.weekly.claimed.length + 1 >= WEEKLY_TASKS.length;
     if (allDone) {
@@ -7106,23 +7906,85 @@
     save();
   }
 
-  function recruitPet(id) {
-    const def = PETS.find((p) => p.id === id);
-    if (!def || state.pets[id] !== undefined) return;
-    if (state.petTickets < def.cost) {
-      floatText('招募券不足', '#f87171');
-      return;
-    }
-    state.petTickets -= def.cost;
-    state.pets[id] = 0;
-    pushLog('招募灵宠「' + def.name + '」', 'special');
-    chime([659, 880, 1046]);
-    render();
-    save();
+  /* ---------------- 灵宠个体化：捕捉（缚灵谷）/ 合成 / 洗髓 ----------------
+   * 概率全部服务端掷（server/pets.js）：hunt 出遭遇存 pending、capture 消费，
+   * fuse/reroll 校验所有权后下发成体（uid=0 占位，此处以 petSeq 重编，照装备掉落模式）。
+   * 花费口径：灵石/招募券服务端账本原子扣 + 客户端吸收成功响应后同额扣 state；
+   * 兽骨/碎屑/洗练券不在账本，服务端按镜像复核、客户端扣档。 */
+
+  const petFindInst = (uid) => (state.petInsts || []).find((p) => p.uid === uid) || null;
+
+  // 图鉴计数：met 在遭遇时 +1（同一场遭遇只记一次），got 收服时 +1，bestR 取最高
+  function petDexTouch(sp, got, bestR) {
+    const d = state.petDex[sp] || { met: 0, got: 0, bestR: -1 };
+    if (got) d.got++;
+    if (bestR > d.bestR) d.bestR = bestR;
+    state.petDex[sp] = d;
   }
 
+  // 收服入库：uid 用服务端发放值（2026-11-03 起服务端发号，客户端只对旧响应 0 占位兜底
+  // 本地重编）+ 入表 + 图鉴（背包满员拒收——正常流被 petCapture 预检挡住）
+  function petRegisterCaptured(pet) {
+    if (!pet || !petSpDef(pet.sp)) return null;
+    if (state.petInsts.length >= petBagCap()) return null;
+    const uid = (Number.isInteger(pet.uid) && pet.uid > 0) ? pet.uid : state.petSeq++;
+    if (uid >= state.petSeq) state.petSeq = uid + 1; // 本地发号器保持在服务端水位之上
+    const inst = {
+      uid,
+      sp: pet.sp,
+      r: pet.r,
+      lv: Math.max(1, pet.lv || 1),
+      affixes: (pet.affixes || []).map((a) => ({ k: a.k, v: a.v })),
+      rerolls: Math.max(0, Math.floor(Number(pet.rerolls) || 0)),
+    };
+    state.petInsts.push(inst);
+    // 捕捉即解锁（2026-11-03 用户反馈）：该物种无熟练度记录则补 0 级——图鉴立即可见、可喂养
+    if (state.pets[inst.sp] === undefined) state.pets[inst.sp] = 0;
+    petDexTouch(inst.sp, true, inst.r);
+    return inst;
+  }
+
+  // —— 灵宠立绘：AI 生图优先（assets/pet-<sp>.jpg，生图提示词见 assets/生图提示词.md），
+  // 加载失败回退内置剪影 SVG（结构同 storyPortrait，守卫复用 armStoryArtGuard）——
+  function petArtHtml(sp, cls) {
+    const def = petSpDef(sp);
+    const fallback = petSilhouetteSvg(sp, 0);
+    if (!def) return '';
+    return '<div class="story-art pet-art' + (cls ? ' ' + cls : '') + '">' +
+      '<img src="assets/pet-' + sp + '.jpg" alt="" draggable="false">' +
+      '<template class="art-fallback">' + fallback + '</template></div>';
+  }
+
+  // 占位剪影：物种徽记放大 + 品质色渐变底（生图到位后自动被 jpg 替换）
+  function petSilhouetteSvg(sp, r) {
+    const def = petSpDef(sp);
+    if (!def) return '';
+    const color = RARITIES[Math.max(0, Math.min(5, r || 0))].color;
+    const u = 'ps_' + sp + '_';
+    return '<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + def.name + '剪影">' +
+      '<defs><radialGradient id="' + u + 'bg" cx="50%" cy="42%" r="72%">' +
+      '<stop offset="0%" stop-color="#242c28"/><stop offset="100%" stop-color="#0b0f0d"/></radialGradient>' +
+      '<radialGradient id="' + u + 'glow" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.55"/>' +
+      '<stop offset="100%" stop-color="' + color + '" stop-opacity="0"/></radialGradient></defs>' +
+      '<rect width="200" height="240" fill="url(#' + u + 'bg)"/>' +
+      '<ellipse cx="100" cy="120" rx="86" ry="92" fill="url(#' + u + 'glow)"/>' +
+      '<g transform="translate(100,128) scale(5.4) translate(-12,-12)" fill="' + color + '">' +
+      (PET_ICONS[sp] || '').replace('width="20" height="20"', '') +
+      '</g>' +
+      '<g fill="' + color + '" opacity="0.8">' +
+      '<path d="M30,44 q1,4 5,5 q-4,1 -5,5 q-1,-4 -5,-5 q4,-1 5,-5 Z"/>' +
+      '<path d="M172,60 q0.8,3.4 4.2,4.2 q-3.4,0.8 -4.2,4.2 q-0.8,-3.4 -4.2,-4.2 q3.4,-0.8 4.2,-4.2 Z" opacity="0.7"/></g>' +
+      '</svg>';
+  }
+
+  const petAffName = (k) => (AFFIXES.find((d) => d.k === k) || { name: k }).name;
+  // 词条展示值：按个体等级成长（消费端同源口径）
+  const petAffShown = (inst, a) => (a.v || 0) * (1 + PET_AFF_LV_STEP * (Math.max(1, inst.lv | 0 || 1) - 1));
+
+  // 物种亲密度喂养（物种级熟练度，作用于该物种所有个体的天赋）
   function feedPet(id) {
-    const def = PETS.find((p) => p.id === id);
+    const def = petSpDef(id);
     if (!def || state.pets[id] === undefined) return;
     const lv = state.pets[id];
     if (lv >= PET_MAX_LV) return;
@@ -7140,57 +8002,84 @@
     save();
   }
 
-  function togglePet(id) {
-    if (state.pets[id] === undefined) return;
-    const def = PETS.find((p) => p.id === id);
-    const idx = state.activePets.indexOf(id);
-    if (idx >= 0) {
-      state.activePets.splice(idx, 1);
-      pushLog('「' + def.name + '」收起休息', 'sys');
-    } else if (state.activePets.length < state.petSlots) {
-      state.activePets.push(id);
-      pushLog('「' + def.name + '」出战', 'sys');
-    } else {
-      floatText('出战位已满', '#f87171');
+  // 个体等级喂养（放大个体词条贡献）
+  function feedInst(uid) {
+    const inst = petFindInst(uid);
+    if (!inst || inst.lv >= PET_LV_MAX_INST) return;
+    const cost = petInstFeedCost(inst.lv);
+    if (state.stones < cost) {
+      floatText('灵石不足', '#f87171');
       return;
     }
+    state.stones -= cost;
+    inst.lv++;
     combatDirty = true;
+    pushLog('「' + petSpDef(inst.sp).name + '」升至 ' + inst.lv + ' 级，词条效能增强', 'sys');
+    beep(760, 0.07);
+    if (petDetailUid === uid) renderPetDetail();
     render();
     save();
   }
 
-  function unlockPetSlots() {
-    if (state.petSlots >= 2) return;
-    if (state.petTickets < PET_SLOT_COST) {
-      floatText('招募券不足', '#f87171');
+  function togglePet(uid) {
+    const inst = petFindInst(uid);
+    if (!inst) return;
+    const def = petSpDef(inst.sp);
+    const idx = state.activePets.indexOf(uid);
+    if (idx >= 0) {
+      state.activePets.splice(idx, 1);
+      pushLog('「' + def.name + '」收起休息', 'sys');
+    } else if (state.activePets.length < state.petSlots) {
+      state.activePets.push(uid);
+      pushLog('「' + def.name + '」出战', 'sys');
+    } else {
+      floatText('出战位已满（' + state.petSlots + ' 个）——休息一只再出战，或解锁新出战位', '#f87171');
       return;
     }
-    state.petTickets -= PET_SLOT_COST;
-    state.petSlots = 2;
-    pushLog('解锁第二灵宠出战位', 'special');
+    combatDirty = true;
+    if (petDetailUid === uid) renderPetDetail();
+    if (petBagShown) renderPetBag();
+    render();
+    save();
+  }
+
+  function unlockPetSlot() {
+    if (state.petSlots >= PET_SLOT_MAX) return;
+    const cost = PET_SLOT_COSTS[state.petSlots + 1];
+    if (state.petTickets < cost) {
+      floatText('招募券不足（需 ' + cost + ' 张）', '#f87171');
+      return;
+    }
+    state.petTickets -= cost;
+    state.petSlots++;
+    pushLog('灵宠出战位解锁至 ' + state.petSlots + ' 个（- ' + cost + ' 招募券）', 'special');
     chime([659, 880]);
     render();
     save();
   }
 
-  function releasePet(id) {
-    const def = PETS.find((p) => p.id === id);
-    if (!def || state.pets[id] === undefined) return;
-    const refund = Math.ceil(def.cost / 2);
-    if (!confirm('放生「' + def.name + '」？返还 ' + refund + ' 张招募券，亲密度与信物清零。')) return;
-    delete state.pets[id];
-    delete state.petTokens[id];
-    delete state.petCores[id]; // 内丹随放生清零（与确认文案同口径，堵重招保留漏洞）
-    state.activePets = state.activePets.filter((x) => x !== id);
-    state.petTickets += refund;
+  // 放生个体：返还兽骨（品质越高越多）；亲密度/信物/内丹为物种级熟练度，不随个体放生回退
+  function releasePet(uid) {
+    const inst = petFindInst(uid);
+    if (!inst) return;
+    const def = petSpDef(inst.sp);
+    const refund = petReleaseBones(inst.r);
+    if (!confirm('放生「' + def.name + ' · ' + RARITIES[inst.r].name + '」？返还兽骨 ×' + refund +
+      '。亲密度/信物/内丹为物种级，不会清零。')) return;
+    state.petInsts = state.petInsts.filter((p) => p.uid !== uid);
+    state.activePets = state.activePets.filter((x) => x !== uid);
+    state.beastBones += refund;
+    if (petDetailUid === uid) closePetDetail();
+    if (fuseSlots.includes(uid)) fuseSlots = [null, null, null];
     combatDirty = true;
-    pushLog('放生「' + def.name + '」，返还招募券 ×' + refund, 'sys');
+    pushLog('放生「' + def.name + '」，返还兽骨 ×' + refund, 'sys');
     render();
     save();
   }
 
+  // 物种信物（碎屑，物种级熟练度）
   function upgradeToken(id) {
-    const def = PETS.find((p) => p.id === id);
+    const def = petSpDef(id);
     if (!def || state.pets[id] === undefined) return;
     const lv = state.petTokens[id] || 0;
     if (lv >= TOKEN_MAX) return;
@@ -7207,6 +8096,754 @@
     render();
     save();
   }
+
+  // —— 缚灵谷（捕捉独立界面）——
+  let huntZone = 'huang';
+  let huntEnc = null;       // {sp, r, first} 服务端 pending 的可见面
+  let huntStage = 'idle';   // idle | exploring | meet | captured | escaped
+  let huntCaptured = null;  // 收服成功展示用实例
+  let huntMsg = '';
+  let huntBusy = false;
+
+  function openPetHunt() {
+    if (!featureOpen('pets')) {
+      floatText('灵宠玩法 ' + REALMS[FEATURE_GATES.pets] + ' 解锁', '#f87171');
+      return;
+    }
+    if (huntZone && !PET_ZONES.some((z) => z.id === huntZone && featureOpen('pets') && gateRealm() >= z.realm)) {
+      huntZone = PET_ZONES.find((z) => gateRealm() >= z.realm) || PET_ZONES[0];
+    }
+    // 会话内未持遭遇时向服务端对一次账：若云端还有 pending（刷新前掷的）原样取回，不扣费
+    if (!huntEnc) {
+      petHuntSyncPending();
+    }
+    renderPetHunt();
+    $('petHuntModal').classList.add('show');
+  }
+
+  function closePetHunt() {
+    if (huntBusy) return;
+    huntStage = 'idle';
+    huntCaptured = null;
+    huntMsg = '';
+    $('petHuntModal').classList.remove('show');
+  }
+
+  // 打开界面对账：只读云端 pending 遭遇与今日计数（GET，不扣费不重掷）
+  async function petHuntSyncPending() {
+    if (huntBusy) return;
+    huntBusy = true;
+    try {
+      const res = await api('/api/pet/pending');
+      const out = await res.json().catch(() => ({}));
+      if (res.ok) {
+        state.petHunt = { day: todayStr(), hunts: out.hunts | 0, buys: out.buys | 0 };
+        if (out.enc) {
+          huntEnc = out.enc;
+          if (!huntEnc._met) {
+            huntEnc._met = true;
+            petDexTouch(huntEnc.sp, false, huntEnc.r);
+          }
+        }
+      }
+    } catch (e) { /* 断服提示已由看门狗接管 */ }
+    huntBusy = false;
+    renderPetHunt();
+  }
+
+  async function petHunt(zoneId) {
+    if (huntBusy || !featureOpen('pets')) return;
+    const zone = PET_ZONES.find((z) => z.id === zoneId);
+    if (!zone || gateRealm() < zone.realm) return;
+    if (state.petTickets < PET_HUNT_TICKET || (STAMINA.syncedAt && staminaDisplay() && staminaDisplay().v < PET_HUNT_STAMINA)) {
+      huntMsg = state.petTickets < PET_HUNT_TICKET ? '招募券不足（开箱掉落、签到与任务可得）' : '体力不足（每 5 分钟恢复 1 点）';
+      renderPetHunt();
+      return;
+    }
+    huntZone = zoneId;
+    huntStage = 'exploring';
+    huntMsg = '';
+    huntBusy = true;
+    renderPetHunt();
+    try {
+      const res = await api('/api/pet/hunt', {
+        method: 'POST',
+        body: JSON.stringify({ zone: zoneId }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        huntStage = 'idle';
+        huntMsg = out.error || '探索失败，请稍后再试';
+        floatText(huntMsg, '#f87171'); // 立即可见的失败反馈（2026-11-02 用户反馈补）
+        // 429 体力不足时服务端带最新体力快照：不吸收会拿旧值反复算出「可探」假象
+        if (out.stamina) {
+          STAMINA.v = out.stamina.stamina;
+          STAMINA.cap = out.stamina.cap;
+          STAMINA.nextAt = out.stamina.nextAt;
+          STAMINA.syncedAt = Date.now();
+        }
+      } else {
+        if (out.stamina) {
+          STAMINA.v = out.stamina.stamina;
+          STAMINA.cap = out.stamina.cap;
+          STAMINA.nextAt = out.stamina.nextAt;
+          STAMINA.syncedAt = Date.now();
+        }
+        if (!out.held) state.petTickets = Math.max(0, state.petTickets - PET_HUNT_TICKET);
+        state.petHunt = { day: todayStr(), hunts: out.hunts | 0, buys: out.buys | 0 };
+        if (out.meet && out.enc) {
+          huntEnc = out.enc;
+          if (!huntEnc._met) {
+            huntEnc._met = true;
+            petDexTouch(huntEnc.sp, false, huntEnc.r);
+          }
+          huntStage = 'meet';
+          beep(520, 0.12);
+        } else {
+          huntEnc = null;
+          huntStage = 'miss';
+          huntMsg = '拾得兽骨 ×' + (out.bones | 0);
+          state.beastBones += out.bones | 0;
+          beep(240, 0.1);
+        }
+      }
+    } catch (e) {
+      huntStage = 'idle';
+      huntMsg = '探索失败，请稍后再试';
+      floatText(huntMsg, '#f87171');
+    }
+    huntBusy = false;
+    renderPetHunt();
+    render();
+    save();
+  }
+
+  // 灵宠背包扩容（2026-11-02 用户指定）：+10 格/次，最多 5 次到 100；价格 1e5×1.6^次数
+  function buyPetBag() {
+    if ((state.petBagLv | 0) >= PET_BAG_MAX_LV) return;
+    const cost = petBagCost(state.petBagLv | 0);
+    if (state.stones < cost) { floatText('灵石不足', '#f87171'); return; }
+    state.stones -= cost;
+    state.petBagLv = (state.petBagLv | 0) + 1;
+    pushLog('灵宠背包扩容至 ' + petBagCap() + ' 格，花费 ' + fmt(cost) + ' 灵石', 'sys');
+    beep(660, 0.08);
+    render();
+    save();
+  }
+
+  // 收服：两阶段第二步。镇抚消耗成功失败都不退（界面明示成功率）
+  async function petCapture(policy) {
+    if (huntBusy || !huntEnc || huntStage === 'captured' || huntStage === 'escaped') return;
+    const pol = PET_POLICY[policy];
+    if (!pol) return;
+    if (state.petInsts.length >= petBagCap()) {
+      huntMsg = '灵宠背包已满（' + petBagCap() + ' 只），先放生/合成，或扩容背包';
+      floatText(huntMsg, '#f87171');
+      renderPetHunt();
+      return;
+    }
+    if (policy === 'feed' && state.stones < pol.stones(huntEnc.r)) {
+      huntMsg = '灵石不足（投喂需 ' + fmt(pol.stones(huntEnc.r)) + '）';
+      renderPetHunt();
+      return;
+    }
+    if (policy === 'awe' && state.beastBones < pol.bones(huntEnc.r)) {
+      huntMsg = '兽骨不足（镇压需 ' + pol.bones(huntEnc.r) + '，野外征战可得）';
+      renderPetHunt();
+      return;
+    }
+    huntBusy = true;
+    renderPetHunt();
+    try {
+      const res = await api('/api/pet/capture', {
+        method: 'POST',
+        body: JSON.stringify({ policy }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        huntMsg = out.error || '收服失败，请稍后再试';
+      } else {
+        if (policy === 'feed') state.stones = Math.max(0, state.stones - pol.stones(huntEnc.r));
+        if (policy === 'awe') state.beastBones = Math.max(0, state.beastBones - pol.bones(huntEnc.r));
+        state.petHunt = { day: todayStr(), hunts: out.hunts | 0, buys: out.buys | 0 };
+        const def = petSpDef(huntEnc.sp);
+        if (out.captured && out.pet) {
+          const inst = petRegisterCaptured(out.pet);
+          huntCaptured = inst;
+          huntStage = 'captured';
+          const affTxt = inst.affixes.length
+            ? inst.affixes.map((a) => petAffName(a.k) + ' +' + fmtPct(petAffShown(inst, a))).join(' · ')
+            : '无词条';
+          pushLog('缚灵谷收服「' + def.name + ' · ' + RARITIES[inst.r].name + '」！词条：' + affTxt, 'special');
+          chime([659, 784, 1046, 1318]);
+          floatText('收服成功！', '#f0d9a8');
+        } else {
+          huntStage = 'escaped';
+          pushLog('「' + def.name + '」挣脱遁走……', 'sys');
+          beep(240, 0.18);
+        }
+        huntEnc = null;
+      }
+    } catch (e) {
+      huntMsg = '收服失败，请稍后再试';
+    }
+    huntBusy = false;
+    renderPetHunt();
+    render();
+    save();
+  }
+
+  // 灵石加购探索次数（2026-11-03 用户指定）：20 万/次、日上限 50；服务端账本原子扣款，
+  // 本地照 capture-feed 口径在成功回包后同步扣显示并镜像 buys
+  async function buyHunt() {
+    if (huntBusy) return;
+    huntBusy = true;
+    renderPetHunt();
+    try {
+      const res = await api('/api/pet/huntbuy', { method: 'POST', body: '{}' });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        huntMsg = out.error || '加购失败，请稍后再试';
+        floatText(huntMsg, '#f87171');
+      } else {
+        state.stones = Math.max(0, state.stones - PET_HUNT_BUY_COST);
+        state.petHunt = { day: todayStr(), hunts: out.hunts | 0, buys: out.buys | 0 };
+        huntMsg = '已加购 1 次探索（今日已购 ' + (out.buys | 0) + '/' + PET_HUNT_BUY_DAILY + '）';
+        pushLog('缚灵谷加购探索 1 次，花费 ' + fmt(PET_HUNT_BUY_COST) + ' 灵石', 'sys');
+        beep(660, 0.08);
+      }
+    } catch (e) {
+      huntMsg = '加购失败，请稍后再试';
+    }
+    huntBusy = false;
+    renderPetHunt();
+    render();
+    save();
+  }
+
+  // 缚灵谷界面动作分发
+  function petHuntAct(act) {
+    if (act === 'hunt') petHunt(huntZone);
+    else if (act === 'buyhunt') buyHunt();
+    else if (act === 'release') {
+      if (!huntBusy && huntEnc) {
+        huntEnc = null;
+        huntStage = 'idle';
+        huntMsg = '你放它归于山野。';
+        renderPetHunt();
+      }
+    } else if (act === 'again') {
+      // 扑空后的「继续探索」直接再探一趟（收服/遁走仍是先回空场景）
+      if (!huntBusy && huntStage === 'miss') { petHunt(huntZone); return; }
+      if (!huntBusy) {
+        huntStage = 'idle';
+        huntCaptured = null;
+        huntMsg = '';
+        renderPetHunt();
+      }
+    }
+  }
+
+  function renderPetHunt() {
+    const el = $('huntZones');
+    if (!el) return;
+    const tEl = $('huntTickets');
+    if (tEl) tEl.textContent = fmt(state.petTickets);
+    // 地点 chips（锁定态标境界）
+    el.innerHTML = PET_ZONES.map((z) => {
+      const open = gateRealm() >= z.realm;
+      return '<button class="hunt-zone' + (z.id === huntZone ? ' on' : '') + (open ? '' : ' lock') + '"' +
+        ' data-zone="' + z.id + '"' + (open ? '' : ' disabled') + '>' +
+        z.name + (open ? '' : '<em>' + REALMS[z.realm] + '</em>') + '</button>';
+    }).join('');
+    const scene = $('huntScene');
+    const acts = $('huntActions');
+    const info = $('huntInfo');
+    const zone = PET_ZONES.find((z) => z.id === huntZone) || PET_ZONES[0];
+    const huntsDone = (state.petHunt && state.petHunt.hunts) || 0;
+    const huntsBought = (state.petHunt && state.petHunt.buys) || 0;
+    const huntsLeft = Math.max(0, PET_HUNT_DAILY + huntsBought - huntsDone);
+    if (huntStage === 'captured' && huntCaptured) {
+      const inst = huntCaptured;
+      const def = petSpDef(inst.sp);
+      scene.innerHTML = '<div class="hunt-pet glow">' + petArtHtml(inst.sp) + '</div>' +
+        '<p class="hunt-name r' + inst.r + '">' + def.name + ' · ' + RARITIES[inst.r].name + ' · Lv.' + inst.lv + '</p>' +
+        '<p class="hunt-affixes">' + (inst.affixes.length
+          ? inst.affixes.map((a) => petAffName(a.k) + ' +' + fmtPct(petAffShown(inst, a))).join(' · ')
+          : '凡品初生，暂无词条') + '</p>';
+      acts.innerHTML = '<button class="btn primary" data-hact="again">继续探索</button>';
+      info.textContent = '已收入灵宠栏与图鉴，可在灵宠面板查看详情。';
+      armPetArtGuards(scene);
+      return;
+    }
+    if (huntStage === 'escaped') {
+      scene.innerHTML = '<div class="hunt-empty"><p class="hunt-big">遁走了……</p>' +
+        '<p class="hint">镇抚消耗不予退还，换个策略再试试。</p></div>';
+      acts.innerHTML = '<button class="btn primary" data-hact="again">继续探索</button>';
+      info.textContent = '';
+      return;
+    }
+    if (huntStage === 'miss') {
+      // 扑空也要有结果面（2026-11-02 用户反馈：探索后看不出结果）——大字结果 + 兽骨收获
+      scene.innerHTML = '<div class="hunt-empty"><p class="hunt-big">未见灵兽踪迹</p>' +
+        '<p class="hint">' + esc(huntMsg || '两手空空') + '</p></div>';
+      acts.innerHTML = '<button class="btn primary wide" data-hact="again">继续探索</button>';
+      info.textContent = '今日剩余 ' + huntsLeft + ' 次（含已购 ' + huntsBought + '）· 持券 ' +
+        fmt(state.petTickets) +
+        ' · 体力 ' + (staminaDisplay() ? staminaDisplay().v + '/' + staminaDisplay().cap : '—');
+      return;
+    }
+    if (huntEnc && huntEnc.sp && huntStage !== 'exploring') {
+      const def = petSpDef(huntEnc.sp);
+      const first = huntEnc.first;
+      scene.innerHTML = '<div class="hunt-pet">' + petArtHtml(huntEnc.sp, 'r' + huntEnc.r) + '</div>' +
+        '<p class="hunt-name r' + huntEnc.r + '">' + def.name + ' · ' + RARITIES[huntEnc.r].name + '</p>' +
+        '<p class="hunt-affixes">气息感知：' + (first
+          ? petAffName(first.k) + ' ≥ ' + fmtPct(first.v * 0.8) + '（其余收服后揭示）'
+          : '无词条波动') + '</p>';
+      acts.innerHTML = Object.keys(PET_POLICY).map((key) => {
+        const p = PET_POLICY[key];
+        const rate = Math.min(PET_CAPTURE_CAP, (PET_CAPTURE_BASE[huntEnc.r] || 0.9) + p.add);
+        let costTxt = p.costText || '';
+        let afford = true;
+        if (key === 'feed') {
+          costTxt = fmt(p.stones(huntEnc.r)) + resIcon('stones');
+          afford = state.stones >= p.stones(huntEnc.r);
+        } else if (key === 'awe') {
+          costTxt = p.bones(huntEnc.r) + ' 兽骨';
+          afford = state.beastBones >= p.bones(huntEnc.r);
+        }
+        const bagFull = state.petInsts.length >= petBagCap();
+        return '<button class="btn' + (key === 'bare' ? ' primary' : '') + '" data-cap="' + key + '"' +
+          (huntBusy || !afford || bagFull ? ' disabled' : '') + '>' + p.name + ' ' + costTxt +
+          '<em>' + Math.round(rate * 100) + '%</em></button>';
+      }).join('') + '<button class="btn ghost" data-hact="release">放它走</button>';
+      info.textContent = '镇抚消耗不因失败退还；空手收服免费但成功率最低。';
+      armPetArtGuards(scene);
+      return;
+    }
+    // 空场景：探索按钮
+    scene.innerHTML = huntStage === 'exploring'
+      ? '<div class="hunt-empty"><p class="hunt-big hunting">探索中……</p><p class="hint">灵兽的气息若隐若现</p></div>'
+      : '<div class="hunt-empty"><p class="hunt-big">' + zone.name + '</p>' +
+        '<p class="hint">消耗 ' + PET_HUNT_TICKET + resIcon('petTickets') + ' + ' + PET_HUNT_STAMINA +
+        ' 体力探一趟，灵兽出没率 ' + Math.round(PET_MEET_RATE * 100) + '%，连空 ' + PET_MEET_PITY + ' 趟必遇</p></div>';
+    const canHunt = state.petTickets >= PET_HUNT_TICKET && huntsLeft > 0 &&
+      (!STAMINA.syncedAt || !staminaDisplay() || staminaDisplay().v >= PET_HUNT_STAMINA);
+    // 次数用尽可灵石加购（2026-11-03 用户指定）：20 万/次，日上限 PET_HUNT_BUY_DAILY
+    const canBuy = huntsLeft <= 0 && huntsBought < PET_HUNT_BUY_DAILY && !huntBusy;
+    acts.innerHTML = '<button class="btn primary wide" data-hact="hunt"' +
+      (huntBusy || !canHunt ? ' disabled' : '') + '>' + (huntStage === 'exploring' ? '探索中……' : '探索 ' + zone.name) + '</button>' +
+      (canBuy ? '<button class="btn wide" data-hact="buyhunt"' +
+        (state.stones < PET_HUNT_BUY_COST ? ' disabled' : '') + '>加购 1 次（' +
+        fmt(PET_HUNT_BUY_COST) + resIcon('stones') + '，今日已购 ' + huntsBought + '/' + PET_HUNT_BUY_DAILY + '）</button>' : '');
+    info.textContent = '今日剩余 ' + huntsLeft + ' 次（含已购 ' + huntsBought + '）· 持券 ' + fmt(state.petTickets) +
+      ' · 体力 ' + (staminaDisplay() ? staminaDisplay().v + '/' + staminaDisplay().cap : '—') +
+      (huntMsg ? ' · ' + huntMsg : '');
+  }
+
+  // —— 灵宠合成（独立界面）——
+  let fuseSlots = [null, null, null];
+  let fuseLockK = '';
+  let fuseBusy = false;
+  let fuseMsg = '';
+  let fusePickerIdx = -1; // 正在选料的槽位
+
+  function openPetFuse() {
+    if (!featureOpen('pets')) {
+      floatText('灵宠玩法 ' + REALMS[FEATURE_GATES.pets] + ' 解锁', '#f87171');
+      return;
+    }
+    if (!state.petInsts.some((p) => fuseSlots.includes(p.uid))) {
+      // 上次会话的材料已被放生/合成掉：清空残槽，避免「材料不存在」死槽
+      fuseSlots = [null, null, null];
+    }
+    fusePickerIdx = -1;
+    renderPetFuse();
+    $('petFuseModal').classList.add('show');
+  }
+
+  function closePetFuse() {
+    if (fuseBusy) return;
+    $('petFuseModal').classList.remove('show');
+  }
+
+  // 三槽是否构成合法配方：同物种、同品质、可再升一档
+  function fuseRecipe() {
+    const mats = fuseSlots.map((uid) => petFindInst(uid));
+    if (mats.some((m) => !m)) return null;
+    const def = petSpDef(mats[0].sp);
+    if (!def || mats.some((m) => m.sp !== mats[0].sp)) return { bad: '三只灵宠必须同物种' };
+    if (mats.some((m) => m.r !== mats[0].r)) return { bad: '三只灵宠必须同品质' };
+    if (mats[0].r >= 5 || mats[0].r + 1 > def.band[1]) return { bad: '该物种已达品质上限' };
+    return { mats, def };
+  }
+
+  async function petFuse() {
+    const rec = fuseRecipe();
+    if (!rec || rec.bad || fuseBusy) {
+      if (rec && rec.bad) fuseMsg = rec.bad;
+      renderPetFuse();
+      return;
+    }
+    const r = rec.mats[0].r;
+    const cost = PET_FUSE_COST(r);
+    if (state.stones < cost) {
+      fuseMsg = '灵石不足（合成需 ' + fmt(cost) + '）';
+      renderPetFuse();
+      return;
+    }
+    if (fuseLockK && state.rerollCoupon < 1) {
+      fuseMsg = '洗练券不足（锁灵需 1 张）';
+      renderPetFuse();
+      return;
+    }
+    fuseBusy = true;
+    fuseMsg = '';
+    renderPetFuse();
+    try {
+      const res = await api('/api/pet/fuse', {
+        method: 'POST',
+        body: JSON.stringify({ a: fuseSlots[0], b: fuseSlots[1], c: fuseSlots[2], lockK: fuseLockK }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        fuseMsg = out.error || '合成失败，请稍后再试';
+      } else if (!out.pet || !petSpDef(out.pet.sp)) {
+        // 服务端数据异常：不扣材料不扣费（原顺序先扣后注册，null 时扣除已生效白损）
+        fuseMsg = '合成数据异常，请刷新后重试（未扣除任何材料）';
+      } else {
+        // 吸收：删三材料（含出战位）、扣费、收新宠
+        const uids = fuseSlots.slice();
+        state.petInsts = state.petInsts.filter((p) => !uids.includes(p.uid));
+        state.activePets = state.activePets.filter((x) => !uids.includes(x));
+        state.stones = Math.max(0, state.stones - cost);
+        if (fuseLockK) state.rerollCoupon = Math.max(0, state.rerollCoupon - 1);
+        const inst = petRegisterCaptured(out.pet);
+        fuseSlots = [null, null, null];
+        fuseLockK = '';
+        fuseMsg = '合成成功！「' + petSpDef(inst.sp).name + ' · ' + RARITIES[inst.r].name + '」入栏';
+        pushLog('灵宠合成：三只' + petSpDef(inst.sp).name + '合为「' +
+          RARITIES[inst.r].name + '」，花费 ' + fmt(cost) + ' 灵石', 'special');
+        chime([659, 784, 1046, 1318]);
+        showFuseResult(inst, cost);
+        combatDirty = true;
+      }
+    } catch (e) {
+      fuseMsg = '合成失败，请稍后再试';
+    }
+    fuseBusy = false;
+    renderPetFuse();
+    render();
+    save();
+  }
+
+  function renderPetFuse() {
+    const el = $('fuseSlots');
+    if (!el) return;
+    el.innerHTML = fuseSlots.map((uid, i) => {
+      const inst = petFindInst(uid);
+      if (!inst) {
+        return '<button class="fuse-slot empty' + (fusePickerIdx === i ? ' picking' : '') + '" data-fslot="' + i + '">' +
+          '<em>+</em><span>' + (fusePickerIdx === i ? '下面选一只…' : '选入材料') + '</span></button>';
+      }
+      const def = petSpDef(inst.sp);
+      return '<button class="fuse-slot r' + inst.r + '" data-fslot="' + i + '">' +
+        '<span class="fuse-slot-art">' + petArtHtml(inst.sp) + '</span>' +
+        '<b>' + def.name + '</b><span class="muted">' + RARITIES[inst.r].name + ' · Lv.' + inst.lv + '</span></button>';
+    }).join('');
+    // 选料列表：当前槽位待选时列出未入槽的个体（可按物种聚合展示）
+    const picker = $('fusePicker');
+    if (picker) {
+      if (fusePickerIdx < 0) {
+        picker.innerHTML = '';
+      } else {
+        const list = state.petInsts.filter((p) => !fuseSlots.includes(p.uid));
+        picker.innerHTML = list.length
+          ? '<p class="hint">点选灵宠入槽（' + list.length + ' 只可选）：</p><div class="fuse-pick-grid">' +
+            list.map((p) => {
+              const def = petSpDef(p.sp);
+              return '<button class="fuse-pick r' + p.r + '" data-fpick="' + p.uid + '">' +
+                '<span class="fuse-pick-art">' + petArtHtml(p.sp) + '</span>' +
+                '<b>' + def.name + '</b><span class="muted">' + RARITIES[p.r].name + ' · Lv.' + p.lv + '</span></button>';
+            }).join('') + '</div>'
+          : '<p class="hint">没有更多灵宠了——先去缚灵谷捕捉吧。</p>';
+      }
+    }
+    const rec = fuseRecipe();
+    const prev = $('fusePreview');
+    // 非法配方（rec.bad）与空槽（!rec）同分支：原只判 !rec，{bad} 为真值时落到
+    // rec.mats[0] 直接 TypeError，且「三只灵宠必须同物种」等提示永不显示
+    if (!rec || rec.bad) {
+      prev.innerHTML = '<p class="hint">' + (rec && rec.bad ? esc(rec.bad) :
+        '选入三只<span class="hl">同物种、同品质</span>灵宠，合为品质 +1 的新个体（等级取三只最高）。') + '</p>';
+    } else {
+      const r = rec.mats[0].r;
+      const cost = PET_FUSE_COST(r);
+      // 锁灵候选：材料中出现过的词条键
+      const cand = [];
+      for (const m of rec.mats) {
+        for (const a of m.affixes || []) {
+          if (!cand.some((x) => x.k === a.k)) cand.push({ k: a.k, v: a.v });
+        }
+      }
+      prev.innerHTML =
+        '<p class="fuse-result">「' + rec.def.name + ' · ' + RARITIES[r].name + '」→ <b class="r' + (r + 1) + '">' +
+        RARITIES[r + 1].name + '</b> · 词条重随机 ' + (AFFIX_COUNT[r + 1] || 0) + ' 条 · 花费 ' +
+        fmt(cost) + resIcon('stones') + '</p>' +
+        (cand.length
+          ? '<div class="fuse-locks">' + '<span class="muted">锁灵（1 洗练券，继承材料中该词条最高值）：</span>' +
+            '<button class="mini ghost' + (fuseLockK === '' ? ' on' : '') + '" data-flock="">不锁</button>' +
+            cand.map((c) => '<button class="mini ghost' + (fuseLockK === c.k ? ' on' : '') + '" data-flock="' + c.k + '">' +
+              petAffName(c.k) + ' ' + fmtPct(c.v) + '</button>').join('') +
+            '<span class="muted">持券 ' + state.rerollCoupon + '</span></div>'
+          : '<p class="hint muted">材料无词条可锁灵（凡 / 灵 / 玄品个体无词条）。</p>');
+    }
+    const btn = $('fuseGo');
+    const ok = rec && !rec.bad;
+    btn.disabled = fuseBusy || !ok || (rec && state.stones < PET_FUSE_COST(rec.mats[0].r)) ||
+      (!!fuseLockK && state.rerollCoupon < 1);
+    $('fuseMsg').textContent = fuseMsg;
+    $('fuseHint').textContent = '持有灵宠 ' + state.petInsts.length + ' / ' + PET_INST_MAX;
+    armPetArtGuards($('petFuseModal'));
+  }
+
+  // 合成结果弹层（2026-11-03 用户指定）：成品立绘 + 品质 + 词条一览，压在合成弹窗之上，
+  // 「收下」关闭后回到已清空的合成界面
+  function showFuseResult(inst, cost) {
+    const def = petSpDef(inst.sp);
+    const affTxt = inst.affixes.length
+      ? inst.affixes.map((a) => petAffName(a.k) + ' +' + fmtPct(petAffShown(inst, a))).join(' · ')
+      : '无词条';
+    $('petFuseResultBody').innerHTML =
+      '<div class="hunt-pet glow fuse-result-art">' + petArtHtml(inst.sp) + '</div>' +
+      '<p class="hunt-name r' + inst.r + '">' + esc(def.name) + ' · ' + RARITIES[inst.r].name + ' · Lv.' + inst.lv + '</p>' +
+      '<p class="hunt-affixes">' + affTxt + '</p>' +
+      '<p class="hint">花费 ' + fmt(cost) + resIcon('stones') + ' · 已入灵宠背包</p>';
+    armPetArtGuards($('petFuseResultModal'));
+    $('petFuseResultModal').classList.add('show');
+  }
+
+  // 合成界面：选料 / 锁灵 / 合成
+  function petFusePickSlot(i) {
+    if (fuseBusy) return;
+    const uid = fuseSlots[i];
+    if (uid) {
+      // 已有材料：点击移出
+      fuseSlots[i] = null;
+      renderPetFuse();
+      return;
+    }
+    fusePickerIdx = i;
+    renderPetFuse();
+  }
+
+  function petFusePickPet(uid) {
+    if (fuseBusy || fusePickerIdx < 0) return;
+    if (fuseSlots.includes(uid)) {
+      fuseMsg = '这只已在材料槽里';
+      renderPetFuse();
+      return;
+    }
+    fuseSlots[fusePickerIdx] = uid;
+    fusePickerIdx = -1;
+    fuseMsg = '';
+    renderPetFuse();
+  }
+
+  // 自动放入（2026-11-03 用户指定）：只在「未出战」的个体里按 物种×品质 聚合可合成的组
+  // （三只同物种同品质、未达品质上限，与 fuseRecipe 同口径），取存量最多的一组；
+  // 同数取低品质（合成费更低），组内按等级升序取最低三只（牺牲的等级损失最小）。
+  // 找不到能凑满三只的组：提示「无符合条件的灵宠」
+  function petFuseAutoFill() {
+    if (fuseBusy) return;
+    const activeUids = new Set(state.activePets || []);
+    const groups = new Map();
+    for (const p of state.petInsts) {
+      if (activeUids.has(p.uid)) continue; // 出战中的灵宠不参与自动放入
+      const key = p.sp + ':' + p.r;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+    let best = null;
+    for (const arr of groups.values()) {
+      if (arr.length < 3) continue;
+      const def = petSpDef(arr[0].sp);
+      if (!def || arr[0].r >= 5 || arr[0].r + 1 > def.band[1]) continue;
+      const score = arr.length - arr[0].r * 1e-3;
+      if (!best || score > best.score) best = { score, arr };
+    }
+    if (!best) {
+      fuseMsg = '无符合条件的灵宠';
+      floatText(fuseMsg, '#f87171');
+      renderPetFuse();
+      return;
+    }
+    const pick = best.arr.slice().sort((a, b) => a.lv - b.lv).slice(0, 3);
+    fuseSlots = pick.map((p) => p.uid);
+    fusePickerIdx = -1;
+    fuseMsg = '';
+    renderPetFuse();
+  }
+
+  // —— 灵宠详情（洗髓 / 个体喂养 / 出战 / 放生）——
+  let petDetailUid = 0;
+  let petDetailBusy = false;
+  let petDetailMsg = '';
+
+  function openPetDetail(uid) {
+    if (!petFindInst(uid)) return;
+    petDetailUid = uid;
+    petDetailMsg = '';
+    renderPetDetail();
+    $('petDetailModal').classList.add('show');
+  }
+
+  function closePetDetail() {
+    if (petDetailBusy) return;
+    petDetailUid = 0;
+    $('petDetailModal').classList.remove('show');
+  }
+
+  // 洗髓：锁定词条保留、其余重随机（锁条费 ×2，每次 ×1.3，口径对齐工坊）
+  async function petReroll() {
+    const inst = petFindInst(petDetailUid);
+    if (!inst || petDetailBusy) return;
+    const count = AFFIX_COUNT[inst.r] || 0;
+    if (!count) {
+      petDetailMsg = '凡 / 灵 / 玄品个体没有词条可洗';
+      renderPetDetail();
+      return;
+    }
+    const locks = (inst.affixes || []).filter((a) => a.lock).map((a) => a.k);
+    if (inst.affixes.length - locks.length < 1) {
+      petDetailMsg = '至少保留 1 条可洗词条';
+      renderPetDetail();
+      return;
+    }
+    const cost = PET_REROLL_STONES(inst.r, inst.rerolls || 0, locks.length);
+    const dust = PET_REROLL_DUST(inst.r, locks.length);
+    if (state.stones < cost) {
+      petDetailMsg = '灵石不足（洗髓需 ' + fmt(cost) + '）';
+      renderPetDetail();
+      return;
+    }
+    if (state.dust < dust) {
+      petDetailMsg = '碎屑不足（洗髓需 ' + dust + '）';
+      renderPetDetail();
+      return;
+    }
+    petDetailBusy = true;
+    renderPetDetail();
+    try {
+      const res = await api('/api/pet/reroll', {
+        method: 'POST',
+        body: JSON.stringify({ uid: inst.uid, locks }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        petDetailMsg = out.error || '洗髓失败，请稍后再试';
+      } else {
+        state.stones = Math.max(0, state.stones - cost);
+        state.dust = Math.max(0, state.dust - dust);
+        inst.affixes = (out.pet && out.pet.affixes ? out.pet.affixes : []).map((a) => {
+          const entry = { k: a.k, v: a.v };
+          if (a.lock) entry.lock = true;
+          return entry;
+        });
+        // rerolls 用服务端权威计数（2026-11-03 起计费真相在账本 pet_rerolls，镜像只作展示）
+        inst.rerolls = Math.max(0, Math.floor(Number(out.pet && out.pet.rerolls) || 0)) ||
+          ((inst.rerolls || 0) + 1);
+        petDetailMsg = '洗髓完成（第 ' + inst.rerolls + ' 次）';
+        pushLog('洗髓「' + petSpDef(inst.sp).name + '」词条，花费 ' + fmt(cost) + ' 灵石 · ' + dust + ' 碎屑', 'sys');
+        beep(700, 0.08);
+        combatDirty = true;
+      }
+    } catch (e) {
+      petDetailMsg = '洗髓失败，请稍后再试';
+    }
+    petDetailBusy = false;
+    renderPetDetail();
+    render();
+    save();
+  }
+
+  function togglePetLock(idx) {
+    const inst = petFindInst(petDetailUid);
+    if (!inst) return;
+    const a = (inst.affixes || [])[idx];
+    if (!a) return;
+    if (a.lock) delete a.lock;
+    else {
+      const freeN = inst.affixes.filter((x) => !x.lock).length;
+      if (freeN <= 1) {
+        petDetailMsg = '至少保留 1 条可洗词条';
+        renderPetDetail();
+        return;
+      }
+      a.lock = true;
+    }
+    petDetailMsg = '';
+    renderPetDetail();
+  }
+
+  function renderPetDetail() {
+    const inst = petFindInst(petDetailUid);
+    const box = $('petDetailBody');
+    if (!box) return;
+    if (!inst) {
+      closePetDetail();
+      return;
+    }
+    const def = petSpDef(inst.sp);
+    const count = AFFIX_COUNT[inst.r] || 0;
+    const locks = inst.affixes.filter((a) => a.lock).length;
+    const cost = PET_REROLL_STONES(inst.r, inst.rerolls || 0, locks);
+    const dust = PET_REROLL_DUST(inst.r, locks);
+    const active = state.activePets.includes(inst.uid);
+    const feedCost = petInstFeedCost(inst.lv);
+    const dex = state.petDex[inst.sp] || {};
+    const talent = def.stat === 'gain'
+      ? '+' + (def.per * 100).toFixed(1).replace(/\.0$/, '') + '% 灵石收益 / 亲密度'
+      : '+' + (def.per * 100).toFixed(1).replace(/\.0$/, '') + '% ' +
+        (AFFIXES.find((d) => d.k === def.stat) || { name: def.stat }).name + ' / 亲密度';
+    box.innerHTML =
+      '<div class="pet-detail-grid">' +
+        '<div class="pet-detail-art">' + petArtHtml(inst.sp, 'r' + inst.r) +
+          '<p class="hunt-name r' + inst.r + '">' + def.name + ' · ' + RARITIES[inst.r].name + '</p>' +
+          '<p class="hint muted">图鉴：遭遇 ' + (dex.met | 0) + ' · 收服 ' + (dex.got | 0) + '</p>' +
+        '</div>' +
+        '<div class="pet-detail-info">' +
+          '<p class="pet-line">等级 <b>Lv.' + inst.lv + '</b> / ' + PET_LV_MAX_INST +
+            '（词条效能 ×' + (1 + PET_AFF_LV_STEP * (inst.lv - 1)).toFixed(2) + '）</p>' +
+          '<p class="pet-line">天赋 <b>' + talent + '</b></p>' +
+          '<p class="pet-line">亲密度 ' + (state.pets[inst.sp] | 0) + ' / ' + PET_MAX_LV +
+            ' · 信物 ' + (state.petTokens[inst.sp] | 0) + ' · 内丹 ' + (state.petCores[inst.sp] | 0) + '（物种级）</p>' +
+          '<div class="pet-affixes">' +
+            (count
+              ? inst.affixes.map((a, i) =>
+                '<div class="affix-row' + (a.lock ? ' locked' : '') + '">' +
+                  '<span class="affix-name">' + petAffName(a.k) + '</span>' +
+                  '<b>+' + fmtPct(petAffShown(inst, a)) + '</b>' +
+                  '<button class="mini ghost" data-dact="lock" data-idx="' + i + '">' + (a.lock ? '已锁' : '锁定') + '</button>' +
+                '</div>').join('')
+              : '<p class="hint">凡 / 灵 / 玄品个体无词条，合成升品质可解锁。</p>') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pet-detail-actions">' +
+        '<button class="btn" data-dact="feed"' + (petDetailBusy || inst.lv >= PET_LV_MAX_INST || state.stones < feedCost ? ' disabled' : '') + '>' +
+          (inst.lv >= PET_LV_MAX_INST ? '已满级' : '喂养升级 ' + fmt(feedCost) + resIcon('stones')) + '</button>' +
+        '<button class="btn" data-dact="reroll"' + (petDetailBusy || !count || state.stones < cost || state.dust < dust ? ' disabled' : '') + '>' +
+          '洗髓 ' + fmt(cost) + resIcon('stones') + ' + ' + dust + resIcon('dust') + '</button>' +
+        '<button class="btn' + (active ? ' ghost' : ' primary') + '" data-dact="toggle"' + (petDetailBusy ? ' disabled' : '') + '>' + (active ? '休息' : '出战') + '</button>' +
+        '<button class="btn ghost" data-dact="release"' + (petDetailBusy ? ' disabled' : '') + '>放生 +' + petReleaseBones(inst.r) + ' 骨</button>' +
+      '</div>' +
+      '<p class="hint pet-detail-note">洗髓锁定词条保留、其余重随机 · 每锁 1 条灵石费 ×2 · 每次洗髓 ×1.3' +
+        (petDetailMsg ? '<br><span class="pet-detail-msg">' + petDetailMsg + '</span>' : '') + '</p>';
+    armPetArtGuards(box);
+  }
+
 
   /* ---------------- 功法 / 仙界轮回 / 炼丹房 ---------------- */
 
@@ -8827,6 +10464,13 @@
   // 立绘加载守卫：缓存中的失败图（complete 且 naturalWidth=0）立即回退 SVG；
   // 停滞加载 6 秒未完成也强制回退——error 事件兜不住「压根没开加载」的情况。
   // 重复 armed 无害：图若已成功，isConnected 且 complete，守卫直接返回。
+  // 灵宠立绘批量守卫（2026-11-02 图齐后接故事模式同款规则）：容器内每张
+  // .story-art 挂「缓存失败立即回退 + 6s 停滞强制回退」，重复武装无害
+  function armPetArtGuards(root) {
+    (root && root.querySelectorAll ? root : document)
+      .querySelectorAll('.story-art').forEach(armStoryArtGuard);
+  }
+
   function armStoryArtGuard(box) {
     const img = box.querySelector('img');
     if (!img) return;
@@ -12028,10 +13672,17 @@
   function render() {
     if (renderQueued) return;
     renderQueued = true;
-    requestAnimationFrame(() => {
+    const flush = () => {
+      if (!renderQueued) return;   // rAF 与兜底定时器先到者执行，另一个空跑
       renderQueued = false;
       renderNow();
-    });
+    };
+    requestAnimationFrame(flush);
+    // rAF 冻结兜底（2026-11-03）：页面被遮挡/后台时原生 rAF 可能长期不回调，
+    // renderQueued 会永久卡 true、此后一切渲染早退——面板空白、灵宠背包等
+    // 弹层入口按钮根本不渲染，表现为「打开失败」。半秒仍未回调就由定时器冲开闸门，
+    // 正常前台路径仍走 rAF 合帧，语义不变
+    setTimeout(flush, 500);
   }
 
   function renderNow() {
@@ -12100,7 +13751,7 @@
     }
 
     $('ascendBtn').classList.toggle('hidden', !maxRealm);
-    if (maxRealm) $('ascendBtn').disabled = state.stones < 1e8;
+    if (maxRealm) $('ascendBtn').disabled = state.stones < ASCEND_STONES;
 
     let hint = '';
     if (state.ascensions > 0) {
@@ -12108,7 +13759,7 @@
         '% · 境界门槛 ×' + fmt(Math.pow(2.5, state.ascensions));
     }
     if (maxRealm) {
-      hint += (hint ? ' · ' : '') + '飞升需 1 亿灵石（当前 ' + fmt(state.stones) + '）';
+      hint += (hint ? ' · ' : '') + '飞升需 1000 亿灵石（当前 ' + fmt(state.stones) + '）';
     } else if (!hint) {
       hint = '每次开箱都会获得修为，修为够了就能突破。';
     }
@@ -12130,6 +13781,7 @@
     renderCollection();
     renderSetCollect();
     renderPets();
+    renderPetCompanion();
     renderCave();
     renderGongfa();
     renderElixir();
@@ -12358,75 +14010,193 @@
     }).join('');
   }
 
+  // 个体卡片行（renderPets 出战阵容 / renderPetBag 背包弹层共用）
+  const instRowOf = (inst) => {
+    const def = petSpDef(inst.sp);
+    const active = state.activePets.includes(inst.uid);
+    const affTxt = inst.affixes.length
+      ? inst.affixes.map((a) => petAffName(a.k) + ' +' + fmtPct(petAffShown(inst, a))).join(' · ')
+      : '无词条';
+    return (
+      '<div class="pet-row inst' + (active ? ' active' : '') + '">' +
+        '<span class="pet-art-mini" aria-hidden="true">' + petArtHtml(inst.sp) + '</span>' +
+        '<div class="pet-main"><span class="pet-name r' + inst.r + '">' + def.name +
+          ' <i class="pet-rbadge">' + RARITIES[inst.r].name + '</i>' +
+          (active ? ' <em>出战中</em>' : '') + '</span>' +
+        '<p class="pet-desc">Lv.' + inst.lv + ' · ' + def.name + ' · ' + affTxt + '</p></div>' +
+        '<div class="pet-actions">' +
+          '<button class="mini" data-inst="feed" data-uid="' + inst.uid + '"' +
+            (inst.lv >= PET_LV_MAX_INST ? ' disabled' : '') + '>' +
+            (inst.lv >= PET_LV_MAX_INST ? '满级' : '喂养 ' + fmt(petInstFeedCost(inst.lv))) + '</button>' +
+          '<button class="mini ghost" data-inst="toggle" data-uid="' + inst.uid + '">' + (active ? '休息' : '出战') + '</button>' +
+          '<button class="mini" data-inst="detail" data-uid="' + inst.uid + '">详情</button>' +
+        '</div>' +
+      '</div>'
+    );
+  };
+
   function renderPets() {
-    const afford = PETS.map((p) => (state.pets[p.id] !== undefined
+    const afford = PET_SPECIES.map((p) => (state.pets[p.id] !== undefined
       ? (state.pets[p.id] >= PET_MAX_LV ? 2 : state.stones >= petFeedCost(state.pets[p.id]) ? 1 : 0)
-      : state.petTickets >= p.cost ? 1 : 0)).join(',');
-    const coreAfford = PETS.map((p) => ((state.petCores[p.id] | 0) >= CORE_MAX ? 2 :
+      : 0)).join(',');
+    const coreAfford = PET_SPECIES.map((p) => ((state.petCores[p.id] | 0) >= CORE_MAX ? 2 :
       state.beastBones >= coreCost(state.petCores[p.id] | 0) ? 1 : 0)).join(',');
+    const instAfford = state.petInsts.map((p) => (p.lv >= PET_LV_MAX_INST ? 2 :
+      state.stones >= petInstFeedCost(p.lv) ? 1 : 0)).join(',');
     const sig = state.petTickets + '|' + JSON.stringify(state.pets) + '|' +
       state.activePets.join('+') + '|' + state.petSlots + '|' +
-      JSON.stringify(state.petTokens) + '|' + afford + '|' + coreAfford + '|' +
-      JSON.stringify(state.petCores);
+      JSON.stringify(state.petTokens) + '|' + afford + '|' + coreAfford + '|' + instAfford + '|' +
+      JSON.stringify(state.petInsts) + '|' + JSON.stringify(state.petDex) + '|' + (state.petBagLv | 0) +
+      '|' + (state.stones >= petBagCost(state.petBagLv | 0) ? 1 : 0);
     if (panelSigs.pets === sig) return;
     panelSigs.pets = sig;
-    $('ticketCount').textContent = '券 ' + fmt(state.petTickets);
-    const slotsBtn = $('petSlotsBtn');
-    if (state.petSlots >= 2) {
-      slotsBtn.classList.add('hidden');
-    } else {
-      slotsBtn.classList.remove('hidden');
-      slotsBtn.textContent = '解锁双宠位（' + PET_SLOT_COST + ' 券）';
-      slotsBtn.disabled = state.petTickets < PET_SLOT_COST;
+    $('ticketCount').innerHTML = resIcon('petTickets') + '券 ' + fmt(state.petTickets);
+    // —— 出战阵容（2026-11-02 用户指定：面板只显示出战的，其余收进背包点开才看）——
+    const deployed = (state.activePets || []).map(petFindInst).filter(Boolean);
+    let teamRows = '';
+    for (let i = 0; i < state.petSlots; i++) {
+      const inst = deployed[i];
+      teamRows += inst ? instRowOf(inst)
+        : '<div class="pet-row bag-empty"><span class="pet-icon" aria-hidden="true">＋</span>' +
+          '<div class="pet-main"><span class="pet-name">空出战位</span>' +
+          '<p class="pet-desc">打开下方背包，点「出战」上阵灵宠</p></div></div>';
     }
-    $('petList').innerHTML = PETS.map((p) => {
-      const lv = state.pets[p.id];
-      if (lv === undefined) {
-        return (
-          '<div class="pet-row locked">' +
-            '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
-            '<div class="pet-main"><span class="pet-name">？？？</span>' +
-            '<p class="pet-desc">' + p.desc + '加成 · 招募需 ' + p.cost + resIcon('petTickets') + '</p></div>' +
-            '<button class="mini" data-pet="recruit" data-id="' + p.id + '"' +
-              (state.petTickets >= p.cost ? '' : ' disabled') + '>招募</button>' +
-          '</div>'
-        );
-      }
-      const active = state.activePets.includes(p.id);
-      const maxed = lv >= PET_MAX_LV;
-      const cost = petFeedCost(lv);
+    if (state.petSlots < PET_SLOT_MAX) {
+      const cost = PET_SLOT_COSTS[state.petSlots + 1];
+      teamRows += '<div class="pet-row bag-empty"><span class="pet-icon" aria-hidden="true">🔒</span>' +
+        '<div class="pet-main"><span class="pet-name">第 ' + (state.petSlots + 1) + ' 出战位</span>' +
+        '<p class="pet-desc">解锁需 ' + cost + ' 招募券（现有 ' + fmt(state.petTickets) + '）</p></div>' +
+        '<div class="pet-actions"><button class="mini" data-pet="slot"' +
+        (state.petTickets < cost ? ' disabled' : '') + '>解锁</button></div></div>';
+    }
+    // —— 物种图鉴/熟练度：亲密度/信物/内丹为物种级，作用于该物种所有个体 ——
+    const speciesRows = PET_SPECIES.map((p) => {
+      const owned = state.pets[p.id] !== undefined;
+      const lv = state.pets[p.id] || 0;
       const tokenLv = state.petTokens[p.id] || 0;
       const coreLv = state.petCores[p.id] | 0;
       const coreMaxed = coreLv >= CORE_MAX;
       const traits = (CORE_TRAITS[p.id] || []).filter((t) => coreLv >= t.lv).map((t) => t.name).join('·');
-      // 战斗向加成消费端过 GROWTH_SCALE（×0.25，见 playerCombatStats 的 petBonus 折算），
-      // 灵石收益（gain）不折算——展示口径与实际效果对齐（2026-11-01 修）
       const shownScale = p.stat === 'gain' ? 1 : GROWTH_SCALE;
-      const bonusText = (p.per * shownScale * lv * 100).toFixed(1).replace(/\.0$/, '') + '%' +
+      if (!owned) {
+        const dex = state.petDex[p.id];
+        const met = dex ? (dex.met | 0) : 0;
+        return (
+          '<div class="pet-row locked">' +
+            '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
+            '<div class="pet-main"><span class="pet-name">' + (met ? '？？？' : '？？？') + '</span>' +
+            '<p class="pet-desc">' + (met
+              ? '曾在缚灵谷遭遇 ×' + met + '，尚未收服'
+              : '尚未遭遇 · 缚灵谷捕捉') + '</p></div>' +
+          '</div>'
+        );
+      }
+      const maxed = lv >= PET_MAX_LV;
+      const cost = petFeedCost(lv);
+      // 战斗向加成消费端过 GROWTH_SCALE（×0.25，见 playerCombatStats 的 petBonus 折算），
+      // 灵石收益（gain）不折算——展示口径与实际效果对齐
+      const bonusText = '+' + (p.per * shownScale * lv * 100).toFixed(1).replace(/\.0$/, '') + '%' +
         (tokenLv ? ' · 信物 +' + (tokenLv * 0.5 * shownScale).toFixed(1).replace(/\.0$/, '') + '%' : '') +
         (coreLv ? ' · 内丹 ' + coreLv + ' 级' + (traits ? '（' + traits + '）' : '') : '');
       return (
-        '<div class="pet-row' + (active ? ' active' : '') + '">' +
+        '<div class="pet-row">' +
           '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
-          '<div class="pet-main"><span class="pet-name">' + p.name + (active ? ' <em>出战中</em>' : '') + '</span>' +
-          '<p class="pet-desc">' + p.desc + ' +' + bonusText + ' · 亲密度 ' + lv + ' / ' + PET_MAX_LV +
+          '<div class="pet-main"><span class="pet-name">' + p.name + '</span>' +
+          '<p class="pet-desc">天赋 ' + bonusText + ' · 亲密度 ' + lv + ' / ' + PET_MAX_LV +
             ' · 信物 ' + tokenLv + ' / ' + TOKEN_MAX + ' · 内丹 ' + coreLv + ' / ' + CORE_MAX + '</p></div>' +
           '<div class="pet-actions">' +
             '<button class="mini" data-pet="feed" data-id="' + p.id + '"' +
               (maxed || state.stones < cost ? ' disabled' : '') + '>' +
-              (maxed ? '已满级' : '喂养 ' + fmt(cost)) + '</button>' +
+              (maxed ? '亲密满' : '亲密 ' + fmt(cost)) + '</button>' +
             '<button class="mini" data-pet="token" data-id="' + p.id + '"' +
               (tokenLv >= TOKEN_MAX || state.dust < TOKEN_COST(tokenLv) ? ' disabled' : '') + '>' +
               (tokenLv >= TOKEN_MAX ? '信物满' : '信物 ' + TOKEN_COST(tokenLv) + ' ' + resIcon('dust')) + '</button>' +
             '<button class="mini" data-pet="core" data-id="' + p.id + '"' +
               (coreMaxed || state.beastBones < coreCost(coreLv) ? ' disabled' : '') + '>' +
               (coreMaxed ? '内丹满' : '内丹 ' + coreCost(coreLv) + ' 骨') + '</button>' +
-            '<button class="mini ghost" data-pet="toggle" data-id="' + p.id + '">' + (active ? '休息' : '出战') + '</button>' +
-            '<button class="mini ghost" data-pet="release" data-id="' + p.id + '">放生</button>' +
           '</div>' +
         '</div>'
       );
     }).join('');
+    // 灵宠背包入口（2026-11-03 用户指定改版）：缩短为紧凑条，随顶栏一行——券/捕捉/合成之后；
+    // 基础 50 格，灵石扩容 +10/次至多 100
+    $('petBagInline').innerHTML =
+      '<span class="pet-bag-count">背包 <b>' + state.petInsts.length +
+        ' / ' + petBagCap() + '</b></span>' +
+      (state.petBagLv < PET_BAG_MAX_LV
+        ? '<button class="mini" data-pet="bag"' + (state.stones < petBagCost(state.petBagLv | 0) ? ' disabled' : '') +
+          '>扩容 +' + PET_BAG_STEP + '（' + fmt(petBagCost(state.petBagLv | 0)) + ' 灵石）</button>' : '') +
+      '<button class="mini" data-pet="bagopen">打开</button>';
+    $('petList').innerHTML =
+      '<div class="pet-section-title">出战阵容（' + deployed.length + ' / ' + state.petSlots + '）</div>' +
+      teamRows +
+      '<div class="pet-section-title">物种图鉴 · 熟练度</div>' +
+      speciesRows;
+    armPetArtGuards($('petList'));
+    if (petBagShown) renderPetBag();
+  }
+
+  // —— 灵宠背包弹层（2026-11-02 用户指定）：点开才列出全部个体 ——
+  let petBagShown = false;
+  // 背包排序（2026-11-03 用户指定，仅内存不入档）：quality 品质 / power 战力 / species 灵宠 / level 等级
+  let petBagSort = 'quality';
+  function openPetBag() {
+    petBagShown = true;
+    renderPetBag();
+    $('petBagModal').classList.add('show');
+  }
+  function closePetBag() {
+    petBagShown = false;
+    $('petBagModal').classList.remove('show');
+  }
+  // 个体战力估分（2026-11-03 背包排序用，仅展示口径）：品质为主、等级与词条值随
+  // 等级成长折算（petAffShown 同折算系数），可确定性比较
+  const petInstPower = (inst) => {
+    const lvMult = 1 + PET_AFF_LV_STEP * (Math.max(1, inst.lv | 0 || 1) - 1);
+    const aff = (inst.affixes || []).reduce((s, a) => s + (a.v || 0) * lvMult, 0);
+    return (inst.r + 1) * 10000 + (inst.lv | 0) * 100 + aff * 1000;
+  };
+  const PET_BAG_SORTERS = {
+    quality: (a, b) => (b.r - a.r) || (b.lv - a.lv),
+    power: (a, b) => (petInstPower(b) - petInstPower(a)) || (b.r - a.r),
+    species: (a, b) => ((PET_SP_INDEX[a.sp] ?? 99) - (PET_SP_INDEX[b.sp] ?? 99)) || (b.r - a.r) || (b.lv - a.lv),
+    level: (a, b) => (b.lv - a.lv) || (b.r - a.r),
+  };
+  function renderPetBag() {
+    const list = $('petBagList');
+    if (!list) return;
+    $('petBagCount').textContent = state.petInsts.length + ' / ' + petBagCap();
+    $('petBagSortRow').innerHTML = [['quality', '品质'], ['power', '战力'], ['species', '灵宠'], ['level', '等级']]
+      .map(([k, label]) =>
+        '<button class="bag-chip' + (petBagSort === k ? ' active' : '') + '" data-petsort="' + k + '">' + label + '</button>')
+      .join('');
+    const bagFull = state.petInsts.length >= petBagCap();
+    const sorted = state.petInsts.slice().sort(PET_BAG_SORTERS[petBagSort] || PET_BAG_SORTERS.quality);
+    list.innerHTML = (bagFull
+      ? '<p class="hint">背包已满——放生或合成腾位，也可回灵宠面板扩容。</p>'
+      : (state.petInsts.length ? '' : '<p class="hint">背包空空如也——去「缚灵谷」探索捕捉，或合成升级品质。</p>')) +
+      sorted.map(instRowOf).join('');
+    armPetArtGuards(list);
+  }
+
+  // 出战灵宠主界面展示（2026-11-02 用户指定）：只有出战的个体显示在开箱台旁，
+  // 其余不出战的都收在灵宠背包里，不显示——点开灵宠面板才能查看
+  let companionSig = '';
+  function renderPetCompanion() {
+    const el = $('petCompanion');
+    if (!el) return;
+    const list = (state.activePets || []).map((uid) => petFindInst(uid)).filter(Boolean);
+    const sig = list.map((p) => p.uid + ':' + p.sp + ':' + p.r).join('+');
+    if (sig === companionSig) return;
+    companionSig = sig;
+    if (!list.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = list.map((inst) => {
+      const def = petSpDef(inst.sp);
+      return '<span class="pc-slot">' + petArtHtml(inst.sp, 'r' + inst.r) +
+        '<i class="pc-name">' + esc(def.name) + '</i></span>';
+    }).join('');
+    armPetArtGuards(el);
   }
 
   function renderCave() {
@@ -12441,15 +14211,17 @@
       const maxed = lv >= def.max;
       const cost = caveCost(key);
       const curText = lv
-        ? (key === 'garden' ? '+' + (lv * 0.4).toFixed(1) + '%' : '+' + lv * (key === 'array' ? 8 : 10) + '%')
+        ? (key === 'garden' ? '+' + (lv * 0.4).toFixed(1) + '%'
+          : key === 'fang' ? '+' + (lv * 0.2).toFixed(1) + '%'
+          : '+' + lv * (key === 'array' ? 8 : 10) + '%')
         : '';
       return (
         '<div class="cave-row">' +
-          '<span class="cave-icon" aria-hidden="true">' + (CAVE_ICONS[key] || def.icon) + '</span>' +
-          '<div class="cave-main"><span class="cave-name">' + def.name + ' <em>Lv.' + lv + '</em></span>' +
-          '<p class="cave-desc">' + def.desc + (curText ? '（当前 ' + curText + '）' : '') + '</p></div>' +
-          '<button class="mini" data-cave="' + key + '"' + (maxed || state.stones < cost ? ' disabled' : '') + '>' +
-            (maxed ? '已满级' : '升级 ' + fmt(cost) + resIcon('stones')) + '</button>' +
+          '<div class="cave-head"><span class="cave-icon" aria-hidden="true">' + (CAVE_ICONS[key] || def.icon) + '</span>' +
+            '<span class="cave-name">' + def.name + ' <em>Lv.' + lv + '</em></span>' +
+            '<button class="mini cave-up" data-cave="' + key + '"' + (maxed || state.stones < cost ? ' disabled' : '') + '>' +
+              (maxed ? '满级' : '升级 ' + fmt(cost) + resIcon('stones')) + '</button></div>' +
+          '<p class="cave-desc">' + def.desc + (curText ? '（当前 ' + curText + '）' : '') + '</p>' +
         '</div>'
       );
     }).join('');
@@ -12472,18 +14244,18 @@
       $('signInBox').innerHTML =
         '<div class="signin-row">' +
           '<span>累计签到 <b>' + state.signInDays + '</b> 天 · 本日可领 ' + nextReward.text + '</span>' +
-          (signed
-            ? '<span class="mini signin-done">今日已签（' + (state.lastSignMode === 'gamble' ? '赌狗' : '普通') + '）</span>'
-            : '<span class="signin-actions">' +
-              '<button class="mini" id="signInBtn">普通签到</button>' +
-              '<button class="mini" id="signGambleBtn">赌狗签到</button>' +
-              '</span>') +
+          '<span class="signin-actions">' +
+            (signed
+              ? '<span class="mini signin-done">今日已签（' + (state.lastSignMode === 'gamble' ? '赌狗' : '普通') + '）</span>'
+              : '<button class="mini" id="signInBtn">普通签到</button>' +
+                '<button class="mini" id="signGambleBtn">赌狗签到</button>') +
+            // 战绩·流水弹层入口（2026-11-03 用户指定）：常驻在签到按钮之后
+            '<button class="mini" id="signLogBtn">战绩 · 流水</button>' +
+          '</span>' +
         '</div>' +
         (signed ? '' :
           '<p class="hint signin-odds">赌狗 · 49% ×2~5 倍 · 10% ×1 · 20% 空手 · ' +
           '21% 倒扣 1~3 倍（灵石可负债）</p>');
-      $('signStatsLine').textContent = signStatsText();
-      $('signLogList').innerHTML = signLogHtml();
       $('dailyList').innerHTML = DAILY_TASKS.map((t) => {
         const rewardText = (t.reward.stones ? fmt(t.reward.stones) + ' 灵石' : '') +
           (t.reward.dust ? (t.reward.stones ? ' · ' : '') + t.reward.dust + ' 碎屑' : '');
@@ -12579,7 +14351,7 @@
             '</div>'
           ).join('')
         : '<p class="hint">该分类下暂无成就。</p>';
-      const countMapShell = { all: states.length, ready, done: claimedN, todo: nTodo };
+      const countMapShell = { all: claimedN + '/' + states.length, ready, done: claimedN, todo: nTodo };
       const filterDefs = [
         ['all', '全部'], ['ready', '未领取'], ['done', '已完成'], ['todo', '未完成'],
       ];
@@ -12603,8 +14375,7 @@
       });
     }
     // 动态补丁：计数、每行进度、按钮状态
-    $('achvCount').textContent = claimedN + ' / ' + ACHIEVEMENTS.length;
-    const countMap = { all: states.length, ready, done: claimedN, todo: nTodo };
+    const countMap = { all: claimedN + '/' + states.length, ready, done: claimedN, todo: nTodo };
     document.querySelectorAll('#achvFilterRow [data-count]').forEach((chip) => {
       chip.textContent = String(countMap[chip.dataset.count]);
     });
@@ -12942,7 +14713,7 @@
       const out = r === 4 ? '仙品' : '仙品 ★+1';
       return '<button class="mini" data-melt="' + r + '"' + (can ? '' : ' disabled') + '>' +
         RARITIES[r].name + ' ×' + n + ' → ' + out +
-        '（成功率 10%±5% · ' + fmt(meltFee(r)) + ' 灵石/件）</button>';
+        '（成功率 35%±5% · ' + fmt(meltFee(r)) + ' 灵石/件）</button>';
     }).join('');
   }
 
@@ -13054,33 +14825,72 @@
   }
 
   function renderFarm() {
-    const bucket = state.farm.plots.map((p) =>
-      p ? p.id + ':' + Math.ceil(Math.max(0, p.doneAt - Date.now()) / 15000) : 'empty').join('|');
-    const afford = FARM_SEEDS.map((sd) => state.stones >= sd.cost ? 1 : 0).join(',');
-    const sig = bucket + '|' + afford;
+    // 15 秒桶做倒计时粗粒度重绘；库存/选中种子/开垦数变化即重绘
+    const bucket = Object.keys(state.farm.plots).map((cell) =>
+      cell + ':' + state.farm.plots[cell].id + ':' +
+      Math.ceil(Math.max(0, state.farm.plots[cell].doneAt - Date.now()) / 15000)).join('|');
+    const sig = bucket + '|' +
+      FARM_SEEDS.map((sd) => state.farmSeeds[sd.id] | 0).join(',') + '|' +
+      RSTONE_KEYS.map((k) => state.rerollStones[k] | 0).join(',') + '|' +
+      state.farm.unlocked.length + '|' +
+      FARM_SEEDS.map((sd) => state.stones >= sd.cost ? 1 : 0).join(',');
     if (panelSigs.farm === sig) return;
     panelSigs.farm = sig;
+
+    // 计数栏：洗炼石六型（图标 + 名字 + 数量）
+    $('farmStones').innerHTML = RSTONE_KEYS.map((k) =>
+      '<span class="farm-chip" title="洗练「' +
+      (AFFIXES.find((a) => a.k === k) || {}).name + '」词条消耗">' + REROLL_STONES[k].ic +
+      REROLL_STONES[k].name + ' <b>' + fmt(state.rerollStones[k] | 0) + '</b></span>').join('');
+    // 种子栏：只读库存展示；「购种」开弹层统一填量购买（2026-11-02 用户指定）
+    // 两行布局（2026-11-03 用户指定）：第 1 行 5 籽（至灵莲籽）、第 2 行余下 + 按钮，flex 断行符强制换行
+    $('farmSeedBar').innerHTML =
+      '<div class="farm-seedbar">' + FARM_SEEDS.map((sd, i) =>
+        '<span class="farm-chip" title="' + sd.name + ' · 生长 ' + sd.text + ' · 收获碎屑 ' + sd.dust +
+        ' · 单价 ' + fmt(sd.cost) + '">' + itemIcon(sd.id) + sd.name +
+        ' <b>' + (state.farmSeeds[sd.id] | 0) + '</b></span>' +
+        (i === 4 ? '<span class="farm-seed-break"></span>' : '')).join('') +
+      '<button class="mini" data-farmbatch="harvest">一键收获</button>' +
+      '<button class="mini" data-farmbatch="plant">一键播种</button>' +
+      '<button class="mini" data-seedbuy="modal">购种</button></div>';
+    // 12×12 网格：熟格收获 / 空格播种 / 贴边暗格开垦 / 远格压暗
+    const unlocked = new Set(state.farm.unlocked);
+    const now = Date.now();
     let html = '';
-    for (let i = 0; i < FARM_PLOTS; i++) {
-      const plot = state.farm.plots[i];
-      if (plot) {
-        const def = FARM_SEEDS.find((sd) => sd.id === plot.id);
-        const left = plot.doneAt - Date.now();
-        html += '<div class="cave-row"><div class="cave-main">' +
-          '<span class="cave-name">' + def.name + ' <em>' +
-          (left > 0 ? '生长中 ' + fmtDuration(left / 1000) : '可收获') + '</em></span>' +
-          '<p class="cave-desc">收获 ' + def.dust + ' 碎屑</p></div>' +
-          '<button class="mini" data-harvest="' + i + '"' + (left > 0 ? ' disabled' : '') + '>收获</button></div>';
+    for (let cell = 0; cell < FARM_CELLS; cell++) {
+      const p = state.farm.plots[cell];
+      let cls = 'farm-cell';
+      let label = '';
+      let attrs = '';
+      if (unlocked.has(cell)) {
+        if (p) {
+          const left = p.doneAt - now;
+          if (left > 0) {
+            cls += ' fc-grow';
+            label = left >= 3600000 ? Math.ceil(left / 3600000) + '时'
+              : left >= 60000 ? Math.ceil(left / 60000) + '分' : '熟';
+            if (left < 60000) cls += ' fc-ready';
+          } else {
+            cls += ' fc-ready';
+            label = '熟';
+            attrs = ' data-harvest="' + cell + '" title="收获"';
+          }
+        } else {
+          cls += ' fc-empty';
+          attrs = ' data-plant="' + cell + '" title="点选播种"';
+        }
+      } else if (farmCellAdjacent(cell)) {
+        cls += ' fc-edge';
+        const cost = farmUnlockCost(unlocked.size);
+        label = FARM_LOCK_SVG;
+        attrs = ' data-unlock="' + cell + '" title="开垦需 ' + fmt(cost) + ' 灵石"';
       } else {
-        html += '<div class="cave-row"><div class="cave-main"><span class="cave-name">空田</span>' +
-          '<p class="cave-desc">选一种灵籽播种</p></div>' +
-          '<div class="pet-actions seed-actions">' + FARM_SEEDS.map((sd) =>
-            '<button class="mini" data-plant="' + i + '" data-seed="' + sd.id + '" title="' + sd.text + '"' +
-              (state.stones < sd.cost ? ' disabled' : '') + '>' + sd.name + ' ' + fmt(sd.cost) + resIcon('stones') + '</button>'
-          ).join('') + '</div></div>';
+        cls += ' fc-far';
+        label = FARM_LOCK_SVG;
       }
+      html += '<div class="' + cls + '"' + attrs + '>' + label + '</div>';
     }
-    $('farmList').innerHTML = html;
+    $('farmGrid').innerHTML = html;
   }
 
   function renderChapter() {
@@ -13426,6 +15236,20 @@
     if (now - lastRender > 100) {
       render();
       lastRender = now;
+    }
+
+    // 坊市节拍：闲趣页可见时每 500ms 重绘（倒计时走针 / 出炉「收取」按钮点亮）
+    if (SHOP.loaded && !SHOP.locked && now - SHOP.lastPaint > 500 &&
+        document.querySelector('#topTabs .top-tab.active')?.dataset.tab === 'xian') {
+      // 订单 30 分钟槽翻转：重取新槽订单（原只重绘不重取，旧列表点交付会按新槽订单取 idx）
+      if (SHOP.view && SHOP.view.nextSlotAt && now >= SHOP.view.nextSlotAt) {
+        SHOP.loaded = false;
+        SHOP.lastPaint = now; // 重取失败也有 500ms 节流，不打爆端点
+        shopLoad();
+      } else {
+        renderShop();
+        SHOP.lastPaint = now;
+      }
     }
 
     paintBag(false);
@@ -14396,12 +16220,48 @@
     });
   }
 
+  // —— 面板折叠（2026-11-02 用户指定）：全部带标题的 panel 可折叠、默认折叠、
+  // 状态记在 localStorage（只记「展开」的面板，缺省即折叠），跨会话恢复上次状态 ——
+  const PANEL_FOLD_KEY = 'lingxia_panels';
+  // 永不折叠：页面抬头（灵匣纪元标题条）豁免——即使将来改形成 panel 也保持常开
+  const PANEL_FOLD_EXEMPT = new Set(['灵匣纪元']);
+  const panelFoldExempt = (p) =>
+    !p || p.tagName === 'HEADER' || PANEL_FOLD_EXEMPT.has(p.getAttribute('aria-label') || '');
+  function panelFoldMap() {
+    let map = {};
+    try { map = JSON.parse(localStorage.getItem(PANEL_FOLD_KEY) || '{}') || {}; } catch (e) { map = {}; }
+    if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
+    return map;
+  }
+  function panelFoldInit() {
+    document.querySelectorAll('section.panel[aria-label]').forEach((p) => {
+      if (panelFoldExempt(p)) return;
+      if (!p.querySelector(':scope > h2')) return;      // 无标题（如开箱台）不可折叠
+      if (!panelFoldMap()[p.getAttribute('aria-label')]) p.classList.add('folded');
+    });
+  }
+  function panelFoldToggle(p) {
+    const folded = p.classList.toggle('folded');
+    const map = panelFoldMap();
+    const id = p.getAttribute('aria-label');
+    if (folded) delete map[id]; else map[id] = 1;
+    try { localStorage.setItem(PANEL_FOLD_KEY, JSON.stringify(map)); } catch (e) { /* 隐私模式忽略 */ }
+  }
+
   function bind() {
     $('topTabs').addEventListener('click', (e) => {
       const btn = e.target.closest('.top-tab');
       if (!btn) return;
       setTopTab(btn.dataset.tab, pageDir(btn.dataset.tab));
       if (btn.dataset.tab === 'world') worldActivate();
+      if (btn.dataset.tab === 'xian') shopLoad();
+    });
+
+    // 云来坊市：建筑/配方/直售/交单按钮走委托
+    $('shopBox').addEventListener('click', (e) => {
+      const el = e.target.closest('[data-shop]');
+      if (!el || el.disabled) return;
+      shopAct(el.dataset.shop, el);
     });
 
     // 天下页：排行刷新 / 竞技场切磋 / 妖王出手 / 仙盟（列表内按钮走委托）
@@ -14475,7 +16335,7 @@
     });
     $('arenaBuy').addEventListener('click', arenaBuy);
     $('arenaRefresh').addEventListener('click', arenaRefresh);
-    $('fishBaitBtn').addEventListener('click', buyBait);
+    // 补饵钮随 renderFishing 内联重建，事件在渲染处逐次挂（此处静态绑定会在初绑时撞空元素）
     $('arenaOpps').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act="arena"]');
       if (btn) arenaFight(Number(btn.dataset.id));
@@ -14527,8 +16387,9 @@
     $('breakBtn').addEventListener('click', breakthrough);
     $('ascendBtn').addEventListener('click', ascend);
 
-    // 点击「境界」标题：展开 / 收起境界清单（高亮当前境界）
-    $('realmTitle').addEventListener('click', () => {
+    // 境界清单开关（2026-11-03 与面板折叠分离）：点标题旁的 ▸/▾ 只展开/收起境界清单；
+    // 标题本身走通用面板折叠（document 委托里按钮点击不会触发折叠，两动作互不重叠）
+    $('realmToggle').addEventListener('click', () => {
       const list = $('realmList');
       list.classList.toggle('hidden');
       $('realmToggle').textContent = list.classList.contains('hidden') ? '▸' : '▾';
@@ -14644,19 +16505,105 @@
     $('battleSkip').addEventListener('click', skipBattleAnimation);
     $('battleClose').addEventListener('click', closeBattleModal);
 
-    $('petList').addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-pet]');
-      if (!btn || btn.disabled) return;
-      const id = btn.dataset.id;
-      if (btn.dataset.pet === 'recruit') recruitPet(id);
-      else if (btn.dataset.pet === 'feed') feedPet(id);
-      else if (btn.dataset.pet === 'toggle') togglePet(id);
-      else if (btn.dataset.pet === 'release') releasePet(id);
-      else if (btn.dataset.pet === 'token') upgradeToken(id);
-      else if (btn.dataset.pet === 'core') feedCore(id);
+    panelFoldInit();
+    // 折叠开关：点面板标题切换；标题内的按钮（如境界清单 ▸ 开关）不触发
+    document.addEventListener('click', (e) => {
+      const h = e.target.closest('section.panel > h2');
+      if (!h || e.target.closest('button, a, input, label')) return;
+      if (panelFoldExempt(h.parentElement)) return;
+      panelFoldToggle(h.parentElement);
     });
 
-    $('petSlotsBtn').addEventListener('click', unlockPetSlots);
+    // 出战灵宠展示位：点击切到闲趣页的灵宠面板
+    $('petCompanion').addEventListener('click', () => setTopTab('xian', pageDir('xian')));
+    // 灵宠动作委托：#petList（出战/图鉴/背包弹层外的主列表）与 #petTopRow（顶栏背包入口）
+    // 共用一套 data-pet/data-inst 处理
+    const petListAct = (e) => {
+      const btn = e.target.closest('button[data-pet],button[data-inst]');
+      if (!btn || btn.disabled) return;
+      if (btn.dataset.pet) {
+        const id = btn.dataset.id;
+        if (btn.dataset.pet === 'feed') feedPet(id);
+        else if (btn.dataset.pet === 'token') upgradeToken(id);
+        else if (btn.dataset.pet === 'core') feedCore(id);
+        else if (btn.dataset.pet === 'bag') buyPetBag();
+        else if (btn.dataset.pet === 'slot') unlockPetSlot();
+        else if (btn.dataset.pet === 'bagopen') openPetBag();
+      } else {
+        const uid = Number(btn.dataset.uid);
+        if (btn.dataset.inst === 'toggle') togglePet(uid);
+        else if (btn.dataset.inst === 'feed') feedInst(uid);
+        else if (btn.dataset.inst === 'detail') openPetDetail(uid);
+      }
+    };
+    $('petList').addEventListener('click', petListAct);
+    $('petTopRow').addEventListener('click', petListAct);
+
+    // 灵宠背包弹层：列表内 出战/休息/详情 与面板同一套 data-inst 动作
+    $('petBagList').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-inst]');
+      if (!btn || btn.disabled) return;
+      const uid = Number(btn.dataset.uid);
+      if (btn.dataset.inst === 'toggle') togglePet(uid);
+      else if (btn.dataset.inst === 'feed') feedInst(uid);
+      else if (btn.dataset.inst === 'detail') openPetDetail(uid);
+    });
+    // 背包排序切换（2026-11-03 用户指定）：品质/战力/灵宠/等级，仅内存不入档
+    $('petBagSortRow').addEventListener('click', (e) => {
+      const chip = e.target.closest('button[data-petsort]');
+      if (!chip || petBagSort === chip.dataset.petsort) return;
+      petBagSort = chip.dataset.petsort;
+      renderPetBag();
+    });
+    $('petBagClose').addEventListener('click', closePetBag);
+    $('petHuntBtn').addEventListener('click', openPetHunt);
+    $('petFuseBtn').addEventListener('click', openPetFuse);
+    $('petHuntClose').addEventListener('click', closePetHunt);
+    $('petFuseClose').addEventListener('click', closePetFuse);
+    $('petDetailClose').addEventListener('click', closePetDetail);
+    $('fuseGo').addEventListener('click', petFuse);
+    $('fuseAuto').addEventListener('click', petFuseAutoFill);
+    $('petFuseResultOk').addEventListener('click', () => $('petFuseResultModal').classList.remove('show'));
+    $('meltResultOk').addEventListener('click', () => $('meltResultModal').classList.remove('show'));
+    $('huntZones').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-zone]');
+      if (!b || b.disabled) return;
+      huntZone = b.dataset.zone;
+      renderPetHunt();
+    });
+    $('huntActions').addEventListener('click', (e) => {
+      const cap = e.target.closest('button[data-cap]');
+      if (cap && !cap.disabled) return petCapture(cap.dataset.cap);
+      const act = e.target.closest('button[data-hact]');
+      if (act && !act.disabled) petHuntAct(act.dataset.hact);
+    });
+    $('fuseSlots').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-fslot]');
+      if (b && !b.disabled) petFusePickSlot(Number(b.dataset.fslot));
+    });
+    $('fusePicker').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-fpick]');
+      if (b && !b.disabled) petFusePickPet(Number(b.dataset.fpick));
+    });
+    $('fusePreview').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-flock]');
+      if (b && !b.disabled) {
+        fuseLockK = b.dataset.flock;
+        renderPetFuse();
+      }
+    });
+    $('petDetailBody').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-dact]');
+      if (!b || b.disabled) return;
+      // 请求在飞时锁非本地操作（lock 只改本地渲染放行）：原只禁洗髓按钮，洗髓在飞时
+      // 点放生会为已放生的灵宠付费、喂养/出战同样与在飞响应竞态
+      if (petDetailBusy && b.dataset.dact !== 'lock') return;
+      if (b.dataset.dact === 'feed') feedInst(petDetailUid);
+      else if (b.dataset.dact === 'reroll') petReroll();
+      else if (b.dataset.dact === 'toggle') togglePet(petDetailUid);
+      else if (b.dataset.dact === 'release') releasePet(petDetailUid);
+      else if (b.dataset.dact === 'lock') togglePetLock(Number(b.dataset.idx));
+    });
 
     $('gongfaList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-gongfa]');
@@ -14818,15 +16765,52 @@
       acceptOrdeal(btn.dataset.ordeal);
     });
 
-    $('farmList').addEventListener('click', (e) => {
-      const plant = e.target.closest('button[data-plant]');
-      if (plant && !plant.disabled) {
-        plantSeed(Number(plant.dataset.plant), plant.dataset.seed);
-        return;
-      }
-      const harvest = e.target.closest('button[data-harvest]');
-      if (harvest && !harvest.disabled) harvestPlot(Number(harvest.dataset.harvest));
+    $('farmGrid').addEventListener('click', (e) => {
+      const unlock = e.target.closest('[data-unlock]');
+      if (unlock) { farmUnlockAsk(Number(unlock.dataset.unlock)); return; }
+      const harvest = e.target.closest('[data-harvest]');
+      if (harvest) { harvestPlot(Number(harvest.dataset.harvest)); return; }
+      const plant = e.target.closest('[data-plant]');
+      if (plant) { farmPlantAsk(Number(plant.dataset.plant)); return; }
     });
+
+    // 选种弹层：点行即种（种下成功才关）；仅按钮关（2026-11-01 口径）
+    $('farmPlantList').addEventListener('click', (e) => {
+      const row = e.target.closest('[data-plantseed]');
+      if (!row || row.disabled) return;
+      if (plantSeed(farmPendingPlot, row.dataset.plantseed)) {
+        farmPendingPlot = -1;
+        $('farmPlantModal').classList.remove('show');
+      }
+    });
+    $('farmPlantCancel').addEventListener('click', () => {
+      farmPendingPlot = -1;
+      $('farmPlantModal').classList.remove('show');
+    });
+
+    // 开垦确认弹层：解锁成功才关（灵石不足留在弹层提示可重试）；仅按钮关（2026-11-01 口径）
+    $('farmUnlockOk').addEventListener('click', () => {
+      if (unlockFarmCell(farmPendingCell)) {
+        farmPendingCell = -1;
+        $('farmUnlockModal').classList.remove('show');
+      }
+    });
+    $('farmUnlockCancel').addEventListener('click', () => {
+      farmPendingCell = -1;
+      $('farmUnlockModal').classList.remove('show');
+    });
+
+    $('farmSeedBar').addEventListener('click', (e) => {
+      const buy = e.target.closest('button[data-seedbuy]');
+      if (buy) farmBuyOpen();
+      const batch = e.target.closest('button[data-farmbatch]');
+      if (batch) (batch.dataset.farmbatch === 'harvest' ? farmHarvestAll : farmPlantAll)();
+    });
+
+    // 购种弹层：填量实时算合计；购买一次性入账，仅按钮关（2026-11-01 口径）
+    $('farmBuyList').addEventListener('input', () => farmBuyPaint());
+    $('farmBuyOk').addEventListener('click', () => farmBuyConfirm());
+    $('farmBuyCancel').addEventListener('click', () => $('farmBuyModal').classList.remove('show'));
 
     $('demonBox').addEventListener('click', (e) => {
       if (e.target.closest('#demonBtn')) fightDemon();
@@ -14875,7 +16859,9 @@
     $('signInBox').addEventListener('click', (e) => {
       if (e.target.closest('#signInBtn')) signIn();
       if (e.target.closest('#signGambleBtn')) signInGamble();
+      if (e.target.closest('#signLogBtn')) openSignLog();
     });
+    $('signLogClose').addEventListener('click', () => $('signLogModal').classList.remove('show'));
 
     $('dailyList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-daily]');

@@ -199,10 +199,15 @@ export function specialPower(mode, level, contentReqFn) {
   return Math.max(1, Math.round(base * (0.9 + Math.random() * 0.2)));
 }
 
-// 套装件生成（战斗/里程碑掉落）。兜底命名与客户端一致（validateItem 拒非字符串名）
+// 套装件生成（战斗/里程碑掉落）。部位收窄（2026-11-02 用户指定，game.js makeSpecialItem 同源）：
+// 请求部位不在 pieces 6 部位内（法宝/灵符/手镯/戒指/发箍/翅膀）时改在 6 部位内重随机，
+// 不再出 6 部位之外的套装件；兜底命名与客户端一致（validateItem 拒非字符串名）
 export function makeSpecialItem(mode, level, slotKey, itemSeq, contentReqFn) {
-  const slotDef = SLOT_MAP[slotKey] || SLOTS[Math.floor(Math.random() * SLOTS.length)];
   const set = SETS[mode];
+  const setSlotKeys = Object.keys(set.pieces);
+  const useKey = setSlotKeys.includes(slotKey) ? slotKey
+    : setSlotKeys[Math.floor(Math.random() * setSlotKeys.length)];
+  const slotDef = SLOT_MAP[useKey];
   const pieceName = set.pieces[slotDef.key] || (set.name + '·' + slotDef.name);
   return {
     id: itemSeq(),

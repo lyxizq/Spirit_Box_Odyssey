@@ -130,9 +130,6 @@
       <h2>日常</h2>
       <p class="hint" id="weekBuffLine"></p>
       <div class="signin-box" id="signInBox"></div>
-      <p class="side-title">签到战绩 · 流水</p>
-      <div class="hint" id="signStatsLine"></div>
-      <div id="signLogList"></div>
       <div id="dailyList"></div>
       <p class="hint">每日 0 点刷新；三项全部领取有额外奖励。</p>
       <p class="side-title">周常（周一刷新）</p>
@@ -146,7 +143,8 @@
       </div>
       <div class="col col-b">
 <section class="panel market" aria-label="黑市">
-      <h2>黑市 <span class="count" id="marketDate">今日货单</span></h2>
+      <h2>黑市</h2>
+      <p class="panel-meta"><span class="count" id="marketDate">今日货单</span></p>
       <div id="marketList"></div>
       <p class="hint">每日 0 点换货，每件限购一次。</p>
       <p class="side-title">赌石</p>
@@ -163,7 +161,7 @@
       <div class="chip-row title-row" id="titleRow"></div>
 </section>
 <section class="panel panel-wide achv" aria-label="成就">
-      <h2>成就 <span class="count" id="achvCount">0 / 0</span></h2>
+      <h2>成就</h2>
       <div class="chip-row" id="achvFilterRow"></div>
       <div id="achvList"></div>
 </section>
@@ -239,6 +237,7 @@
       </div>
 
       <div class="timer" aria-hidden="true"><div class="timer-fill" id="timerFill"></div></div>
+      <button class="pet-companion" id="petCompanion" aria-label="出战灵宠（点击进入灵宠面板）" hidden></button>
       <p class="muted">自动开箱 <strong id="intervalText">2.00</strong> 秒 / 次</p>
 
       <div class="buff hidden" id="buffBadge">丹药加成 ×2 · <span id="buffTime">30</span>s</div>
@@ -284,7 +283,7 @@
       </div>
       <div class="col col-b">
       <section class="panel realm" aria-label="境界">
-            <h2 id="realmTitle" title="点击展开境界清单">境界 <span class="realm-toggle" id="realmToggle">▸</span></h2>
+            <h2 id="realmTitle" title="点击折叠 / 展开境界面板">境界 <button class="realm-toggle" id="realmToggle" title="展开 / 收起境界清单">▸</button></h2>
             <div id="realmList" class="realm-list hidden"></div>
             <div class="realm-hero">
               <span class="realm-hero-moon" id="heroEmblem"></span>
@@ -353,7 +352,7 @@
 
     <div class="tab-page" data-page="equip">
 <section class="panel equipment" aria-label="装备">
-      <h2>装备<span class="h2-actions"><button class="btn tiny" id="autoEquip">一键穿戴</button></span></h2>
+      <h2>装备</h2>
       <div class="power-line">
         <div class="power-main">
           <span class="power-label">总战力</span>
@@ -361,6 +360,7 @@
           <span class="power-bonus" id="powerBonus">收益 ×1.00</span>
           <span class="power-gear" id="powerGear">装备战力 0</span>
         </div>
+        <button class="btn tiny" id="autoEquip">一键穿戴</button>
       </div>
       <div class="equip-grid" id="equipGrid"></div>
       <div class="set-list" id="setList"></div>
@@ -379,9 +379,10 @@
       <p class="hint">强化只作用于已穿戴装备，最高 +200。装备战力决定灵石收益；总战力为实战口径（含境界 / 时辰 / 灵宠 / 功法等加成），与顶栏和战力榜一致。</p>
     </section>
 <section class="panel bag" aria-label="背包">
-      <h2>背包 <span class="count" id="bagCount">0 / 100</span>
-        <button class="btn tiny hidden" id="bagExpandBtn">使用扩容符</button></h2>
+      <h2>背包</h2>
       <div class="bag-tools">
+        <span class="count" id="bagCount">0 / 100</span>
+        <button class="btn tiny hidden" id="bagExpandBtn">使用扩容符</button>
         <button class="btn tiny" id="salvageLow">分解 凡/灵/玄</button>
         <button class="btn tiny" id="salvageAll">清空分解</button>
       </div>
@@ -553,8 +554,9 @@
 
       </div>
 <section class="panel panel-wide map-panel" aria-label="秘境图">
-      <h2>秘境图 <span class="count" id="mapAp">行动力 0 / 12</span>
-        <span class="h2-actions"><button class="btn tiny" id="mapBuyBtn">加购 1 行动力（1 万灵石）</button></span></h2>
+      <h2>秘境图</h2>
+      <div class="panel-meta"><span class="count" id="mapAp">行动力 0 / 12</span>
+        <button class="btn tiny" id="mapBuyBtn">加购 1 行动力（1 万灵石）</button></div>
       <div class="map-grid" id="mapGrid"></div>
       <p class="hint">每日 +6 行动力；点相邻的「+」格探雾前进，可采矿、拾尘、斩妖、闯藏宝窟，或与故人偶遇。妖物越远越强。</p>
       <div id="treasureBox"></div>
@@ -563,13 +565,15 @@
 
     <div class="tab-page" data-page="gushi">
 <section class="panel panel-wide story-panel" aria-label="红尘录">
-      <h2>红尘录 <span class="count" id="storyProg">0 / 50 关</span></h2>
+      <h2>红尘录</h2>
+      <p class="panel-meta">进度 <span class="count" id="storyProg">0 / 50 关</span></p>
       <p class="story-lead" id="storyLead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
       <div id="storyBox"></div>
       <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。</p>
     </section>
 <section class="panel panel-wide cast-panel" aria-label="人物志">
-      <h2>人物志 <span class="count" id="castCount">0 / 0</span></h2>
+      <h2>人物志</h2>
+      <p class="panel-meta">已结识 <span class="count" id="castCount">0 / 0</span></p>
       <div class="cast-grid" id="castGrid"></div>
       <p class="hint">随剧情推进结识的人物会在此留下立绘与小传。</p>
     </section>
@@ -578,12 +582,14 @@
     <div class="tab-page" data-page="world">
       <div class="col col-a">
 <section class="panel rank-panel" aria-label="战力榜">
-      <h2>战力榜<span class="h2-actions"><button class="btn tiny" id="rankRefresh">刷新</button></span></h2>
+      <h2>战力榜</h2>
+      <div class="panel-meta"><button class="btn tiny" id="rankRefresh">刷新</button></div>
       <div class="rank-list" id="rankList"><p class="hint">加载中……</p></div>
       <p class="hint" id="rankMe">切到此页自动刷新。</p>
 </section>
 <section class="panel arena" aria-label="竞技场">
-      <h2>竞技场<span class="h2-actions"><button class="btn tiny" id="arenaRefresh">刷新</button><button class="btn tiny" id="arenaBuy" disabled>加购 1 场（1 万灵石）</button></span></h2>
+      <h2>竞技场</h2>
+      <div class="panel-meta"><button class="btn tiny" id="arenaRefresh">刷新</button><button class="btn tiny" id="arenaBuy" disabled>加购 1 场（1 万灵石）</button></div>
       <p class="hint" id="arenaInfo">加载中……</p>
       <div class="arena-list" id="arenaOpps"></div>
       <p class="hint">与同辈修士切磋（战力快照对战），每日 15 场；灵石加购每场 1 万、每日至多 10 场，胜负皆动天梯分；同一对手每日至多三场。名单不足时由「剑影」补位。</p>
@@ -594,7 +600,8 @@
       <p class="hint" id="ladderMe">—</p>
 </section>
 <section class="panel worldboss" aria-label="世界妖王">
-      <h2>世界妖王 <span class="count" id="bossName">—</span></h2>
+      <h2>世界妖王</h2>
+      <p class="panel-meta">当前妖王 <span class="count" id="bossName">—</span></p>
       <div class="bar"><div class="bar-fill" id="bossBarFill"></div></div>
       <p class="hint" id="bossHpText">—</p>
       <button class="btn wide primary" id="bossAttack">出手攻妖</button>
@@ -685,8 +692,11 @@
         <div id="elixirList"></div>
       </div>
       <div id="farmSec">
-        <p class="side-title">灵田</p>
-        <div id="farmList"></div>
+        <p class="side-title">牧场</p>
+        <div id="farmStones" class="farm-counts"></div>
+        <div id="farmSeedBar"></div>
+        <div id="farmGrid" aria-label="牧场方格"></div>
+        <p class="hint">点空格弹层选种播种 · 点熟格收获 · 点锁格花灵石开垦</p>
       </div>
       <div id="gatherSec">
         <p class="side-title">灵圃采集</p>
@@ -694,7 +704,7 @@
       </div>
     </section>
 <section class="panel fishing" aria-label="垂钓">
-      <h2>垂钓<span class="h2-actions"><button class="mini" id="fishBaitBtn" disabled>补饵</button></span></h2>
+      <h2>垂钓</h2>
       <div id="fishingBox"></div>
 </section>
 <section class="panel collection" aria-label="图鉴">
@@ -716,15 +726,26 @@
       </div>
       <div class="col col-b">
 <section class="panel pets" aria-label="灵宠">
-      <h2>灵宠 <span class="count" id="ticketCount">券 0</span></h2>
-      <div class="pet-top"><button class="btn tiny hidden" id="petSlotsBtn">解锁双宠位（5 券）</button></div>
+      <h2>灵宠</h2>
+      <div class="pet-top" id="petTopRow">
+        <span class="count" id="ticketCount">券 0</span>
+        <button class="btn tiny" id="petHuntBtn">捕捉</button>
+        <button class="btn tiny" id="petFuseBtn">合成</button>
+        <span id="petBagInline" class="pet-bag-inline"></span>
+      </div>
       <div class="pet-list" id="petList"></div>
-      <p class="hint">开箱掉招募券；喂养提亲密度，信物用碎屑升级，放生返还一半券。</p>
+      <p class="hint">缚灵谷消耗招募券与体力捕捉个体；合成三合一提品质；洗髓重随词条。亲密度/信物/内丹为物种级熟练度。</p>
     </section>
     <section class="panel dao" aria-label="道侣">
       <h2>道侣</h2>
       <p class="hint">赠礼积攒情谊：单个道侣累计灵石礼满 20 亿或碎屑礼满 500 万可结为道侣，得永久常驻加成与一段往事。</p>
       <div id="daoList"></div>
+    </section>
+<section class="panel market" aria-label="云来坊市">
+      <h2>云来坊市</h2>
+      <p class="panel-meta"><span class="count" id="shopRep"></span></p>
+      <div id="shopBox"></div>
+      <p class="hint">成品为坊市商品，用途是变现：直售兜底价，接订单 1.8 倍溢价＋商誉（悬停成品看说明）。牧场 / 灵圃收获自动送入坊市仓库。</p>
     </section>
 <section class="panel wander" aria-label="云游奇遇">
       <h2>云游奇遇</h2>
@@ -763,6 +784,61 @@
       <div class="modal-actions">
         <button class="btn" id="gambleModalClose">关闭</button>
         <button class="btn primary" id="gambleModalAgain">再开一次</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmUnlockModal" role="dialog" aria-modal="true" aria-labelledby="farmUnlockTitle">
+    <div class="modal-card">
+      <h3 id="farmUnlockTitle">开垦方格</h3>
+      <p id="farmUnlockText"></p>
+      <div class="modal-actions">
+        <button class="btn" id="farmUnlockCancel">取消</button>
+        <button class="btn primary" id="farmUnlockOk">解锁</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmPlantModal" role="dialog" aria-modal="true" aria-labelledby="farmPlantTitle">
+    <div class="modal-card">
+      <h3 id="farmPlantTitle">选择种籽</h3>
+      <div class="farm-plant-list" id="farmPlantList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="farmPlantCancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmBuyModal" role="dialog" aria-modal="true" aria-labelledby="farmBuyTitle">
+    <div class="modal-card">
+      <h3 id="farmBuyTitle">购种</h3>
+      <div class="farm-buy-list" id="farmBuyList"></div>
+      <p class="hint" id="farmBuyTotal"></p>
+      <div class="modal-actions">
+        <button class="btn" id="farmBuyCancel">取消</button>
+        <button class="btn primary" id="farmBuyOk">购买</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="petBagModal" role="dialog" aria-modal="true" aria-labelledby="petBagTitle">
+    <div class="modal-card">
+      <h3 id="petBagTitle">灵宠背包 <span class="count" id="petBagCount"></span></h3>
+      <div class="chip-row" id="petBagSortRow"></div>
+      <div class="pet-bag-list" id="petBagList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="petBagClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="signLogModal" role="dialog" aria-modal="true" aria-labelledby="signLogTitle">
+    <div class="modal-card">
+      <h3 id="signLogTitle">签到战绩 · 流水</h3>
+      <p class="hint" id="signLogStats"></p>
+      <div class="signlog-list" id="signLogModalList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="signLogClose">关闭</button>
       </div>
     </div>
   </div>
@@ -849,6 +925,7 @@
         </div>
         <span class="forge-dust">碎屑 <b id="forgeDust">0</b></span>
       </div>
+      <div id="forgeStones" class="farm-counts"></div>
       <div id="forgeAffixes"></div>
       <div id="forgeGems"></div>
       <div class="forge-picker hidden" id="forgePicker"></div>
@@ -858,6 +935,81 @@
       <p class="forge-msg" id="forgeMsg"></p>
       <div class="forge-actions">
         <button class="btn wide" id="forgeClose">关闭工坊</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petHuntModal" role="dialog" aria-modal="true" aria-labelledby="petHuntTitle">
+    <div class="modal-card pet-hunt-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petHuntTitle">缚灵谷</h3>
+          <p class="forge-kicker">探灵兽之踪，镇而服之</p>
+        </div>
+        <span class="forge-dust">券 <b id="huntTickets">0</b></span>
+      </div>
+      <div class="hunt-zones" id="huntZones"></div>
+      <div class="hunt-scene" id="huntScene"></div>
+      <div class="hunt-actions" id="huntActions"></div>
+      <p class="hunt-info" id="huntInfo"></p>
+      <div class="forge-actions">
+        <button class="btn wide" id="petHuntClose">离开缚灵谷</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petFuseModal" role="dialog" aria-modal="true" aria-labelledby="petFuseTitle">
+    <div class="modal-card pet-fuse-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petFuseTitle">灵宠合成</h3>
+          <p class="forge-kicker">三魂归一，品质跃迁</p>
+        </div>
+        <span class="forge-dust">个体 <b id="fuseHint">0</b></span>
+      </div>
+      <div class="fuse-slots" id="fuseSlots"></div>
+      <div class="fuse-picker-box" id="fusePicker"></div>
+      <div class="fuse-preview" id="fusePreview"></div>
+      <p class="forge-msg" id="fuseMsg"></p>
+      <div class="forge-actions">
+        <button class="btn wide" id="fuseAuto">自动放入</button>
+        <button class="btn primary wide" id="fuseGo">合成</button>
+        <button class="btn wide" id="petFuseClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal modal-sub" id="petFuseResultModal" role="dialog" aria-modal="true" aria-labelledby="petFuseResultTitle">
+    <div class="modal-card">
+      <h3 id="petFuseResultTitle">合成成功</h3>
+      <div class="pet-fuse-result" id="petFuseResultBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="petFuseResultOk">收下</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal modal-sub" id="meltResultModal" role="dialog" aria-modal="true" aria-labelledby="meltResultTitle">
+    <div class="modal-card">
+      <h3 id="meltResultTitle">熔铸结果</h3>
+      <div class="melt-result" id="meltResultBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="meltResultOk">收下</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petDetailModal" role="dialog" aria-modal="true" aria-labelledby="petDetailTitle">
+    <div class="modal-card pet-detail-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petDetailTitle">灵宠详情</h3>
+          <p class="forge-kicker">洗髓换骨，词条重随机</p>
+        </div>
+      </div>
+      <div id="petDetailBody"></div>
+      <div class="forge-actions">
+        <button class="btn wide" id="petDetailClose">关闭</button>
       </div>
     </div>
   </div>

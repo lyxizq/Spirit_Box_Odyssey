@@ -3,6 +3,7 @@
 // 违规整档 400 拒收——绕过前台按钮/改档刷出的收益在服务端落不了库。
 import { sendJSON, SlidingWindow } from './http-util.js';
 import { checkVelocity, ledgerOf, equipPowerOf } from './economy.js';
+import { PET_SPECIES, PET_LV_MAX, PET_INST_MAX } from './pets.js';
 
 const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
 const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
@@ -37,6 +38,8 @@ export function createSaveService(db) {
     // 拆掉（老号可 reset 后直推贴天花板满档合法入库）。归零保留 = 首推走正常
     // 增速校验，基线 0 + 真实经过时间，合法重玩能过、伪造跳变被拒。
     delSave: db.prepare('DELETE FROM game_saves WHERE user_id = ?'),
+    // 云来坊市（2026-11-02 模拟经营）：建筑/库存/商誉同样是进度，重置一并清零
+    delShop: db.prepare('DELETE FROM shop_state WHERE user_id = ?'),
     // 重置归零清单必须覆盖全部进度/计数列：wild_cleared、trial_done、sweep_used、
     // offline_at、set_pity 等原本残留——重置号会继承旧野外进度/试炼当日已做/扫荡
     // 已用等状态，与「等价于全新账号开局」矛盾（复审 P2：set_pity 是 JSON 列同样要清）
@@ -49,7 +52,11 @@ export function createSaveService(db) {
          wild_cleared = '[]', wild_kills = '{}', wild_repeat_day = '', wild_repeat_used = 0,
          sweep_day = '', sweep_used = '{}', sweep_bought = '{}',
          trial_day = '', trial_done = '[]', offline_at = 0, set_pity = NULL,
-         cli_sync = NULL, claim_days = NULL,
+         pet_hunt = NULL,
+         cli_sync = NULL,
+         /* claim_days 保留（2026-11-03）：天道录无 gate 梯子只靠 claim_days 做「终身一次」，
+            清空会让 reset×tide 变成可重复领取（3 次/时）；重置清进度但不清领取史 */
+         claim_days = claim_days,
          grants = 1, clicks = 0, click_ban_until = 0, updated_at = excluded.updated_at`),
     // 领奖日锁（乐观锁 CAS：并发双标签页领取只有一个能改写成功）
     setClaimDays: db.prepare(
@@ -58,6 +65,13 @@ export function createSaveService(db) {
     logClaim: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, 0, 0, 0, ?)'),
     clearProfile: db.prepare("UPDATE users SET power_score = 0, realm = '', pvp_snapshot = NULL WHERE id = ?"),
+    // 在线心跳（2026-11-02 用户指令「玩的时间要排除在离线结算外」）：每次存档推送成功
+    // 都把离线结算起点戳到服务器当前时刻——在线游玩时客户端每 ~5 秒推一次档、切后台/
+    // 关页有 beacon 立推，offline_at 恒等于「最近一次在线时刻」，刷新时 elapsed 只剩
+    // 几秒（<60 直接 settled:false），在线时长不再被当成离线时长双发。
+    // 只在 POST /api/save（store）戳：GET /api/save（启动拉档）不戳，否则启动时的
+    // 离线结算 elapsed 恒为 0，真离线收益会整个消失
+    setOfflineAt: db.prepare('UPDATE save_ledger SET offline_at = ? WHERE user_id = ?'),
     // 增速账本：上次入库计数器快照 + 窗口内兑换码授权收益
     getLedger: db.prepare('SELECT * FROM save_ledger WHERE user_id = ?'),
     upsertLedger: db.prepare(
@@ -191,7 +205,7 @@ export function createSaveService(db) {
   const ascensionMult = (data) =>
     1 + 0.08 * (isInt(data.ascensions, 0, 1e6) ? data.ascensions : 0);
 
-  function validateItem(it, where, immortal) {
+  function validateItem(it, where, immortal, maxRealm) {
     if (!it || typeof it !== 'object' || Array.isArray(it)) return bad(where + ' 非对象');
     if (!isInt(it.id, 1, 1e9)) return bad(where + ' id 越界');
     if (!DEEP.SLOT_KEYS.has(it.slot)) return bad(where + ' 部位非法');
@@ -209,6 +223,12 @@ export function createSaveService(db) {
     //（未飞升 = 境界下标+1，飞升后归 0），0..10 白名单；缺失按迁移基线 1 计
     const elv = it.lv === undefined ? 1 : it.lv;
     if (!isInt(elv, 0, DEEP.EQUIP_LV_MAX)) return bad(where + ' 装备等级越界');
+    // 等级-境界耦合（2026-11-03 补校验）：掉落定级 = min(当前水位+1, 10)（未飞升 realm+1 /
+    // 飞升 realm，realm 单调不降、realmPeak 是历史水位）→ elv ≤ maxRealm+1 恒成立；
+    // 此前只查 0..10 白名单，新号可直推 6 件 Lv.10 仙品过校验打穿尾段内容
+    if (!isInt(elv, 0, (isInt(maxRealm, 0, 9) ? maxRealm : 0) + 1)) {
+      return bad(where + ' 装备等级超出当前境界定级（≤' + ((isInt(maxRealm, 0, 9) ? maxRealm : 0) + 1) + '）');
+    }
     // 战力上界：普通件=品质基准×1.2×2.16^(lv-1)（客户端 fixItem 同款，Lv.1 基线 ×1，
     // 仙品 Lv.10 理论上界 ≈ 1.1e6）；套装件不入等级体系，仍按 1e9 基准 × 仙位放宽
     const powerCap = special
@@ -282,7 +302,19 @@ export function createSaveService(db) {
       for (const k of ['array', 'garden', 'library']) {
         if (!isInt(data.cave[k], 0, DEEP.PROGRESS_MAX)) bad('洞府 ' + k + ' 越界');
       }
+      // fang（2026-11-03 补校验）：云坊等级喂 battle.js fangMult（攻血防 ×(1+0.002×级)），
+      // 原先只查三键时改档 fang:5e9 可把面板放大 ×1e7 过战斗复算。
+      // 可选键模式（同 gainLv/activePets）：云坊上线前的旧客户端推档不带 fang，
+      // undefined 必须放行按 0 计（fangMult num(undefined)=0），只拒「带了但非法」——
+      // 写成必填曾把旧客户端推档永久拒死（2026-11-03 正式环境 user26 事故）
+      if (data.cave.fang !== undefined && !isInt(data.cave.fang, 0, DEEP.PROGRESS_MAX)) {
+        bad('洞府 fang 越界');
+      }
     }
+    // 升级等级（2026-11-03 补校验）：gainLv 喂 baseGainOf 离线结算（0.9/级灵石）、
+    // speedLv 喂开箱 interval——客户端 UPGRADES.gain.max=60 / speed.max=50，越界即改档
+    if (data.gainLv !== undefined && !isInt(data.gainLv, 0, 60)) bad('gainLv 越界');
+    if (data.speedLv !== undefined && !isInt(data.speedLv, 0, 50)) bad('speedLv 越界');
     // 部位强化 / 部位宝石（2026-10-31 部位化：强化与宝石改绑槽位，键 ⊆ 六槽位）
     if (data.enh !== undefined) {
       if (!data.enh || typeof data.enh !== 'object' || Array.isArray(data.enh)) bad('部位强化表非法');
@@ -309,6 +341,70 @@ export function createSaveService(db) {
             if (!g || typeof g !== 'object' || Array.isArray(g) || !DEEP.AFFIX_KEYS.has(g.k)) { bad('部位宝石类型非法'); break; }
             if (!isInt(g.t, 1, 3)) { bad('部位宝石等级越界'); break; }
           }
+        }
+      }
+    }
+    // —— 方格牧场（2026-11-02 灵田改 12×12 方格）：解锁格白名单、作物键值钳制、
+    // 种子/洗炼石库存钳量级。农场产出只有碎屑（单格 ≤800，全图爆收 11.5 万 < 碎屑包络
+    // 绝对底 ≈13.9 万），不新增增速面；洗炼石/种子是新资源类型，只锁量级 ——
+    const FARM_SEED_IDS = ['cao', 'hua', 'guo', 'sui', 'lian', 'tong', 'xing']; // 与 game.js FARM_SEEDS 同源
+    if (data.farm !== undefined) {
+      if (!data.farm || typeof data.farm !== 'object' || Array.isArray(data.farm)) {
+        bad('牧场字段非法');
+      } else {
+        if (data.farm.unlocked !== undefined) {
+          if (!Array.isArray(data.farm.unlocked) || data.farm.unlocked.length > 144) {
+            bad('牧场解锁格非法');
+          } else if (data.farm.unlocked.some((n) => !isInt(n, 0, 143))) {
+            bad('牧场解锁格越界');
+          } else if (new Set(data.farm.unlocked).size !== data.farm.unlocked.length) {
+            bad('牧场解锁格重复');
+          }
+        }
+        if (data.farm.plots !== undefined) {
+          const plots = data.farm.plots;
+          if (Array.isArray(plots)) {
+            // 老灵田数组形状：至多 3 格
+            if (plots.length > 3) bad('牧场作物越界');
+          } else if (!plots || typeof plots !== 'object') {
+            bad('牧场作物非法');
+          } else {
+            const keys = Object.keys(plots);
+            if (keys.length > 144) {
+              bad('牧场作物越界');
+            } else {
+              for (const k of keys) {
+                const n = Number(k);
+                const p = plots[k];
+                if (!Number.isInteger(n) || n < 0 || n > 143) { bad('牧场作物格越界'); break; }
+                if (!p || typeof p !== 'object' || Array.isArray(p) ||
+                  typeof p.id !== 'string' || !FARM_SEED_IDS.includes(p.id) ||
+                  typeof p.doneAt !== 'number' || !Number.isFinite(p.doneAt)) {
+                  bad('牧场作物数据非法'); break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (data.farmSeeds !== undefined) {
+      if (!data.farmSeeds || typeof data.farmSeeds !== 'object' || Array.isArray(data.farmSeeds) ||
+        Object.keys(data.farmSeeds).length > 8) {
+        bad('种子库存非法');
+      } else {
+        for (const k of Object.keys(data.farmSeeds)) {
+          if (!FARM_SEED_IDS.includes(k) || !isInt(data.farmSeeds[k], 0, 1e6)) { bad('种子库存越界'); break; }
+        }
+      }
+    }
+    if (data.rerollStones !== undefined) {
+      if (!data.rerollStones || typeof data.rerollStones !== 'object' || Array.isArray(data.rerollStones) ||
+        Object.keys(data.rerollStones).length > 6) {
+        bad('洗炼石库存非法');
+      } else {
+        for (const k of Object.keys(data.rerollStones)) {
+          if (!DEEP.AFFIX_KEYS.has(k) || !isInt(data.rerollStones[k], 0, 1e6)) { bad('洗炼石库存越界'); break; }
         }
       }
     }
@@ -360,8 +456,88 @@ export function createSaveService(db) {
       else {
         const keys = Object.keys(data.petCores);
         if (keys.length > DEEP.PETS_MAX) bad('内丹数越界');
-        for (const k of keys) {
+        for (const k of Object.keys(data.petCores)) {
           if (!isInt(data.petCores[k], 0, 10)) bad('内丹等级越界');
+        }
+      }
+    }
+    // —— 灵宠个体（2026-11-02 灵宠个体化）：与 server/pets.js rollPetInst 生成器同界 ——
+    // 物种白名单 / uid 唯一 / 品质在物种带内 / 等级 1..100 / 词条数=品质条数 /
+    // 值 0..0.6 / 键不重复。捕捉/合成/洗髓全服务端掷，伪造个体只能落在合法结构内。
+    const PET_SP_MAP = {};
+    for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
+    // 灵宠背包扩容次数（2026-11-02 容量化：基础 50 格，扩容 0..5 次至多 100）
+    if (data.petBagLv !== undefined && !isInt(data.petBagLv, 0, 5)) bad('灵宠背包扩容越界');
+    if (data.petInsts !== undefined) {
+      if (!Array.isArray(data.petInsts) || data.petInsts.length > PET_INST_MAX) {
+        bad('灵宠个体表非法');
+      } else {
+        const uids = new Set();
+        data.petInsts.forEach((p, i) => {
+          if (!p || typeof p !== 'object' || Array.isArray(p)) { bad('灵宠个体[' + i + ']非法'); return; }
+          const spDef = PET_SP_MAP[p.sp];
+          if (!spDef) { bad('灵宠个体物种非法'); return; }
+          if (!isInt(p.uid, 1, 1e9) || uids.has(p.uid)) { bad('灵宠个体 uid 非法'); return; }
+          uids.add(p.uid);
+          // 品质上界按物种带封顶（可铸词条条数上限随之封顶）；下界放宽到 0：老档融合
+          // 迁移（game.js petMigrated）给已招募物种赠的是凡品 r=0，而旧四宠物种带
+          // band[0]≥1（狐[1,3]/龟[1,2]/鼠[1,2]/貔[2,4]），按带下界拒收会把全部老玩家
+          // 永久拒死（2026-11-03 正式环境 user25 事故）。低于带只是「弱于合法下限」：
+          // 战斗加成只看词条、词条条数按实际 r 封顶（AFFIX_COUNT[0]=0 最弱），无放大面
+          if (!isInt(p.r, 0, spDef.band[1])) { bad('灵宠个体品质越界'); return; }
+          if (!isInt(p.lv, 1, PET_LV_MAX)) { bad('灵宠个体等级越界'); return; }
+          if (p.rerolls !== undefined && !isInt(p.rerolls, 0, 1e6)) { bad('灵宠洗髓计数越界'); return; }
+          const count = DEEP.AFFIX_COUNT[p.r];
+          if (p.affixes !== undefined && !Array.isArray(p.affixes)) { bad('灵宠个体词条类型非法'); return; }
+          const affixes = p.affixes || [];
+          if (affixes.length > count) { bad('灵宠个体词条数越界'); return; }
+          const seen = new Set();
+          for (const a of affixes) {
+            if (!a || typeof a !== 'object' || !DEEP.AFFIX_KEYS.has(a.k)) { bad('灵宠个体词条键非法'); return; }
+            if (typeof a.v !== 'number' || !Number.isFinite(a.v) || a.v < 0 || a.v > 0.6) { bad('灵宠个体词条值越界'); return; }
+            if (seen.has(a.k)) { bad('灵宠个体词条重复'); return; }
+            seen.add(a.k);
+            if (a.lock !== undefined && typeof a.lock !== 'boolean') { bad('灵宠个体词条锁类型非法'); return; }
+          }
+        });
+      }
+    }
+    if (data.petSeq !== undefined && !isInt(data.petSeq, 0, 1e9)) bad('灵宠序号越界');
+    // 出战位（2026-11-03 补校验）：activePets 直接喂 battle.js petAggOf/内丹/stoneBuff，
+    // 原先零校验——重复 uid 或超长数组会把天赋/词条/内丹加成 ×N 复读并放大服务端
+    // 结算发放。口径：数组 ≤5（客户端 PET_SLOT_MAX）、元素为合法 uid 或旧档物种 id、
+    // 全局去重、数字 uid 必须存在于 petInsts（旧档物种字符串按 battle.js 双读兼容放行）
+    if (data.activePets !== undefined) {
+      if (!Array.isArray(data.activePets) || data.activePets.length > 5) {
+        bad('出战灵宠表非法');
+      } else {
+        const instUids = new Set((Array.isArray(data.petInsts) ? data.petInsts : [])
+          .map((p) => (p && typeof p === 'object') ? Math.floor(Number(p.uid) || 0) : 0));
+        const seen = new Set();
+        for (const uid of data.activePets) {
+          if (typeof uid === 'string') {
+            if (!PET_SP_MAP[uid]) { bad('出战灵宠物种非法'); break; }
+          } else if (!isInt(uid, 1, 1e9)) {
+            bad('出战灵宠 uid 非法'); break;
+          } else if (!instUids.has(uid)) {
+            bad('出战灵宠不存在于个体表'); break;
+          }
+          if (seen.has(uid)) { bad('出战灵宠重复'); break; }
+          seen.add(uid);
+        }
+      }
+    }
+    if (data.petDex !== undefined) {
+      if (!data.petDex || typeof data.petDex !== 'object' || Array.isArray(data.petDex) ||
+        Object.keys(data.petDex).length > PET_SPECIES.length) {
+        bad('灵宠图鉴非法');
+      } else {
+        for (const k of Object.keys(data.petDex)) {
+          const d = data.petDex[k];
+          if (!PET_SP_MAP[k] || !d || typeof d !== 'object' || Array.isArray(d) ||
+            !isInt(d.met, 0, 1e9) || !isInt(d.got, 0, 1e9) || !isInt(d.bestR, -1, 5)) {
+            bad('灵宠图鉴数据非法'); break;
+          }
         }
       }
     }
@@ -382,12 +558,17 @@ export function createSaveService(db) {
       }
     }
     const immortal = isInt(data.immortal, 0, 999) ? data.immortal : 0;
+    // 装备定级水位（validateItem 等级-境界耦合用）：realm 单调不降，realmPeak 是飞升回锁
+    // 的历史水位——两者取大即「该号掉落定级的合法上界」
+    const maxRealm = Math.max(
+      isInt(data.realm, 0, 9) ? data.realm : 0,
+      isInt(data.realmPeak, 0, 9) ? data.realmPeak : 0);
     // 背包：数量与逐件口径
     if (data.bag !== undefined) {
       if (!Array.isArray(data.bag) || data.bag.length > DEEP.BAG_MAX) {
         bad('背包数量越界');
       } else {
-        data.bag.forEach((it, i) => validateItem(it, '背包[' + i + ']', immortal));
+        data.bag.forEach((it, i) => validateItem(it, '背包[' + i + ']', immortal, maxRealm));
       }
     }
     // 已穿戴六件：深度校验（战力直接驱动 totalPower 与榜单）
@@ -398,7 +579,7 @@ export function createSaveService(db) {
         for (const slot of DEEP.SLOT_KEYS) {
           const it = data.equipped[slot];
           if (it === null || it === undefined) continue;
-          validateItem(it, '穿戴[' + slot + ']', immortal);
+          validateItem(it, '穿戴[' + slot + ']', immortal, maxRealm);
         }
       }
     }
@@ -500,6 +681,44 @@ export function createSaveService(db) {
         return sendJSON(res, 400, { error: '新账号存档异常，请从零开始修行' });
       }
     }
+    // —— 灵宠 uid 水位（2026-11-03 伪面收窄）：个体 uid 一律由服务端发放（pets.js
+    // nextPetUid，捕捉/合成响应带真实 uid，客户端不再本地发号）。推送档里出现
+    // uid > pet_seq 的个体 = 凭空捏造（改档免捕捉/合成直接拿满配宠），整档拒收。
+    // pet_seq NULL（旧行未初始化）先从「旧镜像最大 uid」种入——语义同账本种基线，
+    // 客户端发号时代的历史个体照常放行；镜像损坏时 fail-open 1e9（宁可放行也不砖号）。
+    // 上界语义：未吸收窗口里客户端推旧镜像（少宠物）不会误拒，与 cli_sync 防砖同哲学
+    if (Array.isArray(data.petInsts) && data.petInsts.length) {
+      let wm = 0;
+      if (prevRow) {
+        wm = prevRow.pet_seq;
+        if (wm === null || wm === undefined) {
+          wm = 0;
+          try {
+            const old = JSON.parse(stmts.getSave.get(ctx.user.id).data);
+            if (old && Array.isArray(old.petInsts)) {
+              for (const p of old.petInsts) {
+                const u = Math.floor(Number(p && p.uid) || 0);
+                if (u > wm) wm = u;
+              }
+            }
+          } catch (e) { wm = 1e9; }
+          // 旧镜像可能早于灵宠个体化（无 petInsts 可种——品质校验 2026-11-02 上线起，
+          // 迁移档从未成功落库，镜像停在纯物种时代）：老玩家的迁移赠品/客户端时代
+          // 捕捉全是本地发号，序列埋在档内 petSeq（客户端保证 petSeq > 全部 uid，
+          // 且与镜像发号同序）。pet_seq 为 NULL = 服务端从未给该账号发过号，以档内
+          // petSeq 接续水位不扩大伪造面（新账号 pet_seq 非 NULL 不走此分支；个体表
+          // 长度另有 validateDeep PET_INST_MAX 封顶）。缺此步会把全部老玩家在水位层
+          // 二次拒死（2026-11-03 正式环境 user25 事故）
+          if (wm !== 1e9 && isInt(data.petSeq, 1, 1e9) && data.petSeq > wm) wm = data.petSeq;
+        }
+      }
+      const forged = data.petInsts.find((p) => p && Math.floor(Number(p.uid) || 0) > wm);
+      if (forged) {
+        console.error('[saves] 灵宠 uid 超发放水位拒收 user=' + ctx.user.id +
+          '：uid=' + forged.uid + ' > pet_seq=' + wm);
+        return sendJSON(res, 400, { error: '存档校验失败' });
+      }
+    }
     // —— 连点器判定（服务端裁定）：30s 滑窗累计手动点击增量 ——
     let clickBanUntil = prevRow ? (prevRow.click_ban_until || 0) : 0;
     // clicks 不做 |0：32 位截断下每次恰好 +2^32（validateDeep 上限 1e12 内合法）会让
@@ -532,6 +751,8 @@ export function createSaveService(db) {
           opens: led.opens, petTickets: led.petTickets, towerCleared: led.towerCleared,
           stageCleared: led.stageCleared, endlessBest: led.endlessBest, wildMax: led.wildMax,
         }), now);   // 校验通过即清离线豁免；种基线发 1 次
+      // 在线心跳：推送成功即证明玩家此刻在线，推进离线结算起点（见 stmts.setOfflineAt 注）
+      stmts.setOfflineAt.run(now, ctx.user.id);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -624,7 +845,10 @@ export function createSaveService(db) {
     rogue_fight:    { cap: 1e6, perDay: 300, dyn: 4.2e2 }, // 探幽：装备分×2×(1+0.1层)×灵潮 ≈ ×168
     map_loot:       { cap: 1e6, perDay: 8, dyn: 3.5e2 },  // 秘境图收获：装备分×45×灵脉 ≈ ×135
   };
-  const claimWindow = new SlidingWindow(60 * 1000, 30);
+  // 领奖授权是全部领取共用的窗：探幽逐层/Rush 连打/天道录连档/灵气多格会在一分钟内
+  // 连发十几笔，30/分钟会把额度吃光导致后续正常领取 429（2026-11-03 用户反馈）——
+  // 放宽到 120/分钟（与体力接口同口径），滥用面由各类 perDay 上限 + 账本复核钳制
+  const claimWindow = new SlidingWindow(60 * 1000, 120);
   const dayKey = () => {
     const d = new Date();
     const p = (n) => String(n).padStart(2, '0');
@@ -753,6 +977,7 @@ export function createSaveService(db) {
       db.exec('BEGIN');
       try {
         stmts.delSave.run(ctx.user.id);
+        stmts.delShop.run(ctx.user.id);
         stmts.resetLedger.run(ctx.user.id, Date.now());
         stmts.clearProfile.run(ctx.user.id);
         db.exec('COMMIT');

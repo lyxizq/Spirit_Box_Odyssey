@@ -229,8 +229,10 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
   // —— 1.5) 自报战力一致性：persist 上报的 power（realPower = 装备分 × 实战乘区）
   // 必须与穿戴六件重算分挂钩，防「空装备直写 9e15 战力」刷榜单/PvP 快照/妖王钳制基数。
   // 真实乘区上界（境界/词条/宝石/灵宠/功法/内丹等全开）约 ×1400，取 2500 余量；
+  // 2026-11-02 灵宠个体化放宽到 3400：出战灵宠新增个体词条（2 只 × 仙品 3 条满卷
+  // × lv100 成长，atk 聚合再 +~0.32 → 攻击乘区最多再 ×1.35，照旧只松不紧）；
   // 空装起步由 5000 底兜住（realPower 乘法结构下空装 = 0，不会误拒）。
-  if (next.power !== undefined && num(next.power) > Math.max(5000, equipP * 2500 * (1 + 0.08 * ascCap))) {
+  if (next.power !== undefined && num(next.power) > Math.max(5000, equipP * 3400 * (1 + 0.08 * ascCap))) {
     return '自报战力与装备不符（' + num(next.power).toExponential(2) + ' / 装备 ' + equipP.toExponential(2) + '）';
   }
 
@@ -271,10 +273,11 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
 
   // —— 5) 放大字段限速：仙位/轮回直接放宽战力天花板（量级校验对它们放行），
   // 增速与「可支配灵石」挂钩且不做与灵石无关的每推保底（复审：3 分钟 curl 可拉满）。
-  // 飞升得点 = √(灵石/1e8)，窗口内多次飞升的 Σ√ ≤ 2√pot，配额 ×2 精确覆盖；
+  // 飞升门槛 1000 亿灵石/次（2026-11-03 用户指定，game.js ASCEND_STONES 同源）：
+  // 配额 = 2√(pot/1e11)，窗口内多次飞升的 Σ√ ≤ 2√pot，×2 余量精确覆盖；
   // 入仙界逐级 ×5 灵石（累计 (5^k-1)/4×1e8 ≤ pot ⟺ k ≤ log5(4·pot/1e8+1)），无保底。
   const pot = Math.max(0, prev.stones) + Math.max(0, dTotal) + 5e7 * days + Math.max(0, s.stones);
-  const ascAllow = 2 * Math.sqrt(pot / 1e8);
+  const ascAllow = 2 * Math.sqrt(pot / 1e11);
   if (asc - prev.ascensions > ascAllow) {
     return '轮回次数增速异常（+' + (asc - prev.ascensions) + '，配额 ' + Math.floor(ascAllow) + '）';
   }
@@ -285,8 +288,12 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
 
   // —— 6) 碎屑 / 招募券 / 修为增速（价值低，宽松包络兜底）——
   // 碎屑/招募券是随机掉落 + 一次性奖励（妖王/商店/成就），短窗口小样本下期望口径趋近 0，
-  // 必须给绝对下限（券 3 张 / 尘 2 万每窗口），否则「刚开 1 箱掉 1 券」都会被拒（实测踩过）
-  if (dDust > Math.max(0, dOpens) * 2500 + 2e6 * days + 2e4 + Math.max(0, s.dust)) {
+  // 必须给绝对下限（券 3 张 / 尘 2 万每窗口），否则「刚开 1 箱掉 1 券」都会被拒（实测踩过）。
+  // 璞玉赌石（2026-11-03 修复）：20 万灵石/次纯客户端消耗、单次碎屑最高 2.6 万（0.13 尘/灵石），
+  // 包络按「窗口内客户端灵石消耗 ×0.15」计入——十连乃至五百连/日都不再误拒，
+  // 而其他灵石消耗（淬炼/购种/黑市碎屑包 ≤0.05 尘/灵石）远低于该系数，刷尘面不变
+  const spentStones = Math.max(0, -dStones);
+  if (dDust > Math.max(0, dOpens) * 2500 + 2e6 * days + 2e4 + spentStones * 0.15 + Math.max(0, s.dust)) {
     return '碎屑收益增速异常（+' + dDust.toExponential(2) + '）';
   }
   if (dTickets > Math.max(0, dOpens) * 0.01 + 50 * days + 3 + Math.max(0, s.tickets)) {

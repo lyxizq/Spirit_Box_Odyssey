@@ -209,6 +209,13 @@ CREATE TABLE IF NOT EXISTS action_log (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_action_log_user_time ON action_log(user_id, created_at);
+-- 云来坊市（2026-11-02 模拟经营）：建筑/原料/库存/订单全量服务端权威状态（JSON 快照，
+-- 结构见 server/shop.js loadState）；客户端只渲染，灵石收支一律过账本 + 授权流水。
+CREATE TABLE IF NOT EXISTS shop_state (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  state      TEXT    NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL
+);
 `;
 
 // 老库补列：SCHEMA 里的 CREATE IF NOT EXISTS 不会给已存在的表加新列，这里按需 ALTER。
@@ -335,6 +342,20 @@ export function openDb(dbPath) {
   // 套装保底计数（2026-11-01 二改）：JSON {mode:[胜场,日,当日已保底数]}，
   // 四模式统一每胜 50 场保底 1 件、每日每玩法保底上限 2 件（combat.js rollSpecialDrop）
   ensureColumn(db, 'save_ledger', 'set_pity', 'TEXT');
+  // 灵宠捕捉 pending 遭遇 + 当日探索计数/保底（2026-11-02 灵宠个体化）：
+  // JSON {day, hunts, pity, enc:{sp,r,lv,affixes,at}}——hunt 掷遭遇、capture 消费，
+  // 两阶段分离防客户端重掷（pets.js petHuntOf）
+  ensureColumn(db, 'save_ledger', 'pet_hunt', 'TEXT');
+  // 灵宠 uid 水位 + 销账（2026-11-03 伪面收窄）：uid 一律由服务端发放（pets.js nextPetUid，
+  // 捕捉/合成的响应带真实 uid），pet_seq = 已发放的最大 uid，NULL = 旧行未初始化
+  //（首推/首笔发放时从存档镜像最大 uid 种入，语义同账本种基线）；saves.js store() 拒收
+  // 推送档里 uid > pet_seq 的「凭空灵宠」。pet_used JSON {uid:1} 记合成已消耗材料（防同组
+  // 材料不推档连发 fuse 重放）；pet_rerolls JSON {uid:count} 服务端洗髓计数（镜像恒推 0
+  // 也按真实次数复利计费）。推送校验只用 pet_seq 水位（上界语义，不会误伤未吸收窗口）；
+  // pet_used / pet_rerolls 只约束服务端动作本身，不入推送校验（防 cli_sync 同款时序砖号）
+  ensureColumn(db, 'save_ledger', 'pet_seq', 'INTEGER');
+  ensureColumn(db, 'save_ledger', 'pet_used', 'TEXT');
+  ensureColumn(db, 'save_ledger', 'pet_rerolls', 'TEXT');
   ensureColumn(db, 'guild_members', 'contribution', 'INTEGER NOT NULL DEFAULT 0');
   // 同门互助（2026-10-31）：传功 / 赠礼记账——发起方记日期，受赠方记来源（领取后清除）
   ensureColumn(db, 'guild_members', 'aid_day',        "TEXT    NOT NULL DEFAULT ''");
