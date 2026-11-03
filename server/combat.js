@@ -9,6 +9,7 @@
 import { sendJSON, SlidingWindow } from './http-util.js';
 import { computeStamina, staminaView, STAMINA_CAP } from './stamina.js';
 import { ledgerOf, rollSetPity } from './economy.js';
+import { guildLevel as guildLevelOf } from './social.js';
 import {
   simulateBattle, MODES, contentReq, enemyFor, recommendedPower,
   playerCombatStats, elementBonusOf, settleGain, expectedOf, dayProdMultOf,
@@ -52,6 +53,34 @@ function modeMapOf(json) {
   return obj;
 }
 
+// —— 胜场素材掉落（2026-11-03 用户指定）：征战/野外胜场概率掉牧场种子与洗炼石，
+// 给牧场/坊市线补一条非农场来源。数量走响应由客户端入库存（farmSeeds/rerollStones
+// 均在存档白名单内，0..1e6 校验兜底），不入账本灵石、不碰增速包络。
+// 种子 id 与权重同源 game.js FARM_SEEDS（server/shop.js FARM_SEED_MS 同表），低档常见；
+// 洗炼石六型 key 同源 game.js RSTONE_KEYS（saves.js AFFIX_KEYS 白名单），六型均权。
+// 扫荡/复战按 rewardScale（0.5）折算概率，首通 +15%/+10%、首领 +10%。
+const MAT_SEED_WEIGHTS = { cao: 38, hua: 22, guo: 15, sui: 10, lian: 7, tong: 5, xing: 3 };
+const MAT_RSTONE_KEYS = ['atk', 'hp', 'def', 'crit', 'ls', 'pierce'];
+
+function rollMatDrops(rewardScale, boss, first) {
+  const scale = Math.min(1, Math.max(0, rewardScale || 0));
+  const seedKeys = Object.keys(MAT_SEED_WEIGHTS);
+  const wSum = seedKeys.reduce((s, k) => s + MAT_SEED_WEIGHTS[k], 0);
+  const out = { seeds: {}, rstones: {} };
+  const seedChance = 0.25 + (boss ? 0.1 : 0) + (first ? 0.15 : 0);
+  const stoneChance = 0.2 + (boss ? 0.1 : 0) + (first ? 0.1 : 0);
+  if (Math.random() < seedChance * scale) {
+    let roll = Math.random() * wSum;
+    let pick = seedKeys[0];
+    for (const k of seedKeys) { roll -= MAT_SEED_WEIGHTS[k]; if (roll < 0) { pick = k; break; } }
+    out.seeds[pick] = 1 + (Math.random() < 0.5 ? 1 : 0);
+  }
+  if (Math.random() < stoneChance * scale) {
+    out.rstones[MAT_RSTONE_KEYS[Math.floor(Math.random() * MAT_RSTONE_KEYS.length)]] = 1;
+  }
+  return out;
+}
+
 export function createCombatService(db, staminaSvc) {
   const window = new SlidingWindow(60 * 1000, FIGHT_PER_MIN);
   const stmts = {
@@ -79,8 +108,10 @@ export function createCombatService(db, staminaSvc) {
     spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
     logAction: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
-    guildLevel: db.prepare(
-      'SELECT g.level FROM guild_members gm JOIN guilds g ON g.id = gm.guild_id WHERE gm.user_id = ?'),
+    // 仙盟等级由基金现算（social.js guildLevel 同一口径）：guilds.level 列自建表起
+    // 从未被更新（恒为默认 1），读它会让高等级仙盟的收益加成恒按 Lv.1 结算（少发方向）
+    guildFund: db.prepare(
+      'SELECT g.fund AS fund FROM guild_members gm JOIN guilds g ON g.id = gm.guild_id WHERE gm.user_id = ?'),
   };
 
   // —— 体力（事务内复用 staminaSvc 的语句与折算，口径不分叉）——
@@ -124,8 +155,8 @@ export function createCombatService(db, staminaSvc) {
   }
 
   function envFor(userId, now) {
-    const g = stmts.guildLevel.get(userId);
-    return { now, guildLevel: g ? g.level : 0 };
+    const g = stmts.guildFund.get(userId);
+    return { now, guildLevel: g ? guildLevelOf(g.fund) : 0 };
   }
 
   function wildMaxOf(cleared) {
@@ -356,6 +387,7 @@ export function createCombatService(db, staminaSvc) {
       let expGain = 0;
       let trophy = 0;
       let frag = 0;
+      let matDrops = null;
       let special = null;
       let pitySpecial = null;
       let progress = null;
@@ -392,6 +424,9 @@ export function createCombatService(db, staminaSvc) {
         // 藏宝图残片（陈列室门槛 = 境界 4，FEATURE_GATES 同源）
         if (featureRealmOf(mirror) >= 4 && Math.random() < TREASURE_DROP) frag = 1;
 
+        // 素材掉落（2026-11-03 用户指定）：种子/洗炼石随胜场掉落（扫荡/复战概率折算）
+        matDrops = rollMatDrops(rewardScale, enemy.boss, first);
+
         // 进度推进（只进不退；扫荡/复战不推进）
         const advance = sweepLevel === null && !replay;
         const newTower = mode === 'tower' && advance ? level : towerCleared;
@@ -425,6 +460,7 @@ export function createCombatService(db, staminaSvc) {
         },
         element: elb,
         stoneGain, expGain, trophy, trophyField: TROPHY_FIELDS[mode], frag, special, pitySpecial,
+        matDrops,
         progress,
         stamina: spent.view,
         // 权威计数回传（事务后的值）：客户端镜像精确对齐，本地只做展示预判
@@ -594,8 +630,10 @@ export function createCombatService(db, staminaSvc) {
     db.exec('BEGIN');
     try {
       const led = ensureLedger(ctx.user.id, mirror, now);
-      // 境界门槛：化神（FEATURE_GATES.trials 同口径，users.realm 随存档同步）
-      if (Number(mirror.realm) < 4) {
+      // 境界门槛：化神（FEATURE_GATES.trials 同口径）——按水位 max(realm, realmPeak) 判定，
+      // 与客户端 featureOpen 一致；飞升轮回后境界归零但已解锁玩法不回锁（2026-11-01 口径），
+      // 原只查 mirror.realm 会把飞升老玩家在服务端拒之门外（客户端放行、服务端 400）
+      if (featureRealmOf(mirror) < 4) {
         db.exec('ROLLBACK');
         return sendJSON(res, 400, { error: '条件试炼需境界「化神」' });
       }

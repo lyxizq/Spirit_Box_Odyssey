@@ -448,7 +448,25 @@ export function createSaveService(db) {
       else {
         if (!isInt(data.fishing.bait, 0, 99)) bad('鱼饵越界');
         if (!isInt(data.fishing.casts, 0, 1e9)) bad('垂钓计数越界');
-        if (!isInt(data.fishing.bestT, -1, 4)) bad('鱼档越界');
+        // 鱼档（2026-11-03 弹窗改版）：全局鱼表 50 种（五钓场 ×10），bestT 0..49；
+        // 旧档 0..4 下标与新表同位（旧五鱼保持原下标），老档无需迁移
+        if (!isInt(data.fishing.bestT, -1, 49)) bad('鱼档越界');
+        // 竿等/钓场（2026-11-03 补字段）：竿等即钓场解封线（1..15），钓场 1..5；
+        // undefined 放行按客户端默认 1 计（旧客户端推档不带）
+        if (data.fishing.rod !== undefined && !isInt(data.fishing.rod, 1, 15)) bad('鱼竿越界');
+        if (data.fishing.spot !== undefined && !isInt(data.fishing.spot, 1, 5)) bad('钓场越界');
+        // 图鉴点亮表（2026-11-04 补字段）：键 ⊆ 鱼 id 形（小写短串）、值 0/1、至多 50 键——
+        // 纯展示零收益面，结构校验即可，不复制 50 个 id 白名单；undefined 放行（旧档兼容）
+        const fdex = data.fishing.dex;
+        if (fdex !== undefined) {
+          if (!fdex || typeof fdex !== 'object' || Array.isArray(fdex) || Object.keys(fdex).length > 50) {
+            bad('钓鱼图鉴非法');
+          } else {
+            for (const k of Object.keys(fdex)) {
+              if (!/^[a-z]{2,12}$/.test(k) || !isInt(fdex[k], 0, 1)) { bad('钓鱼图鉴键值非法'); break; }
+            }
+          }
+        }
       }
     }
     if (data.petCores !== undefined) {
@@ -728,7 +746,9 @@ export function createSaveService(db) {
     const clickCutoff = now - CLICK_WINDOW_MS;
     while (clickArr.length && clickArr[0].t <= clickCutoff) clickArr.shift();
     clickArr.push({ t: now, n: dClicks });
-    clickWindows.set(ctx.user.id, clickArr);
+    // 过期即清：非活跃账号的空窗残留及时出表，防长寿命进程下 Map 随历史用户无界增长
+    if (clickArr.length === 1 && dClicks === 0) clickWindows.delete(ctx.user.id);
+    else clickWindows.set(ctx.user.id, clickArr);
     const windowClicks = clickArr.reduce((a, x) => a + x.n, 0);
     if (windowClicks >= CLICK_BURST_MAX && now >= clickBanUntil) {
       clickBanUntil = now + CLICK_BAN_MS;
@@ -835,7 +855,10 @@ export function createSaveService(db) {
     quiz_all:       { cap: 3.75e6, perDay: 1 }, // 问答全对（150 万）
     bossrush:       { cap: 5e7, perDay: 1 },    // 首领连战 S 级（2000 万 × 余量）
     anomaly:        { cap: 6e7, perDay: 2 },    // 异象平定（1500 万 × 血月 ×1.5 × 余量）
-    aid_skill:      { cap: 7.5e6, perDay: 2 },  // 同门传功（300 万 × 余量）
+    // 同门传功（300 万 × 余量）：发起/受领拆成两类各 1 次/日（2026-11-04 修复）——
+    // 原共用 2 次/日桶，先领两次他人传功就把「发起传功」的槽烧光，被 429 锁一天
+    aid_skill:      { cap: 7.5e6, perDay: 1 },      // 我向同门传功
+    aid_skill_recv: { cap: 7.5e6, perDay: 1 },      // 我领取同门传功
     boss_daily:     { cap: 1e6, perDay: 1 },    // 妖王讨伐伤害奖励（40 万封顶 × 余量）
     gboss_daily:    { cap: 4e5, perDay: 1 },    // 盟妖王伤害奖励（16 万封顶 × 余量）
     // 战力动态上限类：数额随玩家战力成长（power = 账本装备分），dyn 系数按

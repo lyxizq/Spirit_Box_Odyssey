@@ -469,7 +469,6 @@
           <div class="combat-actions">
             <button class="btn primary" id="combatBtn">挑战第 1 关</button>
             <button class="btn ghost hidden" id="sweepBtn">扫荡</button>
-            <button class="btn ghost" id="autoBtn">连续挑战：关</button>
           </div>
 
           <p class="combat-progress" id="combatProgress">套装部件按概率掉落</p>
@@ -784,6 +783,28 @@
       <div class="modal-actions">
         <button class="btn" id="gambleModalClose">关闭</button>
         <button class="btn primary" id="gambleModalAgain">再开一次</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="ascendModal" role="dialog" aria-modal="true" aria-labelledby="ascendModalTitle">
+    <div class="modal-card">
+      <h3 id="ascendModalTitle">飞升轮回</h3>
+      <div class="ascend-modal-grid" id="ascendModalBody"></div>
+      <p class="hint" id="ascendModalHint"></p>
+      <div class="modal-actions">
+        <button class="btn" id="ascendModalCancel">再想想</button>
+        <button class="btn primary" id="ascendModalGo">散尽灵石，飞升</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fishModal" role="dialog" aria-modal="true" aria-labelledby="fishModalTitle">
+    <div class="modal-card fish-modal-card">
+      <h3 id="fishModalTitle">垂钓 · 五钓场</h3>
+      <div id="fishModalBody"></div>
+      <div class="modal-actions">
+        <button class="btn" id="fishModalClose">收竿离开</button>
       </div>
     </div>
   </div>

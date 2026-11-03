@@ -26,7 +26,9 @@ export const PET_SPECIES = [
   { id: 'pixiu',  name: '招财貔貅', icon: '貔', stat: 'gain',   per: 0.03,  band: [2, 4] },
   { id: 'baize',  name: '白泽',     icon: '泽', stat: 'ls',     per: 0.005, band: [3, 4] },
   { id: 'qilin',  name: '烛麒麟',   icon: '麟', stat: 'hp',     per: 0.03,  band: [3, 5] },
-  { id: 'kun',    name: '鲲鹏雏',   icon: '鲲', stat: 'atk',    per: 0.028, band: [4, 5] },
+  // 鲲鹏雏品质带下探到地（2026-11-03 用户指定）：秘境可产地品鲲作合成素材（地×3→天×3→仙），
+  // 服务端 validateDeep 与本表同源，扩带后 r3 合法
+  { id: 'kun',    name: '鲲鹏雏',   icon: '鲲', stat: 'atk',    per: 0.028, band: [3, 5] },
 ];
 export const PET_SP_MAP = {};
 for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
@@ -35,7 +37,11 @@ for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
 export const PET_ZONES = [
   { id: 'huang',  name: '荒山', realm: 4, pool: ['ying', 'xi', 'rat'],              w: [60, 30, 10] },
   { id: 'gu',     name: '灵谷', realm: 5, pool: ['rat', 'turtle', 'fox', 'sun'],    w: [30, 30, 28, 12] },
-  { id: 'mijing', name: '秘境', realm: 6, pool: ['fox', 'sun', 'chan', 'zhu', 'pixiu'], w: [20, 18, 30, 20, 12] },
+  // 秘境全物种（2026-11-03 用户指定）：到秘境即可捕捉全部 12 物种，产出最高只到地品
+  //（cap=3 钳制带内掷点；鲲鹏雏品质带 天~仙 无法产出地品，保持带内原样为唯一例外）
+  { id: 'mijing', name: '秘境', realm: 6, cap: 3,
+    pool: ['ying', 'xi', 'rat', 'turtle', 'fox', 'sun', 'chan', 'zhu', 'pixiu', 'baize', 'qilin', 'kun'],
+    w: [12, 12, 12, 12, 11, 10, 10, 9, 9, 6, 1, 1] },
   { id: 'guyuan', name: '古渊', realm: 7, pool: ['zhu', 'pixiu', 'baize', 'qilin'], w: [25, 25, 32, 18] },
   { id: 'xianfu', name: '仙府', realm: 8, pool: ['qilin', 'kun'],                   w: [45, 55] },
 ];
@@ -58,8 +64,9 @@ export const petBagCapOf = (mirror) =>
   PET_BAG_BASE + PET_BAG_STEP * Math.max(0, Math.min(PET_BAG_MAX_LV, Math.floor(Number(mirror && mirror.petBagLv) || 0)));
 // 品质带内 roll 的相对权重（offset 0..5）：越往上越稀
 const BAND_WEIGHTS = [100, 38, 12, 3.5, 1, 0.3];
-// 收服基础成功率（按品质）；镇抚策略加成后封顶 95%
-export const PET_CAPTURE_BASE = [0.9, 0.75, 0.6, 0.45, 0.3, 0.18];
+// 收服基础成功率（按品质）；镇抚策略加成后封顶 95%。
+// 天/仙品大幅压低（2026-11-03 用户指定，game.js 同源）：高品灵宠主要走三合一合成获取
+export const PET_CAPTURE_BASE = [0.9, 0.75, 0.6, 0.45, 0.08, 0.03];
 export const PET_CAPTURE_CAP = 0.95;
 // 镇抚策略：feed 灵石按品质 ×8（凡 2 万 → 仙 6553.6 万），awe 兽骨按品质平方
 export const PET_POLICY = {
@@ -118,11 +125,15 @@ function rollAffixesInto(n, exclude, r) {
 }
 
 // 物种品质带内掷品质；spDef.band = [min, max]
-export function rollBandRarity(spDef) {
+// 带内掷品质；cap = 地点品质上限（2026-11-03 用户指定：秘境产出最高只到地品）——
+// 掷点区间钳到 [lo, min(hi, cap)]；物种带下限高于 cap 时（鲲鹏雏带 天~仙）保持带内原样，
+// 品质带是硬约束（validateDeep 拒带外品质），不得产出带外地品
+export function rollBandRarity(spDef, cap) {
   const [lo, hi] = spDef.band;
+  const top = cap == null ? hi : Math.max(lo, Math.min(hi, cap));
   let total = 0;
   const w = [];
-  for (let r = lo; r <= hi; r++) { w.push(BAND_WEIGHTS[r] || 0.3); total += BAND_WEIGHTS[r] || 0.3; }
+  for (let r = lo; r <= top; r++) { w.push(BAND_WEIGHTS[r] || 0.3); total += BAND_WEIGHTS[r] || 0.3; }
   let roll = Math.random() * total;
   for (let i = 0; i < w.length; i++) {
     roll -= w[i];
@@ -317,7 +328,7 @@ export function createPetsService(db, staminaSvc) {
           if (roll <= 0) { spId = zone.pool[i]; break; }
         }
         const spDef = PET_SP_MAP[spId];
-        const r = rollBandRarity(spDef);
+        const r = rollBandRarity(spDef, z.cap);
         const enc = rollPetInst(spId, r, 1);
         enc.at = now;
         h.enc = enc;

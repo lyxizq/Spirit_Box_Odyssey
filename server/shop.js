@@ -13,11 +13,11 @@ import { sendJSON, SlidingWindow } from './http-util.js';
 // —— 商业建筑：cost=解锁（1 级）花费，growth=升级指数，max=等级上限，repNeed=商誉门槛 ——
 const BUILDINGS = {
   dan: { name: '丹房', icon: '丹', cost: 2e4, growth: 1.55, max: 50, repNeed: 0 },
-  qi:  { name: '器坊', icon: '器', cost: 8e4, growth: 1.55, max: 50, repNeed: 300 },
-  fu:  { name: '符箓铺', icon: '符', cost: 3e5, growth: 1.55, max: 50, repNeed: 1200 },
+  qi:  { name: '器坊', icon: '器', cost: 8e4, growth: 1.55, max: 50, repNeed: 3000 },
+  fu:  { name: '符箓铺', icon: '符', cost: 3e5, growth: 1.55, max: 50, repNeed: 12000 },
 };
-// 制作位：1/18/35 级 → 1/2/3 席；售价/商誉随建筑等级成长（50 级 ×3.45）
-const SLOTS_AT_LV = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 17);
+// 制作位：1/13/25/37/49 级 → 1~5 席；售价/商誉随建筑等级成长（50 级 ×3.45）
+const SLOTS_AT_LV = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 12);
 const lvMult = (lv) => 1 + 0.05 * (Math.max(1, lv) - 1);
 const upCostOf = (key, lv) => Math.floor(BUILDINGS[key].cost * Math.pow(BUILDINGS[key].growth, lv));
 
@@ -140,6 +140,7 @@ const CATALOG = {
 export function createShopService(db) {
   const window = new SlidingWindow(60 * 1000, 300); // 收获入账可批量（144 格连点），放宽
   const mutWindow = new SlidingWindow(60 * 1000, 120); // 建筑制作/收支类写操作限速（防刷库）
+  const windWindow = new SlidingWindow(3600 * 1000, 4); // 奇遇原料入账：4 次/小时（云游 ~10 次/小时节奏的钳制）
   const stmts = {
     getShop: db.prepare('SELECT state FROM shop_state WHERE user_id = ?'),
     putShop: db.prepare(
@@ -480,6 +481,34 @@ export function createShopService(db) {
     }
   }
 
+  // POST /api/shop/windfall {mats:{id:n}}：云游奇遇的原料入账（2026-11-04）。
+  // 与 deposit 不同源：奇遇无墙钟语义，改用「钳量 + 严限速」——单键 ≤10、单次总 ≤20、
+  // 4 次/小时（理论上限 80/小时，相对牧场 144 格的真实产量是小额）；键白名单 = MATS
+  function windfall(req, res, ctx) {
+    if (realmOf(ctx.user.id) < REALM_GATE) return sendJSON(res, 403, { error: '坊市尚未解锁' });
+    const inMats = ctx.body && ctx.body.mats && typeof ctx.body.mats === 'object' && !Array.isArray(ctx.body.mats)
+      ? ctx.body.mats : null;
+    if (!inMats) return sendJSON(res, 400, { error: '参数无效' });
+    const got = {};
+    let total = 0;
+    for (const k of Object.keys(inMats)) {
+      if (!MATS[k]) return sendJSON(res, 400, { error: '未知原料：' + k });
+      const n = Math.floor(Number(inMats[k]));
+      if (!Number.isInteger(n) || n < 0 || n > 10) return sendJSON(res, 400, { error: '原料数额越界' });
+      total += n;
+      if (n > 0) got[k] = n;
+    }
+    if (total > 20) return sendJSON(res, 400, { error: '单次入账总额越界（≤20）' });
+    // 限速窗在校验之后：失败请求不烧配额（客户端奇遇节奏 ~10 次/小时，4 次入账余量足够）
+    if (!windWindow.hit(ctx.user.id)) return sendJSON(res, 429, { error: '奇遇入账过于频繁，请稍后再试' });
+    const now = Date.now();
+    const row = stmts.getShop.get(ctx.user.id);
+    const st = loadState(row ? row.state : '');
+    for (const k of Object.keys(got)) st.mats[k] = clampInt((st.mats[k] || 0) + got[k], 0, 1e6);
+    stmts.putShop.run(ctx.user.id, JSON.stringify(st), now);
+    return sendJSON(res, 200, { ok: true, got, view: viewOf(ctx.user.id, st, now) });
+  }
+
   function handle(req, res, ctx) {
     const p = ctx.pathname;
     if (p === '/api/shop' && ctx.method === 'GET') { get(req, res, ctx); return true; }
@@ -489,6 +518,7 @@ export function createShopService(db) {
     if (p === '/api/shop/sell' && ctx.method === 'POST') { sell(req, res, ctx); return true; }
     if (p === '/api/shop/order' && ctx.method === 'POST') { order(req, res, ctx); return true; }
     if (p === '/api/shop/deposit' && ctx.method === 'POST') { deposit(req, res, ctx); return true; }
+    if (p === '/api/shop/windfall' && ctx.method === 'POST') { windfall(req, res, ctx); return true; }
     return false;
   }
 

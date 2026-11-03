@@ -13,14 +13,12 @@ CREATE TABLE IF NOT EXISTS users (
   failed_logins  INTEGER NOT NULL DEFAULT 0,
   locked_until   INTEGER NOT NULL DEFAULT 0,
   power_score    INTEGER NOT NULL DEFAULT 0,
-  guild_id       INTEGER,
   created_at     INTEGER NOT NULL,
   created_ip     TEXT,
   last_login_at  INTEGER,
   last_login_ip  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_power      ON users(power_score DESC);
-CREATE INDEX IF NOT EXISTS idx_users_guild      ON users(guild_id);
 CREATE INDEX IF NOT EXISTS idx_users_created_ip ON users(created_ip, created_at);
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -52,14 +50,13 @@ CREATE TABLE IF NOT EXISTS game_saves (
   updated_at INTEGER NOT NULL
 );
 
--- 仙盟（fund 为捐献基金，等级由基金换算，等级本身不落库）
+-- 仙盟（fund 为捐献基金，等级由基金现算不落库——level 列 2026-11-03 移除：建表起从未更新恒为 1）
 CREATE TABLE IF NOT EXISTS guilds (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT    NOT NULL UNIQUE,
   name_lower TEXT    NOT NULL UNIQUE,
   leader_id  INTEGER NOT NULL REFERENCES users(id),
   notice     TEXT    NOT NULL DEFAULT '',
-  level      INTEGER NOT NULL DEFAULT 1,
   fund       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -117,21 +114,14 @@ CREATE TABLE IF NOT EXISTS guild_shop_log (
   times    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (guild_id, user_id, item_id, day)
 );
--- PvP 天梯分直接挂 users 列（pvp_rating / pvp_wins / pvp_losses），对局入流水表
-CREATE TABLE IF NOT EXISTS pvp_seasons (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT    NOT NULL,
-  starts_at  INTEGER NOT NULL,
-  ends_at    INTEGER NOT NULL,
-  settled    INTEGER NOT NULL DEFAULT 0
-);
+-- PvP 天梯分直接挂 users 列（pvp_rating / pvp_wins / pvp_losses），对局入流水表。
+-- pvp_seasons 表与 season_id/replay 列 2026-11-03 移除：赛季机制从未上线，全程零读写；
+-- 存量库的空表不强迁（pvp_battles 对其有悬空外键定义，重建表不值得），新库不再创建
 CREATE TABLE IF NOT EXISTS pvp_battles (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  season_id   INTEGER REFERENCES pvp_seasons(id),
   attacker_id INTEGER NOT NULL,
   defender_id INTEGER NOT NULL,
   winner_id   INTEGER,
-  replay      TEXT,
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pvp_attacker ON pvp_battles(attacker_id, created_at);
@@ -373,5 +363,14 @@ export function openDb(dbPath) {
   } catch (e) {
     console.error('[db] display_name 回填撞唯一索引（历史数据冲突，跳过）：' + e.message);
   }
+  // 死列清理（2026-11-03，存量库迁移）：guilds.level 建表起从未更新（恒 1，等级一律由
+  // fund 现算）；users.guild_id 只写不读（盟籍一律查 guild_members），还让每次入退盟多
+  // 一次 users 表 UPDATE。新库 SCHEMA 已无这些列，此处对存量库做幂等 DROP（列无索引/
+  // 外键引用，SQLite ≥ 3.35 支持；失败仅意味着列残留无害，吞掉即可）
+  try { db.exec('ALTER TABLE guilds DROP COLUMN level'); } catch (e) { /* 新库无此列 */ }
+  try {
+    db.exec('DROP INDEX IF EXISTS idx_users_guild');
+    db.exec('ALTER TABLE users DROP COLUMN guild_id');
+  } catch (e) { /* 新库无此列 */ }
   return db;
 }

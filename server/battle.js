@@ -441,12 +441,6 @@ const skyNow = () => {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return SKIES[h % SKIES.length];
 };
-const weekStoneOn = () => {
-  const d = new Date();
-  const w = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / (7 * 86400000));
-  return WEEK_BUFF_IDS[w % WEEK_BUFF_IDS.length] === 'stone';
-};
-
 function runewordOf(gems) {
   const list = (gems || []).filter(Boolean);
   if (list.length < 2) return null;

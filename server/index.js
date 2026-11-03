@@ -173,6 +173,9 @@ function notFound(res) {
   res.end('404 Not Found');
 }
 
+// 根级公开静态白名单（模块级常量，避免每请求重建 Set）
+const PUBLIC_FILES = new Set(['/styles.css', '/game.js', '/login.js', '/theme-boot.js', '/favicon.svg', '/favicon.png', '/cover.png', '/cover.svg']);
+
 function forbidden(res) {
   res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', ...BASE_HEADERS });
   res.end('403 Forbidden');
@@ -423,7 +426,6 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/assets/') || pathname === '/favicon.ico') {
       return serveStatic(req, res, pathname === '/favicon.ico' ? '/favicon.png' : pathname);
     }
-    const PUBLIC_FILES = new Set(['/styles.css', '/game.js', '/login.js', '/theme-boot.js', '/favicon.svg', '/favicon.png', '/cover.png', '/cover.svg']);
     if (PUBLIC_FILES.has(pathname)) return serveStatic(req, res, pathname);
 
     return notFound(res);

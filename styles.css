@@ -5521,3 +5521,139 @@ section.panel.folded > :not(h2) { display: none !important; }
   flex: 0 0 auto; margin-left: 0; /* 抵消 .pet-actions .mini 的 margin-left:auto（会把两钮的空隙平分、休息被推到中间） */
   padding: 8px 18px; font-size: 11px; min-height: 30px;
 }
+
+/* 飞升确认弹层（2026-11-03 用户指定）：清零/保留/新玩法/增益四栏交代 */
+.ascend-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 6px; text-align: left; }
+.ascend-sec { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--card-2); }
+.ascend-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: 2px; }
+.ascend-sec ul { margin: 0; padding-left: 16px; }
+.ascend-sec li { font-size: 11px; color: var(--muted); line-height: 1.7; }
+.ascend-sec li b { color: var(--gold-2); }
+.ascend-sec.bad h4 { color: #f87171; }
+.ascend-sec.good h4 { color: #86efac; }
+.ascend-sec.new h4 { color: var(--gold-2); }
+.ascend-sec.buff h4 { color: #c4b5fd; }
+@media (max-width: 420px) { .ascend-modal-grid { grid-template-columns: 1fr; } }
+
+/* 钓鱼弹窗（2026-11-03 改版）：五钓场页签 + 鱼表 + 时机条；.fish-track/.fish-cursor 沿用旧面板样式 */
+.fish-modal-card { width: min(480px, 100%); text-align: left; }
+.fish-spots { display: flex; gap: 6px; margin: 10px 0 8px; flex-wrap: wrap; }
+.fish-spot {
+  flex: 1 1 auto; min-width: 64px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--card-2); color: var(--text); font-size: 12px; cursor: pointer;
+}
+.fish-spot.on { border-color: var(--gold); color: var(--gold-2); background: rgba(216, 179, 106, 0.12); }
+.fish-spot.locked { opacity: 0.45; cursor: not-allowed; }
+.fish-spot i { font-style: normal; font-size: 10px; color: var(--muted); }
+.fish-list {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+  margin: 6px 0 10px; max-height: min(240px, 34vh); overflow-y: auto;
+}
+.fish-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted); line-height: 1.9;
+}
+.fish-row .fish-ic { flex: 0 0 16px; display: inline-flex; }
+.fish-row b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.fish-row i { font-style: normal; color: var(--gold-2); margin-left: auto; white-space: nowrap; }
+.fish-row em { font-style: normal; opacity: 0.65; min-width: 34px; text-align: right; }
+.fish-row.big b { color: var(--gold-2); }
+.fish-row.big { border-bottom: 1px dashed var(--line); }
+@media (max-width: 420px) { .fish-list { grid-template-columns: 1fr; } }
+
+/* 坊市按钮「可负担灰显」（2026-11-04 两点修复）：余额不足灰显但保留可点，
+   点击由服务端校验拒绝并浮字提示——不做 disabled，防余额跨阈值时按钮卡死 */
+.mini.off { opacity: 0.45; }
+
+/* 物种图鉴默认露 5 行、其余滚动（2026-11-04 用户指定）：
+   行预算 = 5×行高（44px 立绘首行 + 按钮行 ≈96px）+ 4×gap 6 ≈ 504px，窄屏压到 60vh */
+.pet-dex-scroll {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: min(504px, 60vh); overflow-y: auto; overscroll-behavior: contain;
+}
+
+/* 钓鱼弹窗按钮收紧（2026-11-04 用户报溢出）：三钮等分允许换行，标签缩短；不做 nowrap */
+.fish-modal-card .fish-actions { flex-wrap: wrap; gap: 6px; }
+.fish-modal-card .fish-actions .btn {
+  flex: 1 1 30%; min-width: 0; padding: 9px 6px; font-size: 12px; white-space: normal; line-height: 1.3;
+}
+/* 钓鱼结果展示块（2026-11-04 用户指定弹层展示）：全宽横幅、立绘 22px、弹入动画 */
+.fish-result {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 10px 0 0; padding: 10px 12px;
+  border: 1px solid rgba(216, 179, 106, 0.4);
+  border-radius: 10px;
+  background: rgba(216, 179, 106, 0.1);
+  font-size: 13px; line-height: 1.5; text-align: left;
+  animation: fishResultPop 0.35s ease-out;
+}
+.fish-result .item-ic { width: 22px; height: 22px; vertical-align: middle; margin: 0; flex: 0 0 22px; }
+.fish-result.g-stone { border-color: rgba(255, 212, 121, 0.55); }
+.fish-result.g-item { border-color: rgba(248, 113, 113, 0.55); }
+@keyframes fishResultPop {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 鱼列表未点亮行（2026-11-04 用户指定）：默认灰显、图标去色，钓到后名字亮色激活 */
+.fish-row.unknown b, .fish-row.unknown i { color: var(--muted); opacity: 0.55; }
+.fish-row.unknown .fish-ic svg { filter: grayscale(1); opacity: 0.45; }
+.fish-row.unknown.big b { color: var(--muted); }
+
+/* 坊市分区圆角卡片（2026-11-04 用户指定）：建筑体（在制+配方）与「成品库存/坊市订单/原料仓库」
+   段各括一层圆角矩形；器坊/符箓铺解锁后与丹房同款结构 */
+.shop-b-body {
+  margin: 2px 0 4px; padding: 5px 10px 1px;
+  border: 1px solid rgba(216, 179, 106, 0.16); border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.shop-b-body .shop-craft:first-child, .shop-b-body .shop-recipe:first-child { border-top: 0; }
+.shop-market-card {
+  margin: 12px 0 4px; padding: 10px 10px 8px;
+  border: 1px solid rgba(216, 179, 106, 0.16); border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.shop-market-card > .side-title:first-child { margin-top: 0; }
+body.theme-light .shop-b-body, body.theme-light .shop-market-card {
+  border-color: rgba(120, 100, 60, 0.22);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 坊市制作进度条（2026-11-04 用户指定）：条内显示「制作中 · 剩余 xx」，走针原位更新不重建节点 */
+.shop-progress {
+  position: relative; flex: 1; min-width: 0; height: 20px;
+  border: 1px solid rgba(216, 179, 106, 0.25); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05); overflow: hidden;
+}
+.shop-progress-fill {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+  background: linear-gradient(90deg, rgba(216, 179, 106, 0.3), rgba(216, 179, 106, 0.6));
+  transition: width 0.5s linear;
+}
+.shop-progress-text {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; color: var(--text, #dfe3ea); white-space: nowrap;
+}
+body.theme-light .shop-progress { border-color: rgba(120, 100, 60, 0.3); background: rgba(0, 0, 0, 0.04); }
+body.theme-light .shop-progress-text { color: #4a4234; }
+
+/* 牧场格竖向生长进度条（2026-11-04 用户指定）：绿色底自格底升起，按收获时间进度；
+   走针仍走 renderFarm 15 秒桶（height 1.2s 过渡平滑阶梯），文字浮于进度之上 */
+.farm-cell { position: relative; }
+.farm-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: linear-gradient(180deg, #4ade80, #22c55e); opacity: 0.55;
+  transition: height 1.2s linear; pointer-events: none;
+}
+.farm-cell .farm-cell-label { position: relative; z-index: 1; }
+.farm-cell.fc-ready .farm-fill { opacity: 0.75; }
+
+/* 牧场格「临近成熟」（2026-11-04 修复熟了收不了）：最后 60 秒浅绿染格 + 秒数倒计时，
+   只有 doneAt<=now 才 fc-ready 绿底「熟」——显示与可收判定对齐 */
+.farm-cell.fc-near { background: rgba(74, 222, 128, 0.18); color: #16a34a; }
+body.theme-light .farm-cell.fc-near { background: rgba(74, 222, 128, 0.22); color: #15803d; }
+
+/* 钓鱼结果固定槽位（2026-11-04 用户报按钮跳动修复）：无结果也占同等高度，横幅零位移 */
+.fish-result-slot { min-height: 54px; display: flex; margin-top: 10px; }
+.fish-result-slot .fish-result { flex: 1; margin: 0; }

@@ -75,7 +75,7 @@ export function createAuthService(db) {
   const regIpWindow = new SlidingWindow(REG_IP_WINDOW.ms, REG_IP_WINDOW.max);
   const stmts = {
     byName: db.prepare('SELECT * FROM users WHERE username_lower = ?'),
-    byId: db.prepare('SELECT id, username, display_name, status, power_score, created_at, guild_id, display_name_at FROM users WHERE id = ?'),
+    byId: db.prepare('SELECT id, username, display_name, status, power_score, created_at, display_name_at FROM users WHERE id = ?'),
     setDisplayName: db.prepare('UPDATE users SET display_name = ?, display_name_at = ? WHERE id = ?'),
     displayNameExists: db.prepare('SELECT 1 FROM users WHERE display_name = ? AND id != ?'),
     insertUser: db.prepare(

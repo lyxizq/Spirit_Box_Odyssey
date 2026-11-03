@@ -109,9 +109,7 @@
   const WILD_SET_RATE = 0.008;   // 野外每场随机掉率 0.8%
   const MODE_SET_RATE = 0.008;   // 无尽 / 闯关爬塔复战与扫荡的每场随机掉率 0.8%
 
-  // 自动战斗节奏（2026-11-01 用户指定）：自动巡猎/连续挑战每场结束后间隔 1 分钟，
-  // 离线巡猎估算同口径（1 场/分钟），四模式共用此节奏；体力闸门（一场 1 点）照常生效
-  const HUNT_INTERVAL_S = 60;
+  // 自动战斗已移除（2026-11-04 用户指定）；离线巡猎由服务端按 1 场/分钟估算，与此前口径一致
 
   // 四秘境战斗修为 nerf（2026-11-01 用户指定）：闯关/爬塔/野外/无尽的修为报酬降为 1/50，
   // 在线战斗、扫荡与离线巡猎估算同乘此系数；开箱修为（expected()）与功法通道不动。
@@ -414,7 +412,7 @@
     { id: 'pixiu',  name: '招财貔貅', icon: '貔', stat: 'gain',   per: 0.03,  band: [2, 4] },
     { id: 'baize',  name: '白泽',     icon: '泽', stat: 'ls',     per: 0.005, band: [3, 4] },
     { id: 'qilin',  name: '烛麒麟',   icon: '麟', stat: 'hp',     per: 0.03,  band: [3, 5] },
-    { id: 'kun',    name: '鲲鹏雏',   icon: '鲲', stat: 'atk',    per: 0.028, band: [4, 5] },
+    { id: 'kun',    name: '鲲鹏雏',   icon: '鲲', stat: 'atk',    per: 0.028, band: [3, 5] },
   ];
   const PET_SP_MAP = {};
   for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
@@ -425,7 +423,9 @@
   const PET_ZONES = [
     { id: 'huang',  name: '荒山', realm: 4, pool: ['ying', 'xi', 'rat'],              w: [60, 30, 10] },
     { id: 'gu',     name: '灵谷', realm: 5, pool: ['rat', 'turtle', 'fox', 'sun'],    w: [30, 30, 28, 12] },
-    { id: 'mijing', name: '秘境', realm: 6, pool: ['fox', 'sun', 'chan', 'zhu', 'pixiu'], w: [20, 18, 30, 20, 12] },
+    { id: 'mijing', name: '秘境', realm: 6, cap: 3,
+      pool: ['ying', 'xi', 'rat', 'turtle', 'fox', 'sun', 'chan', 'zhu', 'pixiu', 'baize', 'qilin', 'kun'],
+      w: [12, 12, 12, 12, 11, 10, 10, 9, 9, 6, 1, 1] },
     { id: 'guyuan', name: '古渊', realm: 7, pool: ['zhu', 'pixiu', 'baize', 'qilin'], w: [25, 25, 32, 18] },
     { id: 'xianfu', name: '仙府', realm: 8, pool: ['qilin', 'kun'],                   w: [45, 55] },
   ];
@@ -445,7 +445,8 @@
   const PET_HUNT_BUY_DAILY = 50;    // 每日加购上限
   const PET_MEET_RATE = 0.65;
   const PET_MEET_PITY = 3;
-  const PET_CAPTURE_BASE = [0.9, 0.75, 0.6, 0.45, 0.3, 0.18];
+  // 天/仙品大幅压低（2026-11-03 用户指定）：高品灵宠主要走三合一合成获取，捕捉只是小概率惊喜
+  const PET_CAPTURE_BASE = [0.9, 0.75, 0.6, 0.45, 0.08, 0.03];
   const PET_CAPTURE_CAP = 0.95;
   const PET_POLICY = {
     bare: { name: '空手收服', add: 0, costText: '免费' },
@@ -1026,7 +1027,322 @@
         { t: '高价售粮', k: -2, fx: { stones: [7000, 11000] }, msg: '粮食换成了满满一袋灵石。' },
         { t: '婉拒离去', k: 0, fx: {}, msg: '雪太大，你连夜下了山。' },
       ] },
+    // —— 2026-11-04 用户指定扩容 +50（资源奖励面：草籽/坊市原料/丹药/信物/招募券/鱼饵/洗炼石）——
+    // 原料走 /api/shop/windfall 授权入账（服务端钳量 4 次/时），其余入客户端库存白名单
+    { id: 'seedbarn', title: '谷仓遗种', text: '荒废谷仓的陶罐里封着陈年种籽，颗粒饱满。',
+      choices: [
+        { t: '收下灵草籽', k: 0, fx: { seed: { cao: 3 } }, msg: '罐底还压着一层干燥的谷壳。' },
+        { t: '撒回田间', k: 1, fx: { seed: { hua: 2, guo: 1 } }, msg: '风过处，仿佛有芽尖顶土。' },
+        { t: '一把火烧了', k: -1, fx: { dust: 60 }, msg: '陈种入火，爆出点点微光成屑。' },
+      ] },
+    { id: 'wildpatch', title: '野稗灵丛', text: '路边野稗丛里混着几株灵草，穗头泛着微光。',
+      choices: [
+        { t: '连根采下', k: -1, fx: { mat: { cao: 4 } }, msg: '灵草离土，穗光很快黯了些。' },
+        { t: '培土留种', k: 1, fx: { seed: { cao: 2 } }, msg: '你拢了拢根土，穗光反而更亮。' },
+        { t: '路过不看', k: 0, fx: {}, msg: '野草自枯荣，与你无关。' },
+      ] },
+    { id: 'irrigation', title: '山泉灌渠', text: '半山一道旧灌渠渗水，滋润着下游一小片沃土。',
+      choices: [
+        { t: '疏渠引水', k: 1, fx: { seed: { sui: 1 } }, msg: '渠底淤泥里冲出一枚硬如角质的籽。' },
+        { t: '截水灌己田', k: -1, fx: { mat: { hua: 3 } }, msg: '下游禾苗蔫了，你的花田肥了。' },
+        { t: '掬水洗脸', k: 0, fx: { exp: [500, 1000] }, msg: '泉水清冽，神思一清。' },
+      ] },
+    { id: 'nursery', title: '苗圃遗棚', text: '山腰苗棚塌了半边，架上残盆里的苗还活着。',
+      choices: [
+        { t: '救苗带走', k: 1, fx: { seed: { lian: 1 } }, msg: '盆底系着一枚蜡封的莲籽囊。' },
+        { t: '拆棚取料', k: -2, fx: { mat: { tong: 3 } }, msg: '棚架老木纹理如桐，正好入料。' },
+        { t: '扶正棚架', k: 1, fx: { exp: [800, 1600] }, msg: '棚架吱呀立稳，你拍拍手上的灰。' },
+      ] },
+    { id: 'herbfield', title: '药圃荒畦', text: '荒畦垄间还立着半枯的灵药，叶片含着露。',
+      choices: [
+        { t: '采药入篓', k: 0, fx: { mat: { herb: 4 } }, msg: '半枯药叶也够坊市入账。' },
+        { t: '浇活它们', k: 2, fx: { seed: { hua: 2 } }, msg: '浇完水，垄沟里滚出两粒花籽。' },
+        { t: '放把野火', k: -3, fx: { dust: [100, 180] }, msg: '枯叶烬成屑，火光引来侧目。' },
+      ] },
+    { id: 'trellis', title: '藤架遗种', text: '废弃藤架下落满熟透的灵果，鸟雀争啄。',
+      choices: [
+        { t: '拾果留籽', k: 1, fx: { seed: { guo: 2 } }, msg: '果核饱满，鸟雀在枝头骂你。' },
+        { t: '全部摘光', k: -1, fx: { mat: { guo: 5 } }, msg: '一颗不留，鸟雀四散。' },
+        { t: '喂鸟结缘', k: 2, fx: { exp: [900, 1800] }, msg: '雀群盘旋三匝，似在致谢。' },
+      ] },
+    { id: 'farmergift', title: '老农赠种', text: '田埂老农看你在垄边出神，笑着递过一只种袋。',
+      choices: [
+        { t: '双手接过', k: 1, fx: { seed: { cao: 2, hua: 1 } }, msg: '「好生种着，地不哄人。」' },
+        { t: '嫌弃品相', k: -2, fx: {}, msg: '老农收袋转身，再不看你们。' },
+        { t: '以银回赠（1000 灵石）', k: 2, cost: 1000, fx: { seed: { lian: 1, sui: 1 } }, msg: '老农又从怀里摸出两粒好籽。' },
+      ] },
+    { id: 'granary', title: '鼠洞粮穴', text: '田角鼠洞口散落着囤粮，粒粒都是灵谷。',
+      choices: [
+        { t: '端了鼠穴', k: -2, fx: { mat: { cao: 5 } }, msg: '灵谷入袋，田鼠在洞里吱吱叫骂。' },
+        { t: '留半还鼠', k: 1, fx: { seed: { cao: 2 } }, msg: '留的那半袋里混着两粒好种。' },
+        { t: '布饵捕鼠', k: 0, fx: { dust: [50, 90] }, msg: '洞口机关落了灰，什么也没等到。' },
+      ] },
+    { id: 'orchard', title: '荒山果园', text: '无人看管的果园硕果压枝，甜香飘出二里。',
+      choices: [
+        { t: '摘果市卖', k: -1, fx: { stones: [3000, 6000] }, msg: '果贩子过秤很爽快。' },
+        { t: '取果取种', k: 1, fx: { seed: { guo: 2 }, mat: { guo: 3 } }, msg: '果肉入篓，果核入袋。' },
+        { t: '守园一日', k: 1, fx: { exp: [1000, 2000] }, msg: '替远行的园主守了一日，心里踏实。' },
+      ] },
+    { id: 'teafield', title: '云雾茶垄', text: '高山茶垄半荒，残余茶株还冒着新芽。',
+      choices: [
+        { t: '采芽换钱', k: 0, fx: { stones: [2000, 4500] }, msg: '山下茶铺收芽，当场结账。' },
+        { t: '剪枝育苗', k: 1, fx: { seed: { tong: 1 } }, msg: '压条育苗时，土里翻出一粒桐籽。' },
+        { t: '毁垄取土', k: -2, fx: { mat: { herb: 3 } }, msg: '垄土肥沃，茶株成了陪葬。' },
+      ] },
+    // —— 原料（坊市入账）——
+    { id: 'fieldhand', title: '灵田帮工', text: '灵田主人家工手紧缺，招过路人帮半日忙。',
+      choices: [
+        { t: '应工下田', k: 1, fx: { mat: { cao: 5, hua: 3 } }, msg: '田主按行价结了灵草灵花。' },
+        { t: '偷懒蹭饭', k: -2, fx: { stones: [800, 1500] }, msg: '饭是蹭到了，工钱没有。' },
+        { t: '婉言辞去', k: 0, fx: {}, msg: '你还有行程，抱拳作别。' },
+      ] },
+    { id: 'lostbasket', title: '药篓遗弃', text: '溪边遗落一只药篓，草药还新鲜。',
+      choices: [
+        { t: '拣走草药', k: 0, fx: { mat: { herb: 4 } }, msg: '药香浓郁，物主是走远还是……' },
+        { t: '原地守候', k: 2, fx: { exp: [800, 1500] }, msg: '失主匆匆赶回，赠你谢银。', },
+        { t: '踢进溪里', k: -2, fx: {}, msg: '药篓顺水漂走，你心里咯噔一下。' },
+      ] },
+    { id: 'orevein', title: '矿苗露头', text: '塌方处露出一线矿苗，蓝芒闪烁。',
+      choices: [
+        { t: '凿矿取样', k: 0, fx: { mat: { ore: 6 } }, msg: '蓝芒矿石敲下来一小袋。' },
+        { t: '做记号报官', k: 2, fx: { stones: [2500, 4000] }, msg: '矿监记你一功，发了赏钱。' },
+        { t: '独占洞口', k: -3, fx: { mat: { ore: 8 } }, msg: '多凿了三锤，洞顶簌簌掉渣。' },
+      ] },
+    { id: 'oldminer', title: '矿工遗镐', text: '洞口斜插一柄老矿镐，镐头磨得雪亮。',
+      choices: [
+        { t: '取镐开凿', k: 0, fx: { mat: { ore: 5 } }, msg: '老镐趁手，矿苗应声而落。' },
+        { t: '供在洞口', k: 1, fx: { exp: [700, 1400] }, msg: '矿工泉下有知，当会心一笑。' },
+        { t: '卖给废品贩', k: -1, fx: { stones: [1200, 2400] }, msg: '贩子挑挑拣拣，压了价。' },
+      ] },
+    { id: 'spiritbrook', title: '灵溪淘洗', text: '灵溪沙床在日下闪光，是碎料的反光。',
+      choices: [
+        { t: '淘洗沙床', k: 0, fx: { mat: { sui: 3 } }, msg: '簸了半日，簸出小半袋髓芝碎料。' },
+        { t: '下游堵坝', k: -2, fx: { mat: { sui: 5, ore: 3 } }, msg: '坝住溪水，料是多了，溪鱼遭殃。' },
+        { t: '饮马溪边', k: 0, fx: { exp: [400, 900] }, msg: '马喝足了水，你也洗了把脸。' },
+      ] },
+    { id: 'marketsale', title: '集市收摊', text: '集市散场，货郎挥价甩卖尾货。',
+      choices: [
+        { t: '扫货原料（2000 灵石）', k: 0, cost: 2000, fx: { mat: { ore: 4, herb: 4 } }, msg: '尾货原料价廉物美。' },
+        { t: '只看不买', k: 0, fx: {}, msg: '看看热闹，捂紧钱袋。' },
+        { t: '顺摊摸货', k: -2, fx: { mat: { hua: 3 } }, msg: '摸是摸到了，摊主的眼神不友善。' },
+      ] },
+    { id: 'drugstore', title: '草药铺帮工', text: '草药铺掌柜堆着百来斤药材要切，愁眉苦脸。',
+      choices: [
+        { t: '帮工切药', k: 1, fx: { mat: { herb: 5 } }, msg: '掌柜留了最好的几株当工钱。' },
+        { t: '讨要工钱', k: 0, fx: { stones: [1500, 3000] }, msg: '按日结钱，两不相欠。' },
+        { t: '打翻药案', k: -3, fx: { dust: [80, 150] }, msg: '药撒了一地，你赔笑溜走。' },
+      ] },
+    { id: 'beastcargo', title: '灵兽驮货', text: '一头驮货灵兽立在道旁，货囊鼓鼓，主人不知去向。',
+      choices: [
+        { t: '牵货寻主', k: 2, fx: { stones: [3000, 5000] }, msg: '货主寻来，重金相谢。' },
+        { t: '解囊取货', k: -3, fx: { mat: { tong: 4, hua: 3 } }, msg: '货囊一空，灵兽哀鸣。' },
+        { t: '喂水安抚', k: 1, fx: { ticket: 1 }, msg: '灵兽亲昵蹭你，囊里有枚灵券。' },
+      ] },
+    { id: 'mountgoods', title: '山货担子', text: '山民挑着两筐山货歇脚，邀你搭伙下行。',
+      choices: [
+        { t: '搭伙同行', k: 1, fx: { mat: { cao: 3, guo: 2 } }, msg: '分手时他硬塞了一把山货。' },
+        { t: '买下担子（3000 灵石）', k: 0, cost: 3000, fx: { mat: { herb: 5, sui: 2 } }, msg: '整担收下，比坊市便宜。' },
+        { t: '抄近道先走', k: -1, fx: {}, msg: '山道湿滑，你摔了一跤。' },
+      ] },
+    { id: 'dewherb', title: '晨露灵苗', text: '破晓时分，崖畔灵苗顶着露珠，香气清冽。',
+      choices: [
+        { t: '带露采收', k: 0, fx: { mat: { herb: 4, hua: 2 } }, msg: '带露药材，成色最佳。' },
+        { t: '留露自干', k: 1, fx: { seed: { hua: 2 } }, msg: '日头一晒，苗间蹦出两粒籽。' },
+        { t: '踏苗而过', k: -1, fx: {}, msg: '脚步没停，心里有点毛。' },
+      ] },
+    // —— 丹药 ——
+    { id: 'furnacefire', title: '丹炉遗火', text: '荒庙里一尊丹炉余温未散，炉膛隐有丹光。',
+      choices: [
+        { t: '开炉取丹', k: 0, fx: { elixir: 'atk' }, msg: '炉底压着一枚成丹，纹路完整。' },
+        { t: '添柴续火', k: 1, fx: { elixir: 'def' }, msg: '半个时辰后，炉开两枚。' },
+        { t: '泼水熄炉', k: -2, fx: { dust: [90, 160] }, msg: '丹裂成屑，炉也凉了。' },
+      ] },
+    { id: 'jadevial', title: '残丹玉瓶', text: '石缝里嵌着一只玉瓶，摇一摇，内有丹响。',
+      choices: [
+        { t: '启瓶服丹', k: 0, fx: { elixir: 'gain' }, msg: '丹入腹中，眼前金光微闪。' },
+        { t: '整瓶卖掉', k: -1, fx: { stones: [5000, 8000] }, msg: '玉瓶是好东西，丹就不知是谁的了。' },
+        { t: '埋回原处', k: 1, fx: { exp: [600, 1200] }, msg: '有缘人自会遇见它。' },
+      ] },
+    { id: 'daoistgift', title: '游方道人', text: '道人背着药葫芦与你同避山雨，闲谈投缘。',
+      choices: [
+        { t: '求丹一方', k: 0, fx: { elixir: 'atk' }, msg: '道人倒出一枚，笑称「拿去练手」。' },
+        { t: '赠伞遮雨', k: 2, fx: { elixir: 'gain' }, msg: '「萍水赠伞，回你聚财。」' },
+        { t: '盘问道术', k: -1, fx: { dust: [40, 90] }, msg: '道人拂袖而去，葫芦里漏出点碎屑。' },
+      ] },
+    { id: 'elixinventory', title: '药庐清仓', text: '药庐掌柜盘点，几枚丹药临近药效期，半价清仓。',
+      choices: [
+        { t: '买丹（3000 灵石）', k: 0, cost: 3000, fx: { elixir: 'def' }, msg: '便宜丹也是丹。' },
+        { t: '提醒掌柜', k: 1, fx: { exp: [500, 1100] }, msg: '掌柜感激，塞给你一枚附子。' },
+        { t: '趁乱顺一枚', k: -2, fx: { elixir: 'atk' }, msg: '丹到手了，掌柜的咳嗽声在你背后响起。' },
+      ] },
+    { id: 'ancientcauldron', title: '古鼎残丹', text: '宗门旧址的古鼎碎成三瓣，鼎腹粘着残丹。',
+      choices: [
+        { t: '刮丹收粉', k: 0, fx: { elixir: 'gain' }, msg: '残丹刮下大半瓶粉，药性还在。' },
+        { t: '鼎瓣搬走', k: -1, fx: { stones: [6000, 9000] }, msg: '鼎铜沉，卖了个好价。' },
+        { t: '拼鼎复原', k: 2, fx: { exp: [1500, 3000] }, msg: '拼合的刹那，鼎身一震，你似有所悟。' },
+      ] },
+    // —— 宠物信物 ——
+    { id: 'beastrelic', title: '灵兽骸骨', text: '山谷里一副灵兽骸骨端卧如生，颈间挂着骨铃。',
+      choices: [
+        { t: '收起骨铃', k: 0, fx: { token: 2 }, msg: '骨铃轻响，某类灵兽的气意附着其上。' },
+        { t: '堆石为冢', k: 2, fx: { token: 3 }, msg: '葬毕，铃自鸣三声，随你下山。' },
+        { t: '敲骨取髓', k: -3, fx: { stones: [7000, 10000] }, msg: '兽髓卖了高价，你夜里没睡好。' },
+      ] },
+    { id: 'tamerbook', title: '驯兽遗册', text: '岩洞石台上摊着半卷驯兽手札，字迹犹新。',
+      choices: [
+        { t: '研读手札', k: 1, fx: { token: 2 }, msg: '按图索骥，你摸清了一类灵兽的脾性。' },
+        { t: '撕页引火', k: -2, fx: { dust: [60, 110] }, msg: '纸灰飞扬，洞外风声像在叹气。' },
+        { t: '原样归位', k: 1, fx: { exp: [800, 1600] }, msg: '放下册子时，你听见一声轻鸣。' },
+      ] },
+    { id: 'beastbell', title: '兽栏旧铃', text: '荒废兽栏的门柱上，铜铃成串，风过不响。',
+      choices: [
+        { t: '摘铃认主', k: 0, fx: { token: 2 }, msg: '铃入你手，忽然轻轻响了一声。' },
+        { t: '擦拭归位', k: 1, fx: { exp: [700, 1400] }, msg: '擦净的铜铃映出你的脸。' },
+        { t: '熔铃卖铜', k: -2, fx: { stones: [4000, 7000] }, msg: '铜铃化水时，铃声才响起来。' },
+      ] },
+    { id: 'beastshrine', title: '灵兽小庙', text: '山民为灵兽立的小庙香火未断，案上摆着系红绳的信牌。',
+      choices: [
+        { t: '上香请牌', k: 2, fx: { token: 2 }, msg: '红绳信牌入手温润，像是被应允了。' },
+        { t: '偷拿信牌', k: -3, fx: { token: 1 }, msg: '牌是拿了，总觉得背后有目光。' },
+        { t: '拂尘扫地', k: 1, fx: { exp: [900, 1700] }, msg: '扫净庙台，心中一片清明。' },
+      ] },
+    { id: 'beaststone', title: '兽语者之石', text: '老树下一位瞽目婆婆摩挲一块兽纹石，说要寻传人。',
+      choices: [
+        { t: '拜师学语', k: 1, fx: { token: 3 }, msg: '婆婆把石头按进你掌心：「替我听它们说话。」' },
+        { t: '婉言推辞', k: 0, fx: { exp: [500, 1000] }, msg: '婆婆一笑：「缘分未到罢了。」' },
+        { t: '骗石到手', k: -3, fx: { token: 1 }, msg: '石头到手就凉了，再无温意。' },
+      ] },
+    // —— 捕捉券 ——
+    { id: 'hunterbow', title: '猎户遗弓', text: '崖边猎户的旧弓斜挂树杈，弓弦未断。',
+      choices: [
+        { t: '收弓为用', k: 0, fx: { ticket: 1 }, msg: '弓囊里还塞着一张缚灵券。' },
+        { t: '张弓守猎', k: 1, fx: { stones: [2000, 3800] }, msg: '猎得山禽，市上换了钱。' },
+        { t: '折弓断弦', k: -2, fx: { dust: [50, 100] }, msg: '弓断的脆响惊起一片飞鸟。' },
+      ] },
+    { id: 'bindrope', title: '缚灵古索', text: '古树杈上垂着半截缚灵索，符纹将熄。',
+      choices: [
+        { t: '续符重结', k: 1, fx: { ticket: 1 }, msg: '符纹复亮，索尾坠着一枚新券。' },
+        { t: '割索取符', k: -1, fx: { dust: [70, 130] }, msg: '符纸碎在手里，索身哀然垂落。' },
+        { t: '攀索登高', k: 0, fx: { exp: [700, 1300] }, msg: '索尽头是一处绝佳的望景台。' },
+      ] },
+    { id: 'beastmarket', title: '灵兽夜市', text: '月夜山坳里开着灵兽集市，摊主皆是蒙面人。',
+      choices: [
+        { t: '买券入市（4000 灵石）', k: 0, cost: 4000, fx: { ticket: 2 }, msg: '蒙面摊主塞给你两张券：「别问来路。」' },
+        { t: '举报官府', k: 1, fx: { stones: [3000, 5000] }, msg: '夜市被查，赏钱到了手。' },
+        { t: '混入偷券', k: -3, fx: { ticket: 1 }, msg: '券到手了，蒙面人们的视线也到了。' },
+      ] },
+    { id: 'catcherbox', title: '捕师遗箧', text: '荒亭木凳下藏着一只捕兽师的竹箧，上着小锁。',
+      choices: [
+        { t: '开箧取券', k: 0, fx: { ticket: 2 }, msg: '箧中灵券两张，还带着草木香。' },
+        { t: '箧归官驿', k: 2, fx: { stones: [2500, 4500] }, msg: '官驿寻到失主，酬金不多不少。' },
+        { t: '撬锁毁箧', k: -2, fx: { ticket: 1 }, msg: '撬坏了两张，只余一张完好。' },
+      ] },
+    // —— 鱼饵 ——
+    { id: 'fisherman', title: '蓑衣渔翁', text: '雨中蓑衣渔翁满篓鱼饵，向你招手共钓。',
+      choices: [
+        { t: '共钓半日', k: 1, fx: { bait: 3 }, msg: '渔翁分你三份饵：「手气要自己挣。」' },
+        { t: '买饵辞行（1000 灵石）', k: 0, cost: 1000, fx: { bait: 2 }, msg: '两份好饵，够钓一整天。' },
+        { t: '偷拿饵篓', k: -2, fx: { bait: 2 }, msg: '饵是拿到了，蓑衣老人在你身后咳了一声。' },
+      ] },
+    { id: 'wormsoil', title: '沃土蚓穴', text: '河湾沃土里蚯蚓肥硕，正是上好饵料。',
+      choices: [
+        { t: '掘蚓制饵', k: 0, fx: { bait: 2 }, msg: '肥蚓团成两份饵，鱼闻着就走。' },
+        { t: '留土养蚓', k: 1, fx: { seed: { cao: 1 } }, msg: '土里翻出一粒随水的草籽。' },
+        { t: '撒盐捉蚓', k: -2, fx: { bait: 1 }, msg: '蚓是得了几条，土地却坏了。' },
+      ] },
+    { id: 'tacklebasket', title: '渔具遗筐', text: '渡口石阶上搁着一只渔具筐，饵盒齐整。',
+      choices: [
+        { t: '取饵备用', k: 0, fx: { bait: 3 }, msg: '饵盒三层，都是压实的香饵。' },
+        { t: '筐挂失领', k: 2, fx: { stones: [1800, 3200] }, msg: '渡口寻回失主，酬了酒钱。' },
+        { t: '踢筐下水', k: -2, fx: {}, msg: '筐漂出去老远，你心里有点空落落。' },
+      ] },
+    { id: 'anglingtalk', title: '钓叟论道', text: '白石矶上老叟垂钓，钩是直的，与你论起「愿者上钩」。',
+      choices: [
+        { t: '坐而论道', k: 2, fx: { bait: 2, exp: [1000, 2000] }, msg: '论罢，老叟分你两份饵：「替我钓钓看。」' },
+        { t: '笑其愚直', k: -2, fx: {}, msg: '老叟不恼，直钩依旧垂在水里。' },
+        { t: '请教钓技', k: 1, fx: { bait: 2 }, msg: '老叟倾囊相授，顺手匀了你两份饵。' },
+      ] },
+    { id: 'fishstall', title: '鱼市收摊', text: '鱼市散摊，渔家把当日的余饵挥泪甩卖。',
+      choices: [
+        { t: '包圆余饵（1500 灵石）', k: 0, cost: 1500, fx: { bait: 4 }, msg: '四大份饵，鱼市价的三成。' },
+        { t: '帮收拾摊', k: 1, fx: { bait: 3 }, msg: '渔家塞给你三份饵抵工。' },
+        { t: '趁乱拎桶', k: -2, fx: { bait: 2 }, msg: '桶拎走了，腥气一路跟着你。' },
+      ] },
+    // —— 洗炼石 ——
+    { id: 'swordpool', title: '洗剑古池', text: '剑冢旁的洗剑池水沉如墨，池底隐有石光。',
+      choices: [
+        { t: '潜池拾石', k: 0, fx: { rstone: { atk: 2 } }, msg: '池底磨石锋芒内敛，是块锋铓石。' },
+        { t: '池边打坐', k: 1, fx: { exp: [1200, 2400] }, msg: '剑意沁体，修为微涨。' },
+        { t: '搅浑池水', k: -2, fx: { rstone: { hp: 1 } }, msg: '搅了半日，只摸到一块浊石。' },
+      ] },
+    { id: 'whetstone', title: '砺石滩', text: '溪滩大片砺石被水流磨得温润，隐有符纹。',
+      choices: [
+        { t: '拣石三枚', k: 0, fx: { rstone: { def: 2, pierce: 1 } }, msg: '金砺与穿云各有所得。' },
+        { t: '满袋装走', k: -2, fx: { rstone: { def: 2, crit: 1, ls: 1 } }, msg: '贪多嚼不烂，有两块当场裂了。' },
+        { t: '静观水磨', k: 1, fx: { exp: [900, 1800] }, msg: '水滴石穿的道理，看明白了三分。' },
+      ] },
+    { id: 'jadevein', title: '璞玉矿脉', text: '崩落的山岩露出璞玉矿脉，玉肌里裹着洗炼石。',
+      choices: [
+        { t: '剖玉取石', k: 0, fx: { rstone: { crit: 2 } }, msg: '玉皮剥开，惊雷石在芯里发亮。' },
+        { t: '整块抱走', k: -1, fx: { rstone: { crit: 1, atk: 1 } }, msg: '玉石沉重，路上磕掉两角。' },
+        { t: '报予玉坊', k: 1, fx: { stones: [3500, 6000] }, msg: '玉坊掌柜按例分你红利。' },
+      ] },
+    { id: 'bloodspring', title: '血泉凝石', text: '赤色山泉涌处，泉眼凝着石榴红的石珠。',
+      choices: [
+        { t: '取石三珠', k: 0, fx: { rstone: { ls: 2 } }, msg: '饮血石温热如脉搏。' },
+        { t: '泉边酣饮', k: -2, fx: { rstone: { ls: 1 } }, msg: '泉水烈如烈酒，醒来头痛，手里攥着一珠。' },
+        { t: '以石封泉', k: 1, fx: { exp: [1000, 2000] }, msg: '封泉之后，山色竟清朗了几分。' },
+      ] },
+    { id: 'thunderwood', title: '雷击木髓', text: '遭雷劈开的古木焦裂，木髓里嵌着紫芒石粒。',
+      choices: [
+        { t: '剖髓取石', k: 0, fx: { rstone: { crit: 2 } }, msg: '两粒惊雷石还带着雷余的麻意。' },
+        { t: '合木祭拜', k: 1, fx: { seed: { tong: 1 } }, msg: '焦木根须处，竟抽出一粒新桐籽。' },
+        { t: '焚木取火', k: -2, fx: { rstone: { atk: 1 } }, msg: '火烧一夜，只剩一块锋铓石和满地灰。' },
+      ] },
+    { id: 'marrowtome', title: '洗髓遗篇', text: '洞窟石壁刻着半篇洗髓诀，诀末嵌着一枚温石。',
+      choices: [
+        { t: '拓诀取石', k: 1, fx: { rstone: { hp: 2 } }, msg: '厚土石入手沉厚，诀文也拓了下来。' },
+        { t: '按诀静修', k: 2, fx: { exp: [1800, 3200] }, msg: '一个周天行完，浑身尘埃落尽。' },
+        { t: '凿壁毁篇', k: -3, fx: { rstone: { hp: 1 } }, msg: '石是到手了，诀文碎在凿下。' },
+      ] },
+    // —— 混合杂遇 ——
+    { id: 'nightmarket', title: '鬼市灯影', text: '子夜荒集亮起一排灯笼，摊上货物似真似幻。',
+      choices: [
+        { t: '以银问缘（2000 灵石）', k: 0, cost: 2000, fx: { coupon: 1, bait: 2 }, msg: '灯下所得皆真，摊主却已不见。' },
+        { t: '只逛不买', k: 0, fx: { exp: [600, 1200] }, msg: '灯影阑珊，你看了一场热闹。' },
+        { t: '吹灭灯笼', k: -3, fx: {}, msg: '灯灭集散，你独自站在荒野里。' },
+      ] },
+    { id: 'cloudmerchant', title: '云中货郎', text: '一头白鹤挑着货担落在你面前，货郎拱手称谢。',
+      choices: [
+        { t: '解鹤之困', k: 2, fx: { ticket: 1, seed: { xing: 1 } }, msg: '鹤羽下的困结散了，货郎倾囊相谢。' },
+        { t: '买货一担（2500 灵石）', k: 0, cost: 2500, fx: { mat: { xing: 3, sui: 3 } }, msg: '星髓与髓芝，寻常买不到。' },
+        { t: '驱鹤赶人', k: -2, fx: {}, msg: '白鹤长唳一声，货郎身影散作云烟。' },
+      ] },
+    { id: 'starfall', title: '星陨之夜', text: '夜半一颗流星坠入后山，天亮时你寻到一处焦坑。',
+      choices: [
+        { t: '坑底拾晶', k: 0, fx: { rstone: { pierce: 2, crit: 1 } }, msg: '陨晶冷冽，正是穿云与惊雷之属。' },
+        { t: '填坑守秘', k: 1, fx: { exp: [1200, 2400] }, msg: '你抹平痕迹，星空在你头顶亮了一夜。' },
+        { t: '扬声叫卖', k: -2, fx: { stones: [6000, 9000] }, msg: '消息卖给了散修，他们连夜开挖。' },
+      ] },
+    { id: 'moonwell', title: '月泉映潭', text: '满月夜，山潭水面浮着一层银霜。',
+      choices: [
+        { t: '掬霜炼饵', k: 0, fx: { bait: 3 }, msg: '银霜入饵，鱼儿怕是要抢。' },
+        { t: '潭边吐纳', k: 2, fx: { exp: [1500, 2800] }, msg: '一轮周天，月华灌体。' },
+        { t: '搅散银霜', k: -1, fx: { dust: [60, 110] }, msg: '银霜碎成点点，沉入潭底成了屑。' },
+      ] },
+    { id: 'oldbridge', title: '桥头卖浆', text: '荒桥头一位阿婆卖浆，碗沿缺口却擦得干净。',
+      choices: [
+        { t: '买浆解渴（500 灵石）', k: 1, cost: 500, fx: { exp: [600, 1200] }, msg: '浆水解乏，阿婆多送你一颗蜜枣。' },
+        { t: '帮阿婆修桥', k: 2, cost: 2000, fx: { mat: { ore: 4, herb: 3 } }, msg: '桥修好了，阿婆从桥洞摸出攒下的山货。' },
+        { t: '催阿婆让路', k: -2, fx: {}, msg: '阿婆让开桥头，浆摊收得比你来时还快。' },
+      ] },
   ];
+
+  // 奇遇原料文案兜底（server/shop.js MATS 同源；catalog 未加载时显示用）
+  const MAT_NAMES = {
+    cao: '灵草', hua: '灵花', guo: '灵果', sui: '髓芝', lian: '灵莲', tong: '梧桐木', xing: '星髓',
+    ore: '矿石', herb: '灵药',
+  };
 
   // 藏宝图：秘境征战胜利掉残片，5 片合成一张；合成后秘境图出现金光挖宝点
   const TREASURE_FRAG_COST = 5;
@@ -1039,25 +1355,165 @@
     { p: 4, type: 'item', text: '镇图之宝！' },
   ];
 
-  // 钓鱼：每日 5 枚鱼饵，抛竿后时机条左右游走，停得越正鱼获越好
+  // 钓鱼（2026-11-03 弹窗改版用户指定）：五钓场 × 各 10 种鱼 = 50 种；鱼竿逐级升级，
+  // 竿等即钓场解封线。每日 5 枚鱼饵，抛竿后时机条左右游走，停得越正鱼获越好。
+  // FISH_ALL 全局下标 = bestT（0..49）；旧五鱼保持 0..4 原位（老档 bestT 迁移兼容），
+  // 旧 FISH_TABLE 五鱼概率改写入竹涧十鱼表，灵龙鱼化形赠宝口径不变（60% 物品 / 40% 3 万灵石）。
+  // 碎屑只留在竹涧/镜湖（价值低防碎屑包络），瀑潭起纯灵石；各场十鱼 p 和恒为 100。
   const FISH_BAIT_DAILY = 5;
   const FISH_BAIT_COST = 5000;
   const FISH_ROD_MS = 12000;           // 抛竿后 12 秒不收竿跑鱼
-  const FISH_TABLE = [
-    { id: 'xiaobai', p: 30, name: '小白鱼', stones: 800, text: '小家伙，放生都嫌小。' },
-    { id: 'linglin', p: 28, name: '灵鳞鱼', dust: 12, text: '鳞片泛着微光。' },
-    { id: 'shuanghua', p: 20, name: '霜华鳕', stones: 5000, text: '市集抢着要的肥美大鱼。' },
-    { id: 'jinli', p: 14, name: '金锦鲤', dust: 90, text: '金鳞耀目，是吉祥的兆头。' },
-    { id: 'linglong', p: 8, name: '灵龙鱼', big: true, text: '传说灵龙鱼通灵化形！' },
+  const FISH_ROD_MAX = 15;
+  // 满竿总花费锚定 3000 亿（2026-11-04 用户指定逆推，原 1 兆）：B×(r^14−1)/(r−1)=3e11
+  // ⟹ B=3e11×0.15/(1.85^14−1)≈4637万（首升 Lv.1→2），末升 Lv.14→15 ≈1379亿；r=1.85 不变
+  const FISH_ROD_COST = (lv) => Math.round(
+    3e11 * (1.85 - 1) / (Math.pow(1.85, FISH_ROD_MAX - 1) - 1) * Math.pow(1.85, lv - 1));
+  const FISH_SPOTS = [
+    {
+      name: '竹涧', rod: 1, sub: '青竹夹岸的浅涧，入门钓场。',
+      fish: [
+        { id: 'xiaobai',   p: 22, name: '小白鱼', stones: 800, text: '小家伙，放生都嫌小。' },
+        { id: 'linglin',   p: 20, name: '灵鳞鱼', dust: 12, text: '鳞片泛着微光。' },
+        { id: 'shuanghua', p: 15, name: '霜华鳕', stones: 5000, text: '市集抢着要的肥美大鱼。' },
+        { id: 'jinli',     p: 11, name: '金锦鲤', dust: 90, text: '金鳞耀目，是吉祥的兆头。' },
+        { id: 'linglong',  p: 7,  name: '灵龙鱼', big: true, jackpot: 30000, itemDrop: true, text: '传说灵龙鱼通灵化形！' },
+        { id: 'zhu',       p: 10, name: '青竹鲦', dust: 25, text: '通体青翠，似竹叶浮水。' },
+        { id: 'moyu',      p: 8,  name: '墨玉螺', stones: 9000, text: '壳色如墨玉，叩之有清音。' },
+        { id: 'cuilin',    p: 4,  name: '翠鳞鲤', dust: 220, text: '翠鳞映日，涧中一景。' },
+        { id: 'yinshuang', p: 2,  name: '银霜虾', stones: 25000, text: '银壳凝霜，弹跳如电。' },
+        { id: 'xiling',    p: 1,  name: '溪灵鲛', stones: 60000, text: '涧底灵泉所育，通体生辉。' },
+      ],
+    },
+    {
+      name: '镜湖', rod: 4, sub: '平如镜面的高山湖，映得出人心。',
+      fish: [
+        { id: 'yunwen',   p: 26, name: '云纹鲫', stones: 12000, text: '鳞纹如行云。' },
+        { id: 'yueying',  p: 22, name: '月影鲦', dust: 150, text: '月下影动，倏忽不见。' },
+        { id: 'bibo',     p: 16, name: '碧波鲈', stones: 30000, text: '湖水碧时它最肥。' },
+        { id: 'jingxin',  p: 12, name: '镜心鲤', dust: 300, text: '心平如镜者方能钓得。' },
+        { id: 'liuli',    p: 9,  name: '琉璃鳍', stones: 80000, text: '鳍膜透光如琉璃。' },
+        { id: 'huguang',  p: 6,  name: '湖光梭', stones: 150000, text: '穿梭湖光，快如一瞥。' },
+        { id: 'yanbo',    p: 4,  name: '烟波鲟', stones: 280000, text: '烟波深处巨大的影子。' },
+        { id: 'shuangyin', p: 2.5, name: '双生银鱼', stones: 450000, text: '一竿双获，成对不离。' },
+        { id: 'longzi',   p: 1.5, name: '镜湖龙子', stones: 800000, text: '龙子游湖，鳞光十里。' },
+        { id: 'longli',   p: 1,  name: '湖心龙鲤', big: true, stones: 1200000, text: '湖心之鲤，跃可化龙。' },
+      ],
+    },
+    {
+      name: '瀑潭', rod: 7, sub: '千尺飞瀑下的深潭，雷气不散。',
+      fish: [
+        { id: 'chiwei',  p: 28, name: '赤尾瀑鱼', stones: 40000, text: '逆瀑而上的赤尾勇者。' },
+        { id: 'tanying', p: 22, name: '潭影鲶', stones: 90000, text: '栖于潭影，钓者不见。' },
+        { id: 'hongpu',  p: 16, name: '虹瀑鲑', stones: 180000, text: '跃瀑时身披虹光。' },
+        { id: 'lanqi',   p: 11, name: '岚气鳗', stones: 320000, text: '形如岚雾，握之即散。' },
+        { id: 'leiwen',  p: 8,  name: '雷纹鲷', stones: 550000, text: '鳞带雷纹，雨天最活跃。' },
+        { id: 'suixing', p: 6,  name: '碎星虾', stones: 800000, text: '壳内似有星光碎屑。' },
+        { id: 'xuangui', p: 4,  name: '瀑底玄龟', stones: 1200000, text: '潭底老龟，百年浮一次头。' },
+        { id: 'feili',   p: 2.5, name: '千尺飞鲤', stones: 2000000, text: '一跃千尺，鲤门传人。' },
+        { id: 'tanjiao', p: 1.5, name: '潭中蛟', stones: 3200000, text: '蛟困浅潭，志在沧海。' },
+        { id: 'leiyuan', p: 1,  name: '雷渊龙鲶', big: true, stones: 5000000, text: '雷渊之主，须髯挂电。' },
+      ],
+    },
+    {
+      name: '沧溟', rod: 10, sub: '东海外海，浪高千尺，渔者以身试渊。',
+      fish: [
+        { id: 'canglan', p: 28, name: '沧澜鲹', stones: 120000, text: '随潮而行，群游如澜。' },
+        { id: 'mingbo',  p: 21, name: '溟波蝶', stones: 220000, text: '翼展如蝶，掠波而飞。' },
+        { id: 'shanhu',  p: 16, name: '珊瑚龙鲤', stones: 400000, text: '栖于珊瑚深处。' },
+        { id: 'shenhai', p: 12, name: '深海鳐', stones: 700000, text: '深海之翼，静滑无声。' },
+        { id: 'youlan',  p: 8,  name: '幽蓝枪鲔', stones: 1100000, text: '幽蓝之躯，剑破沧溟。' },
+        { id: 'zhenzhu', p: 6,  name: '珍珠鲍', stones: 1600000, text: '壳内明珠，价抵百金。' },
+        { id: 'zhangxiong', p: 4, name: '沟壑章雄', stones: 2400000, text: '八臂搅海，雄踞沟壑。' },
+        { id: 'dengyu',  p: 2.5, name: '溟渊灯鱼', stones: 3500000, text: '头顶幽灯，照彻深渊。' },
+        { id: 'jingyi',  p: 1.5, name: '沧溟鲸裔', stones: 5000000, text: '鲸裔游过，浪分两道。' },
+        { id: 'haihuang', p: 1, name: '海皇龙滕', big: true, stones: 8000000, text: '沧溟之皇，鳞甲如城。' },
+      ],
+    },
+    {
+      name: '星河', rod: 13, sub: '夜半倒悬于天顶的银色大河，凡竿不可及。',
+      fish: [
+        { id: 'xingxie', p: 28, name: '星屑鱼', stones: 300000, text: '食星屑而生，夜发光尘。' },
+        { id: 'yinhe',   p: 21, name: '银河梭', stones: 550000, text: '梭行银河，一闪即逝。' },
+        { id: 'yuelei',  p: 16, name: '月泪鲛', stones: 950000, text: '月泪凝鳞，泣则成珠。' },
+        { id: 'chensha', p: 12, name: '辰砂鲤', stones: 1500000, text: '鳞染辰砂之色，赤如丹火。' },
+        { id: 'liuguang', p: 8, name: '流光鲸', stones: 2400000, text: '背驮流光，游过星桥。' },
+        { id: 'xingbei', p: 6, name: '星核贝', stones: 3500000, text: '壳藏星核，温润生辉。' },
+        { id: 'yuntie',  p: 4,  name: '陨铁鲟', stones: 5000000, text: '吞陨铁而长，重逾千钧。' },
+        { id: 'zhinv',   p: 2.5, name: '织女泪', stones: 7000000, text: '传说织女泣时化生。' },
+        { id: 'longkun', p: 1.5, name: '银汉龙鲲', stones: 10000000, text: '鲲游银汉，北冥同款。' },
+        { id: 'tianhe',  p: 1,  name: '天河锦鳞', big: true, stones: 16000000, text: '天河尽头的锦鳞，见者证道。' },
+      ],
+    },
   ];
-  // 各鱼小图标（2026-11-03 用户指定）：id 与 FISH_TABLE 同源，.item-ic 前置位
+  // 全局鱼表（拼场序），gi = 全局下标（bestT 口径）；图标按鱼 id 查 FISH_ICONS（50 种逐鱼设计）
+  const FISH_ALL = [];
+  FISH_SPOTS.forEach((sp, si) => {
+    sp.fish.forEach((f, fi) => {
+      f.gi = FISH_ALL.length;
+      f.spot = si + 1;
+      FISH_ALL.push(f);
+    });
+  });
+  const fishSpotOf = () => FISH_SPOTS[Math.min(FISH_SPOTS.length, Math.max(1, state.fishing.spot | 0)) - 1];
+  // 各鱼小图标（2026-11-04 用户指定逐鱼设计）：id 与 FISH_ALL 同源，按物种形态绘形（鲶扁头带须/
+  // 鲟尖吻背骨板/鳐菱翼/章鱼/海马/鲍贝/虾龟螺/鲸鲲龙蛇形…），.item-ic 前置位，16×16 viewBox
   const FISH_ICONS = {
-    xiaobai: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#9dd3f0" stroke="#3d7ea6" stroke-width=".8"/><circle cx="11.4" cy="7" r=".8" fill="#1d3a4d"/><path d="M2.5 8 1 5.8v4.4Z" fill="#7cc0e8"/></svg>',
-    linglin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#a5dfc5" stroke="#2f8f6b" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#e8fff5" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#123a2b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#8fd4b4"/></svg>',
-    shuanghua: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#d9ecff" stroke="#5a8fc0" stroke-width=".8"/><path d="M5.5 6.5c1 .4 1.6 1.2 1.8 2.3M8.5 5.8c1.2.5 2 1.4 2.4 2.7" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#234a6b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b6d8f5"/></svg>',
-    jinli: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#ffd76b" stroke="#c9973f" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#fff3d6" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#5c4208"/><path d="M2.5 8 1 5.8v4.4Z" fill="#f0c14b"/></svg>',
-    linglong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#c4b5fd" stroke="#7c5cd6" stroke-width=".8"/><path d="M8 4.6c.5 1.2.5 2.4 0 3.6M10.6 5.2c.6 1 .7 2 .2 3" stroke="#ede9fe" stroke-width=".9" fill="none" stroke-linecap="round"/><path d="M6.5 4.2 4.8 1.8l3.4.8Z" fill="#a78bfa"/><circle cx="11.4" cy="7" r=".8" fill="#2d1d5e"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b39dfa"/></svg>',
-  };
+  // —— 竹涧（溪涧淡水系）——
+  xiaobai: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#9dd3f0" stroke="#3d7ea6" stroke-width=".8"/><circle cx="11.4" cy="7" r=".8" fill="#1d3a4d"/><path d="M2.5 8 1 5.8v4.4Z" fill="#7cc0e8"/></svg>',
+  linglin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#a5dfc5" stroke="#2f8f6b" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#e8fff5" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#123a2b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#8fd4b4"/></svg>',
+  shuanghua: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#d9ecff" stroke="#5a8fc0" stroke-width=".8"/><path d="M5.5 6.5c1 .4 1.6 1.2 1.8 2.3M8.5 5.8c1.2.5 2 1.4 2.4 2.7" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#234a6b"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b6d8f5"/></svg>',
+  jinli: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#ffd76b" stroke="#c9973f" stroke-width=".8"/><path d="M6 5.6 7.4 8 6 10.4M9 5.4 10.4 8 9 10.6" stroke="#fff3d6" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="11.4" cy="7" r=".8" fill="#5c4208"/><path d="M2.5 8 1 5.8v4.4Z" fill="#f0c14b"/></svg>',
+  linglong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#c4b5fd" stroke="#7c5cd6" stroke-width=".8"/><path d="M8 4.6c.5 1.2.5 2.4 0 3.6M10.6 5.2c.6 1 .7 2 .2 3" stroke="#ede9fe" stroke-width=".9" fill="none" stroke-linecap="round"/><path d="M6.5 4.2 4.8 1.8l3.4.8Z" fill="#a78bfa"/><circle cx="11.4" cy="7" r=".8" fill="#2d1d5e"/><path d="M2.5 8 1 5.8v4.4Z" fill="#b39dfa"/></svg>',
+  zhu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c1.6-2.2 3.8-3 6-2.4 1.7.5 3.2 1.4 4.3 2.4-1.1 1-2.6 1.9-4.3 2.4-2.2.6-4.4-.2-6-2.4Z" fill="#86efac" stroke="#2f8f4e" stroke-width=".8"/><path d="M2.5 8 .8 5.6v4.8Z" fill="#6ee7a0"/><path d="M6.2 6.6l1 1.4-1 1.4" stroke="#eafff2" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.3" cy="7.4" r=".7" fill="#123a24"/></svg>',
+  moyu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="9" cy="7.2" r="4.2" fill="#475569" stroke="#1e293b" stroke-width=".9"/><path d="M9 4.6a2.6 2.6 0 1 1-2.5 3.3" fill="none" stroke="#cbd5e1" stroke-width=".8" stroke-linecap="round"/><path d="M3.2 12.6c1.8-1.4 4-2 6.2-1.7M13.2 9.4c.9.4 1.5 1.2 1.6 2.2" stroke="#334155" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M4.6 11.2l-.9 1.5M5.9 11.6l-.5 1.5" stroke="#64748b" stroke-width=".8" stroke-linecap="round"/></svg>',
+  cuilin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 8c1.8-3 4.6-4.3 7.2-3.3 2 .8 3.4 2 4.6 3.3-1.2 1.3-2.6 2.5-4.6 3.3-2.6 1-5.4-.3-7.2-3.3Z" fill="#34d399" stroke="#0f7a4a" stroke-width=".8"/><path d="M2.2 8 .5 5.8v4.4Z" fill="#2fbe8a"/><path d="M5.5 6.2a2 2 0 0 1 2.4 0M5.2 9.6a2 2 0 0 0 2.6.2M8.2 5.4a2.4 2.4 0 0 1 2.2-.2" stroke="#eafff5" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".85"/><path d="M13.6 9.2c.9.2 1.5.7 1.8 1.5M13.4 6.8c.9-.2 1.6-.6 2-1.3" stroke="#0f7a4a" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.6" cy="7.2" r=".8" fill="#0a3d26"/></svg>',
+  yinshuang: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 11.5C3 9.5 3.6 6.6 5.8 5.4c2.3-1.3 5-.4 5.7 1.8.5 1.6-.4 3.1-1.9 3.4-1.2.3-2.3-.4-2.5-1.5" fill="#cbd5e1" stroke="#64748b" stroke-width=".9"/><path d="M6.6 3.6c1.8-.8 3.9-.5 5.2.8M12 5.4l2-1M12.2 6.6l2.2.2" stroke="#94a3b8" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M3.4 12.4l1.2-.6M4.8 13l.9-1M6.3 13.2l.6-1.2M11.5 10.6l1.5.6M12.4 11.6l1.3-.2" stroke="#64748b" stroke-width=".8" stroke-linecap="round"/><circle cx="9.8" cy="6.4" r=".7" fill="#475569"/><path d="M7.5 8.6l1 .8M6.3 9.9l1.2.5" stroke="#f1f5f9" stroke-width=".7" stroke-linecap="round"/></svg>',
+  xiling: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8.2c2-2.4 4.4-3.4 7-2.8 1.9.4 3.6 1.4 5 2.8-1.4 1.3-3.1 2.2-5 2.6-2.6.6-5-.4-7-2.6Z" fill="#7dd3fc" stroke="#0c6a9c" stroke-width=".8"/><path d="M7 5.5 8.4 3l1 2.9Z" fill="#5db8e8"/><path d="M1.5 8.2.2 6.4l.4 3.6Z" fill="#5db8e8"/><path d="M6 10.6l-1 1.8M8.5 10.8l-.2 1.8" stroke="#0c6a9c" stroke-width=".7" stroke-linecap="round"/><circle cx="10.9" cy="7.6" r=".8" fill="#0a3d5c"/></svg>',
+  // —— 镜湖（高山湖 · 月色蓝银系）——
+  yunwen: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 8c1-3.2 3.2-5 5.6-5s4.6 1.8 5.6 5c-1 3.2-3.2 5-5.6 5S3.4 11.2 2.4 8Z" fill="#a5b4fc" stroke="#3f4a8a" stroke-width=".8"/><path d="M2.4 8 .8 6v4Z" fill="#8b9cf0"/><path d="M5.4 6.2c1-.8 2.2-.9 3.2-.2M4.8 8.4c1.2 1 2.8 1.2 4.2.4M9.6 5.8c.9-.2 1.8 0 2.5.6" stroke="#eef2ff" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.2" cy="7" r=".8" fill="#232d5e"/></svg>',
+  yueying: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5a6 6 0 1 0 0 11c-1.8-1.6-2.8-3.5-2.8-5.5s1-3.9 2.8-5.5Z" fill="#e2e8f0" stroke="#8a93a6" stroke-width=".8"/><path d="M10.5 8c1.2-.9 2.4-1.4 3.8-1.5M11 9.5l2.8 1.3" stroke="#aeb8c7" stroke-width=".8" stroke-linecap="round"/><circle cx="10.9" cy="6.3" r=".6" fill="#3f4859"/></svg>',
+  bibo: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 8.2c1.8-2.8 4.3-3.9 6.9-3.2 2 .5 3.6 1.6 4.7 3.2-1.1 1.6-2.7 2.7-4.7 3.2-2.6.7-5.1-.4-6.9-3.2Z" fill="#5eead4" stroke="#0f766e" stroke-width=".8"/><path d="M4.6 5.6 5 3.2l1.4 1.9 1.2-2 1 2.2" fill="none" stroke="#0f766e" stroke-width=".9" stroke-linejoin="round"/><path d="M2.2 8.2.6 6.4l.3 3.6Z" fill="#2cc7ae"/><circle cx="11.3" cy="7.4" r=".8" fill="#0a3d38"/><path d="M6.8 10.2c1.2.6 2.6.6 3.8 0" stroke="#0f766e" stroke-width=".7" fill="none" stroke-linecap="round"/></svg>',
+  jingxin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 8c1.8-3 4.5-4.2 7-3.2 2 .8 3.5 1.9 4.5 3.2-1 1.3-2.5 2.4-4.5 3.2-2.5 1-5.2-.2-7-3.2Z" fill="#c9d6e3" stroke="#5b6b7d" stroke-width=".8"/><path d="M2.3 8 .6 5.9v4.2Z" fill="#a8b8c9"/><circle cx="6.2" cy="7.2" r="1" fill="none" stroke="#eef4f9" stroke-width=".7"/><circle cx="8.8" cy="8.6" r="1.1" fill="none" stroke="#eef4f9" stroke-width=".7"/><circle cx="6.6" cy="9.8" r=".8" fill="none" stroke="#eef4f9" stroke-width=".7"/><path d="M13.8 9.4c.8.3 1.3.8 1.6 1.5" stroke="#5b6b7d" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.5" cy="7.1" r=".8" fill="#33414f"/></svg>',
+  liuli: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true" opacity=".92"><path d="M3 8c1.6-2.4 3.8-3.3 6-2.6 1.6.5 3 1.5 4 2.6-1 1.1-2.4 2.1-4 2.6-2.2.7-4.4-.2-6-2.6Z" fill="#a5f3fc" stroke="#4aa8b8" stroke-width=".8"/><path d="M5.8 5.6C4.8 4 4.6 2.6 5.2 1.4M8.4 5.2c.2-1.6 1-2.8 2.2-3.4" stroke="#7adfee" stroke-width="1" fill="none" stroke-linecap="round" opacity=".8"/><path d="M5.6 10.4c-1 1.6-1.2 3-.6 4.2M8.2 10.7c-.2 1.6.2 2.9 1.2 3.9" stroke="#7adfee" stroke-width="1" fill="none" stroke-linecap="round" opacity=".8"/><circle cx="11" cy="7.3" r=".8" fill="#155e66"/><path d="M3 8 1.6 6.2l.3 3.6Z" fill="#7adfee"/></svg>',
+  huguang: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 8c1.4-1.9 3.2-2.7 5.2-2.3 1.6.4 3 1.2 4.2 2.3-1.2 1.1-2.6 1.9-4.2 2.3-2 .4-3.8-.4-5.2-2.3Z" fill="#93c5fd" stroke="#1d5fb8" stroke-width=".8"/><path d="M2.8 8 1.2 6.2l.3 3.6Z" fill="#6aa8f0"/><path d="M.4 6.6l1.6.4M.4 9.4l1.6-.4M.9 8h1.4" stroke="#bcd7fb" stroke-width=".7" stroke-linecap="round"/><circle cx="10.7" cy="7.5" r=".7" fill="#123c73"/></svg>',
+  yanbo: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M14.4 7.6c-1.2-1.4-2.8-2.3-4.7-2.5-2-.3-3.9.2-5.7 1.5L1.6 8l2.4 1.4c1.8 1.3 3.7 1.8 5.7 1.5 1.9-.2 3.5-1.1 4.7-2.5Z" fill="#9ca8bd" stroke="#3f4c63" stroke-width=".8"/><path d="M2.2 7 1 4.6l2.6 1.6M1.6 8l-1.2 2.6 2.8-1.4" fill="#7d89a0" stroke="#3f4c63" stroke-width=".6"/><path d="M8.4 5l.5-1.7M10.3 5.3l.8-1.6" stroke="#3f4c63" stroke-width=".8" stroke-linecap="round"/><circle cx="11.3" cy="7.3" r=".7" fill="#2a3547"/></svg>',
+  shuangyin: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 5.6c1.1-1.5 2.5-2.1 3.9-1.7 1 .3 1.9.9 2.6 1.7-.7.8-1.6 1.4-2.6 1.7-1.4.4-2.8-.2-3.9-1.7Z" fill="#e8edf4" stroke="#9aa7b8" stroke-width=".7"/><path d="M1.6 5.6.6 4.3l.2 2.6Z" fill="#c3ccd9"/><circle cx="6.4" cy="5.2" r=".5" fill="#5b677a"/><path d="M7.4 10.4c1.1-1.5 2.5-2.1 3.9-1.7 1 .3 1.9.9 2.6 1.7-.7.8-1.6 1.4-2.6 1.7-1.4.4-2.8-.2-3.9-1.7Z" fill="#e8edf4" stroke="#9aa7b8" stroke-width=".7"/><path d="M7.4 10.4l-1-1.3.2 2.6Z" fill="#c3ccd9"/><circle cx="12.2" cy="10" r=".5" fill="#5b677a"/></svg>',
+  longzi: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 10.2c1.2 0 1.8-.9 1.8-2s.8-2 2-2 1.8.9 1.8 2 .8 2 2 2 1.8-.9 1.8-2 .9-2 2.2-2" fill="none" stroke="#2b5db0" stroke-width="2.2" stroke-linecap="round"/><path d="M13.8 4.9l1.2-1.2-2.6.3Z" fill="#8ab6f0" stroke="#2b5db0" stroke-width=".6"/><path d="M4.6 5.2c-.5-.9-.5-1.8 0-2.7" stroke="#2b5db0" stroke-width=".7" fill="none" stroke-linecap="round"/><circle cx="13.9" cy="5.6" r=".6" fill="#0e2a52"/></svg>',
+  longli: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 8c1.7-2.8 4.2-4 6.6-3 1.8.7 3.1 1.7 4.2 3-1.1 1.3-2.4 2.3-4.2 3-2.4 1-4.9-.2-6.6-3Z" fill="#f0c14b" stroke="#8a6a1c" stroke-width=".8"/><path d="M2.6 8 1 6v4Z" fill="#d9a832"/><path d="M12.9 5.2 13.6 3l-2.3 1Z" fill="#f0c14b" stroke="#8a6a1c" stroke-width=".6"/><path d="M14.3 8.7c.8.4 1.3 1 1.5 1.8M13.9 6.4c.8-.3 1.4-.8 1.7-1.5" stroke="#8a6a1c" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M6 6.2a1.8 1.8 0 0 1 2.2-.1M5.6 9.4a1.8 1.8 0 0 0 2.4.2" stroke="#fff3d0" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.5" cy="7.1" r=".8" fill="#5c4208"/></svg>',
+  // —— 瀑潭（雷瀑 · 紫灰电光系）——
+  chiwei: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><g transform="rotate(-18 8 8)"><path d="M3.4 9.4c1.3-2.6 3.4-3.8 5.8-3.3 1.7.3 3.1 1.2 4.3 2.5-1.2 1.3-2.6 2.1-4.3 2.4-2.4.5-4.5-.5-5.8-1.6Z" fill="#b8c4d4" stroke="#51617a" stroke-width=".8"/><circle cx="11.2" cy="7.4" r=".7" fill="#2f3d52"/></g><path d="M2.2 10.8 1 9l.4 3.2Z" fill="#ef4444" stroke="#b91c1c" stroke-width=".6"/><path d="M4.6 11.8c.6 1 1.6 1.6 2.8 1.7" stroke="#93a5bd" stroke-width=".8" fill="none" stroke-linecap="round"/></svg>',
+  tanying: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8c1.4-2.4 3.5-3.5 5.9-3 1.9.4 3.5 1.4 4.9 3-1.4 1.6-3 2.6-4.9 3-2.4.5-4.5-.6-5.9-3Z" fill="#64748b" stroke="#2f3a4c" stroke-width=".8"/><path d="M2 8 .6 6.4l.3 3.2Z" fill="#526179"/><path d="M12.6 9.6c.7.5 1.1 1.1 1.2 1.9M12.9 6.6c.8-.1 1.4-.5 1.8-1.1" stroke="#2f3a4c" stroke-width=".7" fill="none" stroke-linecap="round"/><path d="M6.4 5.4c.3-1.2 1-2 2.2-2.4M5.4 10.8c.5.9 1.3 1.5 2.4 1.7" stroke="#2f3a4c" stroke-width=".7" fill="none" stroke-linecap="round"/><circle cx="11.2" cy="7.3" r=".8" fill="#1c2531"/></svg>',
+  hongpu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 5.2c.6 4.8 2.7 8 5.9 9.3" fill="none" stroke="#f472b6" stroke-width=".8" stroke-linecap="round"/><path d="M3 4.6c.7 4.2 2.5 7 5.3 8.5" fill="none" stroke="#fbbf24" stroke-width=".8" stroke-linecap="round"/><path d="M4.4 4.2c.8 3.5 2.4 5.9 4.7 7.4" fill="none" stroke="#60a5fa" stroke-width=".8" stroke-linecap="round"/><g transform="rotate(-24 10 7)"><path d="M6.4 7c1.2-2.6 3.1-3.8 5.2-3.2 1.4.4 2.5 1.1 3.4 2.2-.9 1.1-2 1.8-3.4 2.2-2.1.6-4-.4-5.2-1.2Z" fill="#fb923c" stroke="#b4501c" stroke-width=".8"/><circle cx="12.4" cy="5.6" r=".6" fill="#7c2d12"/></g></svg>',
+  lanqi: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true" opacity=".85"><path d="M1.8 9.4c1.3-2.6 2.8-3.2 4.5-1.9s3.3 1 4.6-1.5c.6-1.2 1.5-1.9 2.8-2.2" fill="none" stroke="#5a67b0" stroke-width="2.4" stroke-linecap="round"/><path d="M13.7 3.8c.5-.3 1-.4 1.6-.4l-.9 1.8Z" fill="#c7d2fe" stroke="#5a67b0" stroke-width=".5"/><circle cx="13.3" cy="4.6" r=".5" fill="#1e2660"/><path d="M4.4 6.8c.6-.5 1.3-.6 2-.3" stroke="#e0e7ff" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".9"/></svg>',
+  leiwen: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 8c1.2-3 3.4-4.6 5.9-4.6S12.9 5 14.1 8c-1.2 3-3.4 4.6-5.9 4.6S3.5 11 2.3 8Z" fill="#fcd34d" stroke="#a16207" stroke-width=".8"/><path d="M2.3 8 .7 6.2l.3 3.6Z" fill="#eab308"/><path d="M7.4 3.6 6 5.8h2.2L6.6 8h2l-1.8 3" fill="none" stroke="#7c5605" stroke-width="1" stroke-linejoin="round"/><circle cx="11.6" cy="7" r=".8" fill="#5c3a05"/></svg>',
+  suixing: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 11.5C3 9.5 3.6 6.6 5.8 5.4c2.3-1.3 5-.4 5.7 1.8.5 1.6-.4 3.1-1.9 3.4-1.2.3-2.3-.4-2.5-1.5" fill="#e9d5ff" stroke="#7c5cd6" stroke-width=".9"/><path d="M6.6 3.6c1.8-.8 3.9-.5 5.2.8M12 5.4l2-1M12.2 6.6l2.2.2" stroke="#a78bfa" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M3.4 12.4l1.2-.6M4.8 13l.9-1M6.3 13.2l.6-1.2" stroke="#7c5cd6" stroke-width=".8" stroke-linecap="round"/><circle cx="9.8" cy="6.4" r=".7" fill="#5b3fa8"/><path d="M5.6 7.6l.4 1.2 1.2.4-1.2.4-.4 1.2-.4-1.2-1.2-.4 1.2-.4Z" fill="#fff" opacity=".9"/></svg>',
+  xuangui: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="7.6" cy="8.2" rx="4.4" ry="3.1" fill="#4b5563" stroke="#1f2937" stroke-width=".8"/><path d="M7.6 5.1v6.2M3.8 8.2h7.6" stroke="#374151" stroke-width=".7"/><circle cx="13.2" cy="7" r="1.3" fill="#5b6472" stroke="#1f2937" stroke-width=".6"/><path d="M3.8 10.6 2.6 12M11.2 10.8l1.2 1.4M4 6 2.8 4.8" stroke="#1f2937" stroke-width=".9" stroke-linecap="round"/><circle cx="13.6" cy="6.7" r=".4" fill="#0f172a"/></svg>',
+  feili: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 4.6c1 2.2 2.6 3.4 4.8 3.6M13.6 4.2c-.6 1.8-1.8 2.9-3.6 3.2" stroke="#a8c6ee" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".8"/><g transform="rotate(-32 8 9)"><path d="M2.8 11c1.5-2.8 3.9-4.1 6.4-3.4 1.8.5 3.2 1.5 4.3 2.8-1.1 1.3-2.5 2.2-4.3 2.6-2.5.6-4.9-.4-6.4-2Z" fill="#fef3c7" stroke="#b8952e" stroke-width=".8"/><path d="M2.8 11l-1.6-1.8.4 3.5Z" fill="#e2b93e"/><circle cx="11.8" cy="7.7" r=".7" fill="#6b5511"/></g></svg>',
+  tanjiao: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 9.8c1.4-2.8 3-3.4 4.8-1.9s3.4 1.2 4.8-1.6c.7-1.4 1.7-2.2 3-2.5" fill="none" stroke="#0f6f62" stroke-width="2.2" stroke-linecap="round"/><path d="M14.2 3.8l1.4-.8-.7 1.9Z" fill="#2dd4bf" stroke="#0f6f62" stroke-width=".5"/><path d="M4.2 6.2 4.8 4l1.4 1.9M8.8 6.4l.7-1.9 1.2 1.8" fill="#2dd4bf" stroke="#0f6f62" stroke-width=".6" stroke-linejoin="round"/><circle cx="13.5" cy="4.6" r=".5" fill="#053a33"/></svg>',
+  leiyuan: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 8.4c1.6-2.8 3.9-4 6.5-3.4 2 .5 3.7 1.6 5.1 3.4-1.4 1.8-3.1 2.9-5.1 3.4-2.6.6-4.9-.6-6.5-3.4Z" fill="#7c83f0" stroke="#3a3f9e" stroke-width=".8"/><path d="M1.6 8.4.3 6.8l.3 3.2Z" fill="#5a61d4"/><path d="M6.4 5.2 7.2 3l1.3 2.1" fill="none" stroke="#3a3f9e" stroke-width=".9" stroke-linejoin="round"/><path d="M9 10.2l1.5-2.4h-2l1.3-2.2" fill="none" stroke="#ffe873" stroke-width=".9" stroke-linejoin="round" stroke-linecap="round"/><path d="M12.4 9.8c.8.3 1.3.8 1.6 1.6M12.8 6.8c.9-.2 1.5-.6 1.9-1.3" stroke="#3a3f9e" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.3" cy="7.4" r=".8" fill="#23276e"/></svg>',
+  // —— 沧溟（外洋 · 深海珊瑚系）——
+  canglan: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 8c1.6-2.6 3.8-3.8 6.2-3.4 1.9.3 3.6 1.4 5 3.4-1.4 2-3.1 3.1-5 3.4-2.4.4-4.6-.8-6.2-3.4Z" fill="#60a5fa" stroke="#1e50a0" stroke-width=".8"/><path d="M1.6 8 .4 6.2l.3 3.6Z" fill="#3b82f6"/><path d="M6.2 4.9 6.9 3l1.3 1.8" fill="none" stroke="#1e50a0" stroke-width=".8" stroke-linejoin="round"/><path d="M5.4 8.6c1.5.8 3.2.8 4.8 0" stroke="#dbeafe" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11" cy="7.3" r=".8" fill="#12306b"/></svg>',
+  mingbo: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 8c.9-3.3 2.9-5 5.4-5s4.5 1.7 5.4 5c-.9 3.3-2.9 5-5.4 5s-4.5-1.7-5.4-5Z" fill="#fde68a" stroke="#b4830a" stroke-width=".8"/><path d="M7.2 3.2c.8 3.2.8 6.4 0 9.6M9 3.3c.5 3.1.5 6.2 0 9.3" stroke="#b4830a" stroke-width=".7" fill="none" opacity=".7"/><path d="M2.6 8 1 6.4l.2 3.2Z" fill="#f4c542"/><path d="M5.6 5.6c.9-.6 1.9-.7 2.8-.2" stroke="#8a6a1c" stroke-width=".7" fill="none" stroke-linecap="round"/><circle cx="11.7" cy="7" r=".7" fill="#6b4d05"/></svg>',
+  shanhu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 11.6c-.9-1.6-.8-3.2.3-4.8M2 8.2c-.6-1.2-.6-2.4 0-3.6" stroke="#f9a8d4" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M11.2 4.2c.8 1 .9 2.2.4 3.4-.5 1.3-.4 2.4.3 3.4-.9.6-1.9.7-3 .3" fill="none" stroke="#b34a78" stroke-width="2" stroke-linecap="round"/><path d="M11.6 3c.9-.3 1.7-.2 2.4.3l-1.7 1.2Z" fill="#f9a8d4" stroke="#b34a78" stroke-width=".6"/><circle cx="12.5" cy="4.4" r=".5" fill="#7c2851"/><path d="M9 11.6c-1.1-.3-1.9-1.1-2.3-2.3M12 12.6c.9.5 1.4 1.2 1.6 2.2M8 12.9l-.5 1.9" stroke="#f472a0" stroke-width="1.1" fill="none" stroke-linecap="round"/></svg>',
+  shenhai: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6c2.6 1.6 4.4 3.4 5.2 5.4-1.6.8-3.3 1.2-5.2 1.2S4.4 8.8 2.8 8C3.6 6 5.4 4.2 8 2.6Z" fill="#818cf8" stroke="#3730a3" stroke-width=".8"/><path d="M8 9.2v2.2c0 .9.4 1.6 1.2 2.1" fill="none" stroke="#3730a3" stroke-width=".9" stroke-linecap="round"/><path d="M6.4 5.2c-.4 1-.4 2 0 3M9.6 5.2c.4 1 .4 2 0 3" stroke="#c7d2fe" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".85"/><circle cx="6.8" cy="6.4" r=".5" fill="#1e1b6e"/><circle cx="9.2" cy="6.4" r=".5" fill="#1e1b6e"/></svg>',
+  youlan: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.4 8c1.5-2.2 3.4-3.2 5.6-3 1.8.2 3.5 1.2 5.2 3-1.7 1.8-3.4 2.8-5.2 3-2.2.2-4.1-.8-5.6-3Z" fill="#38bdf8" stroke="#0b5a86" stroke-width=".8"/><path d="M1.4 8 .2 6.4l.3 3.2Z" fill="#0ea5e9"/><path d="M5.4 5.1l.6-1.7 1.1 1.6M7.8 5.2l.5-1.5 1 1.4M9.9 5.6l.5-1.3.8 1.2" fill="#0b5a86"/><path d="M5.6 10.6l.6 1.5 1.1-1.3" fill="#0b5a86"/><circle cx="10.6" cy="7.3" r=".8" fill="#083d5c"/></svg>',
+  zhenzhu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="7.6" cy="9.2" rx="5" ry="3.4" fill="#a7f3d0" stroke="#0f7a5c" stroke-width=".8"/><path d="M3.4 8.2c2.6-1.6 5.6-1.9 8.6-.8M4.2 10.6c2-.8 4.2-1 6.4-.5" stroke="#0f7a5c" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".8"/><circle cx="10.6" cy="5" r="1.9" fill="#f8fafc" stroke="#94a3b8" stroke-width=".7"/><circle cx="10" cy="4.4" r=".5" fill="#fff"/><circle cx="11.2" cy="5.6" r=".4" fill="#cbd5e1"/></svg>',
+  zhangxiong: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 7.2c0-2.4 1.6-4.2 3.6-4.2s3.6 1.8 3.6 4.2c0 1.2-.3 2.2-.9 3" fill="#c084fc" stroke="#6b21a8" stroke-width=".8"/><path d="M4.6 9.6c-.6 1.2-1.4 1.9-2.6 2.2M6.6 10.4c-.3 1.2-.9 2.1-1.9 2.7M9.2 10.4c.3 1.2.9 2.1 1.9 2.7M11.4 9.8c.7 1.1 1.6 1.8 2.8 2" fill="none" stroke="#6b21a8" stroke-width="1.1" stroke-linecap="round"/><circle cx="7" cy="6.6" r=".7" fill="#2e0a4e"/><circle cx="9.2" cy="6.6" r=".7" fill="#2e0a4e"/><path d="M4.4 7.2c2.4 1.2 4.8 1.2 7.2 0" fill="none" stroke="#6b21a8" stroke-width=".7" opacity=".7"/></svg>',
+  dengyu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 8.6c1.2-2.6 3.2-3.9 5.6-3.5 1.9.3 3.4 1.4 4.6 3.3-1.2 1.7-2.7 2.7-4.6 3-2.4.4-4.4-.9-5.6-2.8Z" fill="#6b7280" stroke="#27303d" stroke-width=".8"/><path d="M2.6 8.6 1.2 7.2l.3 2.8Z" fill="#565f6e"/><path d="M9.4 5.2c.4-1.4 1.3-2.3 2.7-2.7" fill="none" stroke="#27303d" stroke-width=".8" stroke-linecap="round"/><circle cx="12.4" cy="2.6" r="1.1" fill="#fde047" stroke="#a16207" stroke-width=".5"/><path d="M12.9 9.6l1-1 .8 1.2-1.4.6Z" fill="#4b5563" stroke="#27303d" stroke-width=".5"/><circle cx="10.5" cy="7.4" r=".8" fill="#111827"/><path d="M13.2 7.4l1.6-.6M13.2 8.2l1.6.6" stroke="#111827" stroke-width=".6" stroke-linecap="round"/></svg>',
+  jingyi: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M14 9c0-2.6-2.3-4.4-5.6-4.4-2.4 0-4.3 1-5.4 2.8L1.4 5.8l.5 3-1.3 1.7 2.9-.9c1.1 1.5 2.9 2.4 5 2.4 3.2 0 5.5-1.2 5.5-3Z" fill="#7dd3fc" stroke="#0c6a9c" stroke-width=".8"/><path d="M5.4 4.8c.4-.8 1.1-1.3 2-1.5" stroke="#0c6a9c" stroke-width=".7" fill="none" stroke-linecap="round"/><path d="M6.6 9.4c1.5.9 3.4 1.1 5.1.5" stroke="#bae6fd" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.9" cy="7.2" r=".7" fill="#083d5c"/></svg>',
+  haihuang: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 8.2c1.7-2.9 4.1-4.2 6.7-3.4 2 .6 3.5 1.7 4.7 3.4-1.2 1.7-2.7 2.8-4.7 3.4-2.6.8-5-.5-6.7-3.4Z" fill="#fbbf24" stroke="#92600c" stroke-width=".8"/><path d="M1.6 8.2 0 6.4l.3 3.6Z" fill="#e0a416"/><path d="M7.8 4.6 8.4 2.2l1.2 1.5 1.3-1.3-.3 2.2" fill="#e0a416" stroke="#92600c" stroke-width=".6" stroke-linejoin="round"/><path d="M6 6.4a1.9 1.9 0 0 1 2.3-.1M5.6 9.8a1.9 1.9 0 0 0 2.5.2" stroke="#fff3d0" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><path d="M14.2 8.9c.7.4 1.1 1 1.3 1.8" stroke="#92600c" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.7" cy="7.2" r=".8" fill="#5c3808"/></svg>',
+  // —— 星河（天河 · 星紫流光系）——
+  xingxie: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 8c1.4-2.2 3.3-3.1 5.3-2.6 1.5.4 2.8 1.3 3.9 2.6-1.1 1.3-2.4 2.2-3.9 2.6-2 .5-3.9-.4-5.3-2.6Z" fill="#e0e7ff" stroke="#6c7bd0" stroke-width=".8"/><path d="M4.4 8 3 6.3l.3 3.4Z" fill="#c3cdf5"/><path d="M6.2 5.8 6.7 7l1.2.4-1.2.5-.5 1.2-.5-1.2L4.5 7.4l1.2-.4Z" fill="#fff"/><path d="M9.4 9.2l.3.9.9.3-.9.4-.3.9-.4-.9-.9-.4.9-.3Z" fill="#fff" opacity=".9"/><circle cx="11.4" cy="7.2" r=".7" fill="#2a357a"/></svg>',
+  yinhe: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 8c1.5-2 3.4-2.9 5.5-2.5 1.7.3 3.2 1.2 4.6 2.5-1.4 1.3-2.9 2.2-4.6 2.5-2.1.4-4-.5-5.5-2.5Z" fill="#cbd5e1" stroke="#64748b" stroke-width=".8"/><path d="M1.8 8 .4 6.3l.3 3.4Z" fill="#a8b6c9"/><path d="M11.9 5.5l2.6-1.7-1.2 2.6M12.1 9.7l2.5 1.4-2.7.5" fill="#a8b6c9" stroke="#64748b" stroke-width=".5"/><path d="M5.4 6.2l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4Z" fill="#fff" opacity=".9"/><circle cx="10.5" cy="7.4" r=".7" fill="#3b4759"/></svg>',
+  yuelei: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.8 2.6A6.4 6.4 0 1 0 13 10c-2.4-.8-4-2.4-4.6-4.6-.2-.9-.2-1.9.1-2.9Z" fill="#f1f5f9" stroke="#94a3b8" stroke-width=".8"/><path d="M12.6 6.4l2.2-1.1-.6 2.3M12.9 8.6l2.4.4-1.8 1.4" fill="#d7dfe8" stroke="#94a3b8" stroke-width=".5"/><circle cx="10.9" cy="6.1" r=".6" fill="#475569"/></svg>',
+  chensha: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 8c1.8-3 4.5-4.2 7.1-3.2 2 .8 3.5 1.9 4.5 3.2-1 1.3-2.5 2.4-4.5 3.2-2.6 1-5.3-.2-7.1-3.2Z" fill="#f87171" stroke="#8a2f28" stroke-width=".8"/><path d="M2.2 8 .5 5.9v4.2Z" fill="#e0524a"/><path d="M5.4 6.2a2 2 0 0 1 2.4 0M5.2 9.6a2 2 0 0 0 2.6.2" stroke="#ffd9d4" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><path d="M13.7 9.3c.9.2 1.5.7 1.8 1.5M13.5 6.9c.9-.2 1.6-.7 2-1.4" stroke="#8a2f28" stroke-width=".8" fill="none" stroke-linecap="round"/><circle cx="11.6" cy="7.2" r=".8" fill="#57120e"/></svg>',
+  liuguang: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M14 9c0-2.6-2.3-4.4-5.6-4.4-2.4 0-4.3 1-5.4 2.8L1.4 5.8l.5 3-1.3 1.7 2.9-.9c1.1 1.5 2.9 2.4 5 2.4 3.2 0 5.5-1.2 5.5-3Z" fill="#a78bfa" stroke="#5b3fa8" stroke-width=".8"/><path d="M1.2 12.2l1.8-.7M.9 10.4l1.3-.4" stroke="#e9d5ff" stroke-width=".7" stroke-linecap="round"/><path d="M5.4 4.8c.4-.8 1.1-1.3 2-1.5" stroke="#5b3fa8" stroke-width=".7" fill="none" stroke-linecap="round"/><path d="M6.6 9.4c1.5.9 3.4 1.1 5.1.5" stroke="#ddd6fe" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><path d="M8.2 6.6l.3.8.8.3-.8.4-.3.8-.4-.8-.8-.4.8-.3Z" fill="#fff" opacity=".85"/><circle cx="11.9" cy="7.2" r=".7" fill="#2d1a5e"/></svg>',
+  xingbei: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.8C4.6 12.8 2 10.4 2 7.4c0-1 .6-1.8 1.6-1.8h8.8c1 0 1.6.8 1.6 1.8 0 3-2.6 5.4-6 5.4Z" fill="#fde68a" stroke="#a16207" stroke-width=".8"/><path d="M8 5.6v7M4.6 5.6c-.4 2.6.2 5 1.8 6.8M11.4 5.6c.4 2.6-.2 5-1.8 6.8" stroke="#a16207" stroke-width=".6" fill="none" opacity=".75"/><path d="M8 7.2l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5Z" fill="#fff7cc" stroke="#c9973f" stroke-width=".4"/><circle cx="8" cy="9" r=".5" fill="#fff"/></svg>',
+  yuntie: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M14.4 7.6c-1.2-1.4-2.8-2.3-4.7-2.5-2-.3-3.9.2-5.7 1.5L1.6 8l2.4 1.4c1.8 1.3 3.7 1.8 5.7 1.5 1.9-.2 3.5-1.1 4.7-2.5Z" fill="#78716c" stroke="#3f3b38" stroke-width=".8"/><path d="M2.2 7 1 4.6l2.6 1.6M1.6 8l-1.2 2.6 2.8-1.4" fill="#5c5651" stroke="#3f3b38" stroke-width=".6"/><circle cx="6.6" cy="7.6" r=".9" fill="none" stroke="#a29a94" stroke-width=".6"/><circle cx="9.4" cy="8.6" r=".7" fill="none" stroke="#a29a94" stroke-width=".6"/><path d="M8.4 5l.5-1.7M10.3 5.3l.8-1.6" stroke="#3f3b38" stroke-width=".8" stroke-linecap="round"/><circle cx="11.3" cy="7.3" r=".7" fill="#2a2622"/></svg>',
+  zhinv: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8c2.4 3 3.8 5.2 3.8 7.2a3.8 3.8 0 1 1-7.6 0c0-2 1.4-4.2 3.8-7.2Z" fill="#bae6fd" stroke="#3b82a6" stroke-width=".8"/><path d="M6.6 9.2c0 1.2.8 2.2 1.9 2.5" stroke="#e0f2fe" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="8" cy="8.6" r=".6" fill="#1d5a78"/></svg>',
+  longkun: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M.8 8.6c2-3.4 4.8-5 8-4.4 2.3.4 4.3 1.8 6 4.4-1.7 2.6-3.7 4-6 4.4-3.2.6-6-1-8-4.4Z" fill="#8b5cf6" stroke="#4c1d95" stroke-width=".9"/><path d="M1.6 8.6.4 6.6l.4 4Z" fill="#7443e0"/><path d="M6.2 4.4 7 1.6l1.6 2.4M9.8 5l1.2-2.3 1.2 2.5" fill="#a78bfa" stroke="#4c1d95" stroke-width=".7" stroke-linejoin="round"/><path d="M4.4 8.2c2.2 1.2 4.6 1.3 6.8.3" stroke="#ddd6fe" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".85"/><circle cx="11.9" cy="7" r=".8" fill="#2a0f5e"/></svg>',
+  tianhe: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8c1.6-2.9 4-4.2 6.5-3.4 1.9.6 3.4 1.7 4.5 3.4-1.1 1.7-2.6 2.8-4.5 3.4C6 12.2 3.6 10.9 2 8Z" fill="#f59e0b" stroke="#92400e" stroke-width=".8"/><path d="M2 8 .4 6.2l.3 3.6Z" fill="#d97706"/><path d="M5.6 4.9C4.9 3.4 4.9 2 5.6.8M8.3 4.5c0-1.3.5-2.4 1.4-3.2M5.4 11c-.8 1.4-.9 2.7-.3 4M8.1 11.4c0 1.3-.4 2.4-1.2 3.3" stroke="#fbbf24" stroke-width="1" fill="none" stroke-linecap="round" opacity=".85"/><path d="M6.2 6.4a1.9 1.9 0 0 1 2.3-.1M5.8 9.6a1.9 1.9 0 0 0 2.5.2" stroke="#fff2cc" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.6" cy="7.2" r=".8" fill="#6b3a05"/></svg>',
+};
   const fishIcon = (f) => (f && FISH_ICONS[f.id]) || '';
 
   // 灵宠内丹：兽骨喂养，3/6/10 级解锁特性（仅出战灵宠生效）
@@ -1456,7 +1912,6 @@
     trainAtk: 0,
     trainHp: 0,
     trainPierce: 0,
-    autoHunt: false,
     featureSeen: [],
     tutorialSeen: false,
     fontScale: 1,
@@ -1470,7 +1925,7 @@
     guildBoss: { claimed: '' },
     wander: { karma: 0, last: 0, pending: null, done: 0 },
     treasure: { frags: 0, maps: 0, at: -1, digs: 0 },
-    fishing: { bait: 5, date: '', casts: 0, bestT: -1 },
+    fishing: { bait: 5, date: '', casts: 0, bestT: -1, rod: 1, spot: 1, dex: {} },
     petCores: {},
     gather: { ore: 0, herb: 0, nodes: { ore: { lv: 0, until: 0 }, herb: { lv: 0, until: 0 } } },
     lastScene: '',
@@ -1494,7 +1949,6 @@
   let combatDirty = true;
   let uiMode = 'stage';
   let battleCooldownUntil = 0;
-  let huntAcc = 0;
   let lastBattles = { tower: null, stage: null, wild: null, endless: null };
   let audioCtx = null;
   let bagSort = 'power';   // 背包排序：power / rarity / slot（仅内存，不入档）
@@ -1980,8 +2434,6 @@
       state.gainLv = fixInt(state.gainLv, 0, UPGRADES.gain.max);
       state.luckLv = fixInt(state.luckLv, 0, UPGRADES.luck.max);
       state.dust = fixInt(state.dust, 0, 1e12);
-      // 自动战斗需飞升一次：未飞升的老档读档时自动关
-      state.autoHunt = !!state.autoHunt && (state.ascensions | 0) >= 1;
       state.battleSpeed = [1, 2, 4].includes(state.battleSpeed) ? state.battleSpeed : 1;
       if (!Number.isFinite(state.volume)) state.volume = 0.6;
       state.volume = Math.max(0, Math.min(1, Number(state.volume)));
@@ -2193,14 +2645,32 @@
         digs: fixInt(state.treasure.digs, 0, 1e6),
       };
       if (!state.fishing || typeof state.fishing !== 'object' || Array.isArray(state.fishing)) {
-        state.fishing = { bait: FISH_BAIT_DAILY, date: '', casts: 0, bestT: -1 };
+        state.fishing = { bait: FISH_BAIT_DAILY, date: '', casts: 0, bestT: -1, rod: 1, spot: 1 };
       }
       state.fishing = {
         bait: fixInt(state.fishing.bait, 0, 99),
         date: typeof state.fishing.date === 'string' ? state.fishing.date : '',
         casts: fixInt(state.fishing.casts, 0, 1e9),
-        bestT: fixInt(state.fishing.bestT, -1, FISH_TABLE.length - 1),
+        bestT: fixInt(state.fishing.bestT, -1, FISH_ALL.length - 1),
+        rod: fixInt(state.fishing.rod, 1, FISH_ROD_MAX) || 1,      // 2026-11-03 弹窗改版：竿等即钓场解封线
+        spot: fixInt(state.fishing.spot, 1, FISH_SPOTS.length) || 1,
+        dex: {}, // 图鉴点亮表（2026-11-04）：鱼 id → 1，钓到才亮
       };
+      const dexIn = state.fishing.dex && typeof state.fishing.dex === 'object' && !Array.isArray(state.fishing.dex)
+        ? state.fishing.dex : {};
+      state.fishing.dex = {};
+      for (const f of FISH_ALL) if (fixInt(dexIn[f.id], 0, 1)) state.fishing.dex[f.id] = 1;
+      // 老档一次性回填：bestT 及以下的鱼按「已钓到」点亮（低档鱼比 bestT 更常见，宽松口径）
+      if (state.fishing.bestT >= 0) {
+        for (const f of FISH_ALL) if (f.gi <= state.fishing.bestT) state.fishing.dex[f.id] = 1;
+      }
+      // 老档无 rod 字段按 1 计；spot 超出竿等解封线时回落到最高已解封场（防改档跳场）
+      if (state.fishing.rod < FISH_SPOTS[state.fishing.spot - 1].rod) {
+        state.fishing.spot = 1;
+        for (let i = FISH_SPOTS.length - 1; i >= 0; i--) {
+          if (state.fishing.rod >= FISH_SPOTS[i].rod) { state.fishing.spot = i + 1; break; }
+        }
+      }
       if (!state.petCores || typeof state.petCores !== 'object' || Array.isArray(state.petCores)) {
         state.petCores = {};
       }
@@ -2866,6 +3336,25 @@
   }, 0);
 
   const caveGainBonus = () => 0.08 * state.cave.array;
+
+  // —— 个体战力（2026-11-03 用户指定）：单宠口径 = 仅该宠出战时相对「无宠基线」的
+  // realPower 增量，与面板/顶栏战力完全同源（playerCombatStats/realPower），无独立公式不漂移；
+  // 收益型天赋（gain）不进战力口径，收益宠战力偏低是真实反映。
+  // base 由调用方一次算好传入（一次渲染只算一遍无宠基线）
+  function petBasePower() {
+    const saved = state.activePets;
+    state.activePets = [];
+    const p = realPower();
+    state.activePets = saved;
+    return p;
+  }
+  function petSoloPower(inst, base) {
+    const saved = state.activePets;
+    state.activePets = [inst.uid];
+    const p = realPower();
+    state.activePets = saved;
+    return Math.max(0, p - base);
+  }
   const expMult = () => (1 + 0.10 * state.cave.library) * (1 + 0.05 * state.gongfa.hui);
   const critChance = () => Math.min(0.5, CRIT_CHANCE + 0.004 * state.cave.garden +
     (shichenIs('crit') ? shichenNow().crit : 0) + skyVal('crit') + coreBonus('crit'));
@@ -2923,7 +3412,7 @@
   const affixDef = (k) => AFFIXES.find((a) => a.k === k);
   const fmtPct = (v) => (v * 100).toFixed(1).replace(/\.0$/, '') + '%';
 
-  // 部位宝石孔（2026-10-31 部位化）：孔位绑部位不随装备，孔数 = 2 + 飞升数（上限 6）
+  // 部位宝石孔（2026-10-31 部位化）：孔位绑部位不随装备，孔数 = 2 + 仙位（入仙界逐级 +1，上限 6）
   const SLOT_GEMS_MAX = 6;
   const slotSocketCount = () => Math.max(2, Math.min(SLOT_GEMS_MAX, 2 + ((state.immortal || 0) | 0)));
   // 取某槽孔位数组（不足自动补空孔；所有槽位宝石读写都走这里）
@@ -3182,7 +3671,7 @@
       desc: '秘境征战的起点，逐关推进，逢 5 关有首领，征伐套装按概率掉落。' },
     { id: 'wild', name: '野外巡猎', where: '征战 · 秘境征战', cond: '闯关通过第 3 关',
       check: () => state.stageCleared >= 3,
-      desc: '两百片野外刷战利品，离线也能估算收入；自动巡猎需飞升一次后开启。' },
+      desc: '两百片野外刷战利品，离线也能估算收入。' },
     { id: 'tower', name: '爬塔', where: '征战 · 秘境征战', cond: '闯关通过第 5 关',
       check: () => state.stageCleared >= 5,
       desc: '两百层镇塔秘境，逢 10 层一主，产出镇塔套装，一路通到仙境尽头。' },
@@ -3518,14 +4007,6 @@
       source: mode,
       sourceLevel: level,
     };
-  }
-
-  function trophyGain(mode, level, boss, first) {
-    const cfg = MODES[mode];
-    let n = 1 + Math.floor(level / cfg.trophyStep);
-    if (boss) n += 2;
-    if (first) n += 2;
-    return n;
   }
 
   // 五行克制：顺（我方克敌）每件 +3% 攻，逆每件 -2%，下限 ×0.9
@@ -4246,9 +4727,48 @@
   // 门槛即「消耗」；服务端 economy.js 飞升配额公式同口径收紧）
   const ASCEND_STONES = 1e11;
 
-  function ascend() {
+  // 飞升确认弹层（2026-11-03 用户指定）：清零/保留/新玩法/增益四栏交代清楚，替代原一句话 confirm
+  function openAscendModal() {
     if (state.realm < REALMS.length - 1 || state.stones < ASCEND_STONES) return;
-    if (!confirm('飞升会重置灵石、境界与淬炼，保留装备、背包、图鉴和仙缘。确定继续？')) return;
+    const od = state.ordeal.active ? ORDEALS.find((o) => o.id === state.ordeal.active) : null;
+    const sec = (label, cls, items) =>
+      '<div class="ascend-sec ' + cls + '"><h4>' + label + '</h4><ul>' +
+      items.map((it) => '<li>' + it + '</li>').join('') + '</ul></div>';
+    $('ascendModalBody').innerHTML =
+      sec('归零', 'bad', [
+        '灵石 <b>' + fmt(state.stones) + '</b>（含 1000 亿门槛，一并散尽）',
+        '修为与境界（从炼气期重新突破）',
+        '淬炼：速度 Lv.' + state.speedLv + ' / 收益 Lv.' + state.gainLv + ' / 幸运 Lv.' + state.luckLv,
+        '时辰增益与心魔',
+      ]) +
+      sec('保留', 'good', [
+        '装备与已镶宝石（等级不回收，此后掉落按新境界重新定级）',
+        '背包材料与开箱图鉴',
+        '仙缘点数、天道录、成就与称号',
+        '灵宠 · 牧场 · 坊市经营',
+        '已解锁玩法不回锁',
+      ]) +
+      sec('新玩法', 'new', [
+        '开箱「连开十次」',
+        '解锁「入仙界」：灵石买仙位（收益 +10%、宝石孔 +1）',
+        '三系修行挑战：凡衣 / 无匠 / 苦行',
+      ]) +
+      sec('增益', 'buff', [
+        '灵石收益永久 <b>+5%</b>',
+        '仙缘 +1：江湖称号缀「+' + (state.ascensions + 1) + '」',
+        od && !state.ordeal.dirty ? '修行「' + od.name + '」将功成：' + od.reward : '',
+      ].filter(Boolean));
+    $('ascendModalHint').textContent = od && state.ordeal.dirty
+      ? '注意：进行中的修行「' + od.name + '」已记违规，本次飞升拿不到它的奖励。'
+      : '轮回后从炼气重修，收入随境界重爬；淬炼会被清零，剩余灵石不如花在保留项（装备/宝石/材料）上。';
+    $('ascendModal').classList.add('show');
+  }
+
+  function ascend() { openAscendModal(); }
+
+  function doAscend() {
+    $('ascendModal').classList.remove('show');
+    if (state.realm < REALMS.length - 1 || state.stones < ASCEND_STONES) return;
     if (state.ordeal.active && !state.ordeal.dirty) {
       const def = ORDEALS.find((o) => o.id === state.ordeal.active);
       state.ordealDone.push(state.ordeal.active);
@@ -4341,12 +4861,12 @@
         huntDrops++;
       }
       if (h.wins > 0) {
-        huntText = '自动巡猎 <b>' + fmt(h.wins) + '</b> 胜 / ' + fmt(h.hunts) + ' 场' +
+        huntText = '离线巡猎 <b>' + fmt(h.wins) + '</b> 胜 / ' + fmt(h.hunts) + ' 场' +
           (h.clamped ? '（体力只够 ' + fmt(h.wins) + ' 场）' : '') + '<br>' +
           '获得 <b>' + fmt(h.stones) + '</b> 灵石 · <b>' + fmt(h.trophy) + '</b> 兽骨' +
           (huntDrops ? ' · 掉落 <b>' + huntDrops + '</b> 件荒狩装备' : '');
       } else {
-        huntText = '自动巡猎 <b>0</b> 胜 / ' + fmt(h.hunts) + ' 场（体力不足，未结算）';
+        huntText = '离线巡猎 <b>0</b> 胜 / ' + fmt(h.hunts) + ' 场（体力不足，未结算）';
       }
     }
 
@@ -4478,7 +4998,7 @@
   /* ---------------- 征战体力（2026-11-01，服务端裁定） ----------------
    * 一场战斗 1 点，每日 300 点（本地日回满），每 5 分钟恢复 1 点，上限 300。
    * 数值唯一权威在服务端（users 表三列），客户端只持最近一次同步的展示快照：
-   * 每场战斗（含扫荡/复战/自动巡猎）前必须 POST 扣点成功才开打，扣不动（429）
+   * 每场战斗（含扫荡/复战）前必须 POST 扣点成功才开打，扣不动（429）
    * 就打不了——改内存/断网都无法绕过服务端闸门。 */
   const STAMINA_REGEN_MS = 5 * 60 * 1000;
   const STAMINA = { v: 0, cap: 300, nextAt: 0, syncedAt: 0 };
@@ -4538,7 +5058,6 @@
     // 一律 first=false（无首通奖励/里程碑套装/进度推进），闯关/爬塔按「再战」5 折、野外全额；
     // 野外击杀计数照常（保底套装口径不变），闯关/爬塔复战套装掉率与「再战」一致（MODE_SET_RATE）
     const sweep = !!(opts && opts.sweepLevel != null);
-    if (!auto) state.autoHunt = false;
     ensureDaily();
     state.lastScene = mode; // 离线驻留场景（结算文案用）
 
@@ -4576,11 +5095,6 @@
       // 本地预判野外复战额度（服务端复核；首通挑战不受限）
       const zone = state.wildZone || 1;
       if (state.wildCleared.includes(zone) && (state.daily.wildRepeat || 0) >= WILD_REPEAT_DAILY) {
-        if (auto) {
-          state.autoHunt = false;
-          combatDirty = true;
-          pushLog('已战胜怪物今日 50 次挑战额度已用完，自动巡猎停止', 'sys');
-        }
         floatText('已战胜怪物每日挑战已达上限（' + WILD_REPEAT_DAILY + '/' + WILD_REPEAT_DAILY + '）', '#f87171');
         return null;
       }
@@ -4598,23 +5112,11 @@
         STAMINA.v = 0;
         STAMINA.nextAt = Date.now() + STAMINA_REGEN_MS;
         updateStaminaChip();
-        if (auto) {
-          state.autoHunt = false;
-          combatDirty = true;
-          pushLog('体力耗尽，自动巡猎停止（每日 300 点，每 5 分钟恢复 1 点）', 'sys');
-        }
-        floatText(msg, '#f87171');
-      } else if (e && e.status === 429 && /已达上限|挑战上限/.test(msg)) {
-        if (auto) {
-          state.autoHunt = false;
-          combatDirty = true;
-          pushLog('已战胜怪物今日 50 次挑战额度已用完，自动巡猎停止', 'sys');
-        }
         floatText(msg, '#f87171');
       } else if (!auto) {
         floatText(msg || '网络异常，请稍后再战', '#f87171');
       }
-      // 静默失败（auto/网络抖动）由自动巡猎心跳与玩家下次点击自然重试
+      // 静默失败（auto/网络抖动）由玩家下次点击自然重试
       return null;
     }
 
@@ -4686,6 +5188,25 @@
         grantSpecial(out.pitySpecial);
         pushLog('保底达成：' + out.pitySpecial.name + ' 已入包', 'special');
       }
+      // 素材掉落（2026-11-03 用户指定）：种子/洗炼石入库存（服务端胜场裁定，客户端只对账）
+      if (out.matDrops) {
+        let matSuffix = '';
+        const sd = out.matDrops.seeds || {};
+        const rd = out.matDrops.rstones || {};
+        for (const k of Object.keys(sd)) {
+          const n = Math.max(0, Math.floor(Number(sd[k]) || 0));
+          if (!n || !FARM_SEEDS.some((s) => s.id === k)) continue;
+          state.farmSeeds[k] = Math.min(1e6, (state.farmSeeds[k] || 0) + n);
+          matSuffix += ' · ' + FARM_SEEDS.find((s) => s.id === k).name + '×' + n;
+        }
+        for (const k of Object.keys(rd)) {
+          const n = Math.max(0, Math.floor(Number(rd[k]) || 0));
+          if (!n || !REROLL_STONES[k]) continue;
+          state.rerollStones[k] = Math.min(1e6, (state.rerollStones[k] | 0) + n);
+          matSuffix += ' · ' + REROLL_STONES[k].name + '×' + n;
+        }
+        if (matSuffix) pushLog('战利品素材' + matSuffix, 'sys');
+      }
 
       lastBattles[mode] = {
         mode, level, win: true, result, enemy, player,
@@ -4701,7 +5222,6 @@
       if (enemy.boss) chime([523, 659, 784, 1046]);
       beep(result.rounds <= 3 ? 1046 : 820, 0.14);
     } else {
-      state.autoHunt = false;
       lastBattles[mode] = {
         mode, level, win: false, result, enemy, player,
         trophy: 0, first, replay,
@@ -5393,7 +5913,53 @@
       else if (key === 'exp') { state.exp += n; parts.push('+' + fmt(n) + ' 修为'); }
       else if (key === 'ticket') { state.petTickets += n; parts.push('招募券 ×' + n); }
       else if (key === 'coupon') { state.rerollCoupon += n; parts.push('洗练半价券 ×' + n); }
-      else if (key === 'elixir') {
+      else if (key === 'bait' && n > 0) {
+        state.fishing.bait = Math.min(99, (state.fishing.bait | 0) + n);
+        parts.push('鱼饵 ×' + n);
+      } else if (key === 'seed' && val && typeof val === 'object' && !Array.isArray(val)) {
+        // 草籽（2026-11-04 用户指定奇遇扩容）：直接入种子库存（0..1e6 存档白名单兜底）
+        for (const [id, n2] of Object.entries(val)) {
+          const sd = FARM_SEEDS.find((x) => x.id === id);
+          const mv = Math.max(0, Math.floor(Number(n2) || 0));
+          if (!sd || !mv) continue;
+          state.farmSeeds[id] = Math.min(1e6, (state.farmSeeds[id] | 0) + mv);
+          parts.push(sd.name + ' ×' + mv);
+        }
+      } else if (key === 'rstone' && val && typeof val === 'object' && !Array.isArray(val)) {
+        // 洗炼石：六型入库存（键白名单 RSTONE_KEYS）
+        for (const [k2, n2] of Object.entries(val)) {
+          const mv = Math.max(0, Math.floor(Number(n2) || 0));
+          if (!REROLL_STONES[k2] || !mv) continue;
+          state.rerollStones[k2] = Math.min(1e6, (state.rerollStones[k2] | 0) + mv);
+          parts.push(REROLL_STONES[k2].name + ' ×' + mv);
+        }
+      } else if (key === 'mat' && val && typeof val === 'object' && !Array.isArray(val)) {
+        // 坊市原料是服务端权威库存（shop_state）：走 /api/shop/windfall 授权入账
+        // （服务端钳量：单键 ≤10、单次总 ≤20、4 次/小时），奇遇给量都在限内
+        const body = {};
+        for (const [id, n2] of Object.entries(val)) {
+          const mv = Math.max(0, Math.min(10, Math.floor(Number(n2) || 0)));
+          if (mv) body[id] = mv;
+        }
+        if (Object.keys(body).length) {
+          worldFetch('/api/shop/windfall', { method: 'POST', body: JSON.stringify({ mats: body }) })
+            .then((out) => {
+              if (out && SHOP.view && out.view) SHOP.view = out.view;
+            })
+            .catch(() => { SHOP.loaded = false; }); // 失败/超时：下次进坊市重取权威库存
+          for (const [id, n2] of Object.entries(body)) {
+            parts.push((SHOP.view && SHOP.view.catalog && SHOP.view.catalog.mats[id]) || MAT_NAMES[id] || id + ' ×' + n2);
+          }
+        }
+      } else if (key === 'token' && n > 0) {
+        // 宠物信物（物种级）：随机赠已收服物种；无个体时落到随机物种（纯加成无损失面）
+        const owned = Object.keys(state.pets || {});
+        const pool = owned.length ? owned : PET_SPECIES.map((x) => x.id);
+        const sp = pool[Math.floor(Math.random() * pool.length)];
+        const spDef = PET_SPECIES.find((x) => x.id === sp);
+        state.petTokens[sp] = Math.min(TOKEN_MAX, (state.petTokens[sp] | 0) + n);
+        parts.push((spDef ? spDef.name : sp) + '信物 ×' + n);
+      } else if (key === 'elixir') {
         const ed = ELIXIRS.find((x) => x.id === n);
         if (ed) {
           state.elixir.owned[n] = (state.elixir.owned[n] || 0) + 1;
@@ -5553,10 +6119,11 @@
       (spotReady ? '<p class="hint treasure-tip">宝点已现——去秘境图点「宝」格挖宝！</p>' : '');
   }
 
-  // —— 钓鱼 ——
-  // 抛竿状态仅存内存：时机条光标随时间三角波游走，起竿越中越准
+  // —— 钓鱼（2026-11-03 弹窗改版）——
+  // 抛竿状态仅存内存：时机条光标随时间三角波游走，起竿越中越准；竿等给滚点加成。
+  // 全部玩法交互在 #fishModal 弹窗内进行，闲趣面板只留摘要与入口按钮。
   let fishRod = null;
-  let fishMsg = null; // 最近一次起竿/脱钩结果（仅内存，面板结果行展示）
+  let fishMsg = null; // 最近一次起竿/脱钩结果（仅内存，弹窗结果行展示）
 
   function ensureFishDaily() {
     if (state.fishing.date !== todayStr()) {
@@ -5571,11 +6138,35 @@
     return 1 - tri;
   };
 
+  // 渔获附赠素材（2026-11-04 用户指定）：每竿 30% 附带草籽 1~2 颗、20% 附带洗炼石 1 颗，
+  // 入 farmSeeds/rerollStones 库存（存档白名单 0..1e6 兜底）。种子权重与 server/combat.js
+  // MAT_SEED_WEIGHTS 同源（低档常见），洗炼石六型均权；钓场有竿数天然限速，不另设上限。
+  const FISH_MAT_SEED_W = { cao: 38, hua: 22, guo: 15, sui: 10, lian: 7, tong: 5, xing: 3 };
+
+  function fishSideDrops() {
+    let suffix = '';
+    if (Math.random() < 0.3) {
+      const keys = Object.keys(FISH_MAT_SEED_W);
+      let roll = Math.random() * 100;
+      let pick = keys[0];
+      for (const k of keys) { roll -= FISH_MAT_SEED_W[k]; if (roll < 0) { pick = k; break; } }
+      const n = 1 + (Math.random() < 0.5 ? 1 : 0);
+      state.farmSeeds[pick] = Math.min(1e6, (state.farmSeeds[pick] || 0) + n);
+      suffix += ' · ' + FARM_SEEDS.find((s) => s.id === pick).name + '×' + n;
+    }
+    if (Math.random() < 0.2) {
+      const k = RSTONE_KEYS[Math.floor(Math.random() * RSTONE_KEYS.length)];
+      state.rerollStones[k] = Math.min(1e6, (state.rerollStones[k] | 0) + 1);
+      suffix += ' · ' + REROLL_STONES[k].name + '×1';
+    }
+    return suffix;
+  }
+
   function castRod() {
     ensureFishDaily();
     if (fishRod) return;
     if (state.fishing.bait <= 0) {
-      floatText('鱼饵不足（每日补 5 枚）', '#f87171');
+      floatText('鱼饵不足（每日补 5 枚，可灵石加购）', '#f87171');
       return;
     }
     state.fishing.bait--;
@@ -5596,20 +6187,22 @@
       render();
       return;
     }
-    let roll = Math.random() * 62 + acc * 38;
-    let tier = FISH_TABLE[FISH_TABLE.length - 1];
-    for (const f of FISH_TABLE) {
+    const spot = fishSpotOf();
+    // 竿等加成：每级 +1.2 滚点把分布往稀有鱼推，时机准头仍是大头
+    let roll = Math.random() * 62 + acc * 38 + (state.fishing.rod - 1) * 1.2;
+    let tier = spot.fish[spot.fish.length - 1];
+    for (const f of spot.fish) {
       if (roll < f.p) { tier = f; break; }
       roll -= f.p;
     }
-    const idx = FISH_TABLE.indexOf(tier);
     state.fishing.casts++;
-    if (idx > state.fishing.bestT) state.fishing.bestT = idx;
+    if (tier.gi > state.fishing.bestT) state.fishing.bestT = tier.gi;
+    state.fishing.dex[tier.id] = 1; // 图鉴点亮（2026-11-04 用户指定：钓到的鱼名字亮色）
     let text = '';
     let cls = 'g-none';
-    if (tier.big) {
+    if (tier.big && tier.itemDrop) {
+      // 灵龙鱼化形（2026-11-01 口径不变）：60% 物品（10% 仙品）/ 40% 腹中藏宝
       cls = 'g-item';
-      // 2026-11-01 用户指定：50% 天品 / 10% 仙品 / 40% +30000 灵石
       const gift = Math.random();
       if (gift < 0.6) {
         const xian = gift >= 0.5; // 0.5~0.6 区间出仙品
@@ -5620,13 +6213,18 @@
         floatText('灵龙鱼化形！「' + item.name + '」', xian ? '#f87171' : '#ffd479');
         chime([659, 784, 1046, 1318]);
       } else {
-        addStones(30000);
-        text = '「' + tier.name + '」腹中藏宝：+30000 灵石';
+        addStones(tier.jackpot);
+        text = '「' + tier.name + '」腹中藏宝：+' + fmt(tier.jackpot) + ' 灵石';
         chime([659, 784, 1046]);
       }
+    } else if (tier.big) {
+      cls = 'g-stone';
+      addStones(tier.stones);
+      text = '钓得传说「' + tier.name + '」！+' + fmt(tier.stones) + ' 灵石';
+      chime([659, 784, 1046, 1318]);
     } else if (tier.stones) {
       addStones(tier.stones);
-      cls = tier.stones >= 5000 ? 'g-stone' : 'g-none';
+      cls = tier.stones >= 50000 ? 'g-stone' : 'g-none';
       text = tier.name + '，+' + fmt(tier.stones) + ' 灵石';
       chime([523, 659]);
     } else {
@@ -5635,6 +6233,8 @@
       text = tier.name + '，+' + tier.dust + ' 碎屑';
       chime([523, 659]);
     }
+    // 渔获附赠素材（2026-11-04 用户指定）：概率附带草籽/洗炼石（与征战胜场掉落同池）
+    text += fishSideDrops();
     fishMsg = { text, cls, ic: fishIcon(tier) };
     pushLog('钓得' + text + (acc > 0.85 ? '（妙手！）' : ''), 'special');
     render();
@@ -5654,6 +6254,39 @@
     save();
   }
 
+  // 鱼竿升级（2026-11-03 弹窗改版）：竿等即钓场解封线，滚点随竿等加成
+  function rodUp() {
+    const lv = state.fishing.rod;
+    if (lv >= FISH_ROD_MAX) return;
+    const cost = FISH_ROD_COST(lv);
+    if (state.stones < cost) {
+      floatText('灵石不足（需 ' + fmt(cost) + '）', '#f87171');
+      return;
+    }
+    state.stones -= cost;
+    state.fishing.rod = lv + 1;
+    pushLog('鱼竿升到 Lv.' + (lv + 1) + '（- ' + fmt(cost) + ' 灵石）', 'sys');
+    const unlock = FISH_SPOTS.find((sp) => sp.rod === lv + 1);
+    if (unlock) {
+      pushLog('新钓场「' + unlock.name + '」解封！' + unlock.sub, 'special');
+      chime([659, 784, 1046, 1318]);
+    } else {
+      beep(880, 0.08);
+    }
+    render();
+    save();
+  }
+
+  function selectSpot(i) {
+    const sp = FISH_SPOTS[i - 1];
+    if (!sp || state.fishing.rod < sp.rod || state.fishing.spot === i) return;
+    state.fishing.spot = i;
+    fishMsg = null;
+    beep(700, 0.06);
+    render();
+    save();
+  }
+
   // 光标位移逐帧刷（不走 render 全量重绘）；超时不收竿则跑鱼
   function fishTick() {
     const cur = $('fishCursor');
@@ -5668,36 +6301,104 @@
     cur.style.left = (fishCursorPos() * 100).toFixed(1) + '%';
   }
 
+  // 弹窗主体：钓场页签 + 本场鱼表 + 时机条 + 抛竿/补饵/升竿
+  function renderFishModal() {
+    const body = $('fishModalBody');
+    if (!body) return;
+    const spot = fishSpotOf();
+    const rod = state.fishing.rod;
+    const canUp = rod < FISH_ROD_MAX;
+    const upCost = FISH_ROD_COST(rod);
+    const canBuy = state.stones >= FISH_BAIT_COST && state.fishing.bait < 99;
+    const sig = [state.fishing.bait, rod, state.fishing.spot, state.fishing.casts, state.fishing.bestT,
+      fishRod ? 1 : 0, canBuy ? 1 : 0, canUp && state.stones >= upCost ? 1 : 0,
+      fishMsg ? fishMsg.text : ''].join('|');
+    if (panelSigs.fishModal === sig) return;
+    panelSigs.fishModal = sig;
+    const tabs = FISH_SPOTS.map((sp, i) => {
+      const open = rod >= sp.rod;
+      return '<button class="fish-spot' + (state.fishing.spot === i + 1 ? ' on' : '') +
+        (open ? '' : ' locked') + '" data-spot="' + (i + 1) + '"' + (open ? '' : ' disabled') +
+        ' title="' + (open ? sp.sub : '鱼竿 Lv.' + sp.rod + ' 解封') + '">' + sp.name +
+        (open ? '' : ' <i>Lv.' + sp.rod + '</i>') + '</button>';
+    }).join('');
+    const rows = spot.fish.map((f) => {
+      const known = state.fishing.dex[f.id] === 1; // 钓到才亮（2026-11-04 用户指定）
+      const rw = !known ? '？？？'
+        : (f.big
+          ? (f.itemDrop ? '化形赠宝 / ' + fmt(f.jackpot) + ' 灵石' : fmt(f.stones) + ' 灵石')
+          : (f.stones ? '+' + fmt(f.stones) + ' 灵石' : '+' + f.dust + ' 碎屑'));
+      return '<div class="fish-row' + (f.big ? ' big' : '') + (known ? '' : ' unknown') + '">' +
+        '<span class="fish-ic">' + fishIcon(f) + '</span>' +
+        '<b>' + (known ? f.name : '？？？') + '</b>' +
+        '<i>' + rw + '</i>' +
+        '<em title="' + (known ? f.text : '尚未钓到 · 概率占位') + '">' + f.p + '%</em></div>';
+    }).join('');
+    const best = state.fishing.bestT >= 0
+      ? fishIcon(FISH_ALL[state.fishing.bestT]) + FISH_ALL[state.fishing.bestT].name
+      : '—';
+    body.innerHTML =
+      '<div class="fish-spots">' + tabs + '</div>' +
+      '<p class="hint">' + spot.sub + ' · 鱼竿 Lv.' + rod + ' · 鱼饵 ' + state.fishing.bait +
+        ' 枚（每日 0 点补 5）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best +
+        '<br>渔获附赠：30% 草籽 1~2 · 20% 洗炼石×1</p>' +
+      '<div class="fish-list">' + rows + '</div>' +
+      '<div class="fish-track"><span class="fish-zone"></span>' +
+        '<span class="fish-cursor' + (fishRod ? '' : ' hidden') + '" id="fishCursor"></span></div>' +
+      '<div class="fish-actions">' +
+        '<button class="btn" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + ' title="每竿消耗 1 枚鱼饵">' +
+          (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
+        '<button class="btn" id="fishBaitBtn"' + (canBuy ? '' : ' disabled') + '>补饵 ' +
+          fmt(FISH_BAIT_COST) + resIcon('stones') + '</button>' +
+        '<button class="btn" id="fishRodBtn"' + (canUp && state.stones >= upCost ? '' : ' disabled') +
+          ' title="当前鱼竿 Lv.' + rod + '，升竿解锁更高钓场">' +
+          (canUp ? '升竿 ' + fmt(upCost) + resIcon('stones')
+            : '鱼竿已满') + '</button>' +
+      '</div>' +
+      // 结果槽位恒占高（2026-11-04 用户报）：结果横幅条件插入会让下方按钮与整体居中重排，
+      // 抛竿位置跳动；固定高度空槽无结果时留白，布局零位移
+      '<div class="fish-result-slot">' + (fishMsg
+        ? '<div class="fish-result ' + fishMsg.cls + '"><span>' + (fishMsg.ic || '') + '</span><span>' +
+          esc(fishMsg.text) + '</span></div>'
+        : '') + '</div>';
+    // 钮随弹窗内容重建逐次绑事件（与旧 fishingBox 同款，静态绑定会撞空元素）
+    $('fishBtn').addEventListener('click', fishRod ? reelRod : castRod);
+    $('fishBaitBtn').addEventListener('click', buyBait);
+    $('fishRodBtn').addEventListener('click', rodUp);
+    body.querySelectorAll('.fish-spot').forEach((b) =>
+      b.addEventListener('click', () => selectSpot(Number(b.dataset.spot))));
+  }
+
+  function openFishModal() {
+    ensureFishDaily();
+    panelSigs.fishModal = ''; // 打开时强制重绘一次
+    renderFishModal();
+    $('fishModal').classList.add('show');
+  }
+
+  // 闲趣面板入口：摘要 + 进入钓场按钮（玩法交互在弹窗内）
   function renderFishing() {
     const box = $('fishingBox');
     if (!box || !featureOpen('fish')) return;
     ensureFishDaily();
-    const canBuy = state.stones >= FISH_BAIT_COST && state.fishing.bait < 99;
-    const sig = state.fishing.bait + '|' + (fishRod ? 1 : 0) + '|' + state.fishing.casts + '|' +
-      state.fishing.bestT + '|' + (canBuy ? 1 : 0) + '|' + (fishMsg ? fishMsg.text : '');
+    // 弹窗重绘必须先于面板入口签名早退：切钓场只改 spot（不进入口签名），
+    // 早退后 renderFishModal 不会被调，表现为「已解锁钓场点不动」（2026-11-04 用户报）
+    renderFishModal();
+    const sig = state.fishing.bait + '|' + state.fishing.casts + '|' +
+      state.fishing.bestT + '|' + state.fishing.rod;
     if (panelSigs.fishing === sig) return;
     panelSigs.fishing = sig;
     const best = state.fishing.bestT >= 0
-      ? fishIcon(FISH_TABLE[state.fishing.bestT]) + FISH_TABLE[state.fishing.bestT].name
+      ? fishIcon(FISH_ALL[state.fishing.bestT]) + FISH_ALL[state.fishing.bestT].name
       : '—';
     box.innerHTML =
-      '<p class="hint">鱼饵 ' + state.fishing.bait + ' 枚（每日 0 点补 5）· 已钓 ' + state.fishing.casts +
-        ' 竿 · 最旺 ' + best + '</p>' +
-      '<div class="fish-track"><span class="fish-zone"></span>' +
-        '<span class="fish-cursor' + (fishRod ? '' : ' hidden') + '" id="fishCursor"></span></div>' +
-      '<div class="fish-actions">' +
-        '<button class="btn" id="fishBtn"' + (!fishRod && state.fishing.bait <= 0 ? ' disabled' : '') + '>' +
-          (fishRod ? '起竿！（越中越准）' : '抛竿') + '</button>' +
-        '<button class="btn" id="fishBaitBtn"' + (canBuy ? '' : ' disabled') + '>补饵 ' +
-          fmt(FISH_BAIT_COST) + resIcon('stones') + '</button>' +
-      '</div>' +
-      (fishMsg
-        ? '<p class="gamble-result ' + fishMsg.cls + '">' + (fishMsg.ic || '') + fishMsg.text + '</p>'
-        : '');
-    // 补饵钮随渲染内联在抛竿右侧（2026-11-03 用户指定），随 fishingBox 重建逐次绑事件
-    $('fishBtn').addEventListener('click', fishRod ? reelRod : castRod);
-    $('fishBaitBtn').addEventListener('click', buyBait);
+      '<p class="hint">鱼竿 Lv.' + state.fishing.rod + ' · 鱼饵 ' + state.fishing.bait +
+        ' 枚（每日 0 点补 5）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best + '</p>' +
+      '<button class="btn primary wide" id="fishOpenBtn">进入钓场（' +
+        FISH_SPOTS[state.fishing.spot - 1].name + '）</button>';
+    $('fishOpenBtn').addEventListener('click', openFishModal);
   }
+
 
   // —— 灵宠内丹 ——
   function feedCore(id) {
@@ -6593,7 +7294,33 @@
     const cat = v.catalog;
     const nowT = Date.now();
     const lvOf = (b) => v.lv[b] || 0;
-    const slotsOf = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 17); // server SLOTS_AT_LV 同口径（仅展示）
+    const slotsOf = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 12); // server SLOTS_AT_LV 同口径（仅展示）
+
+    // 结构签名（2026-11-04 两点修复）：倒计时走针不再整段重绘——500ms 全量 innerHTML
+    // 会吞掉重绘瞬间落在按钮上的 click（mousedown 后节点被替换），表现为「点两次才生效」
+    // （旧 innerHTML!==html 去重只挡完全相同的帧，走针每秒变一格照旧重绘）。只有结构面
+    // （商誉/等级/在制完成态/库存/原料/订单）变化才重建；走针文本与灵石可负担灰显（.off）
+    // 原位更新，不换节点、不吞点击。
+    const craftsKey = v.crafts.map((c) => c.b + ':' + c.id + ':' + (c.doneAt <= nowT ? 1 : 0)).join(',');
+    const sig = [v.rep, v.orderSlot | 0, JSON.stringify(v.lv), JSON.stringify(v.inv),
+      JSON.stringify(v.mats), JSON.stringify(v.orders), v.done.join(','), craftsKey].join('|');
+    if (panelSigs.shop === sig) {
+      box.querySelectorAll('.shop-craft[data-doneat]').forEach((row) => {
+        const left = (Number(row.dataset.doneat) - nowT) / 1000;
+        const bar = row.querySelector('.shop-progress');
+        if (!bar || left <= 0) return; // 出炉瞬间结构签名已翻转，交给重建分支
+        const ms = Number(bar.dataset.ms) || 1;
+        const pct = Math.max(0, Math.min(100, (1 - left * 1000 / ms) * 100));
+        bar.querySelector('.shop-progress-fill').style.width = pct.toFixed(1) + '%';
+        bar.querySelector('.shop-progress-text').textContent = '制作中 · 剩余 ' + fmtDuration(left);
+      });
+      const rf = box.querySelector('.shop-refresh');
+      if (rf) rf.textContent = '刷新 ' + fmtDuration(v.nextSlotIn / 1000);
+      box.querySelectorAll('.mini[data-cost]').forEach((btn) =>
+        btn.classList.toggle('off', state.stones < Number(btn.dataset.cost)));
+      return;
+    }
+    panelSigs.shop = sig;
 
     // —— 建筑与配方 ——
     let html = '';
@@ -6606,27 +7333,37 @@
       html += '<div class="shop-b' + (open ? '' : ' shop-b-locked') + '">';
       html += '<div class="shop-b-head"><span class="shop-b-name"><span class="shop-b-ic">' +
         (SHOP_BUILD_ICONS[b] || esc(def.icon)) + '</span>' + esc(def.name) +
-        (open ? ' <em>Lv.' + lv + '</em> <i>' + myCrafts.length + '/' + slotsOf(lv) + ' 席</i>' : '') + '</span>';
+        (open ? ' <em>Lv.' + lv + '</em> <i title="席位随建筑等级解锁：13/25/37/49 级各 +1（Lv.49 满 5 席）">' +
+          myCrafts.length + '/' + slotsOf(def.max) + ' 席</i>' : '') + '</span>';
       if (open && lv < def.max) {
         const up = Math.floor(def.cost * Math.pow(def.growth, lv));
-        html += '<button class="mini" data-shop="build" data-b="' + b + '"' +
-          (state.stones < up ? ' disabled' : '') + '>升级 ' + fmt(up) + '</button>';
+        html += '<button class="mini' + (state.stones < up ? ' off' : '') +
+          '" data-shop="build" data-b="' + b + '" data-cost="' + up + '">升级 ' + fmt(up) + '</button>';
       } else if (open) {
         html += '<span class="shop-max">满级</span>';
       } else if (lockedByRep) {
         html += '<button class="mini" disabled>商誉 ' + def.repNeed + ' 解锁</button>';
       } else {
-        html += '<button class="mini" data-shop="build" data-b="' + b + '"' +
-          (state.stones < def.cost ? ' disabled' : '') + '>开业 ' + fmt(def.cost) + '</button>';
+        html += '<button class="mini' + (state.stones < def.cost ? ' off' : '') +
+          '" data-shop="build" data-b="' + b + '" data-cost="' + def.cost + '">开业 ' + fmt(def.cost) + '</button>';
       }
       html += '</div>';
       if (open) {
-        // 在制/可收行
+        // 建筑体（在制/配方）括进圆角矩形（2026-11-04 用户指定，器坊/符箓铺解锁后同款）
+        let body = '';
+        // 在制/可收行（2026-11-04 用户指定：制作中改进度条，条内显示文字与剩余时间）
         for (const c of myCrafts) {
           const r = cat.recipes[c.id];
           const done = c.doneAt <= nowT;
-          html += '<div class="shop-craft"><span>' + itemIcon(c.id) + esc(r.name) + '</span><i>' +
-            (done ? '已出炉' : '制作中 ' + fmtDuration((c.doneAt - nowT) / 1000)) + '</i>' +
+          let bar = '<i>已出炉</i>';
+          if (!done) {
+            const left = Math.max(0, (c.doneAt - nowT) / 1000);
+            const pct = Math.max(0, Math.min(100, (1 - left * 1000 / r.ms) * 100));
+            bar = '<div class="shop-progress" data-ms="' + r.ms + '">' +
+              '<span class="shop-progress-fill" style="width:' + pct.toFixed(1) + '%"></span>' +
+              '<span class="shop-progress-text">制作中 · 剩余 ' + fmtDuration(left) + '</span></div>';
+          }
+          body += '<div class="shop-craft" data-doneat="' + c.doneAt + '"><span>' + itemIcon(c.id) + esc(r.name) + '</span>' + bar +
             (done ? '<button class="mini" data-shop="collect" data-b="' + b + '">收取</button>' : '') + '</div>';
         }
         // 配方行
@@ -6634,19 +7371,23 @@
           if (r.b !== b) continue;
           const unlocked = lv >= r.req;
           const okMat = Object.keys(r.mats).every((m) => (v.mats[m] || 0) >= r.mats[m]);
-          const can = unlocked && myCrafts.length < slotsOf(lv) && okMat && state.stones >= r.fee;
-          html += '<div class="shop-recipe' + (unlocked ? '' : ' shop-r-locked') + '"' +
+          const can = unlocked && myCrafts.length < slotsOf(lv) && okMat;
+          body += '<div class="shop-recipe' + (unlocked ? '' : ' shop-r-locked') + '"' +
             (r.desc ? ' title="' + esc(r.desc) + '"' : '') + '>' +
             '<span class="shop-r-name">' + itemIcon(r.id) + esc(r.name) + '</span>' +
             '<span class="shop-r-info">' + fmtDuration(r.ms / 1000) + ' · ' + shopMatText(r.mats) +
             ' · 费 ' + fmt(r.fee) + (unlocked ? '' : ' · Lv.' + r.req + ' 解锁') + '</span>' +
-            (unlocked ? '<button class="mini" data-shop="craft" data-b="' + b + '" data-id="' + r.id + '"' +
+            (unlocked ? '<button class="mini' + (state.stones < r.fee ? ' off' : '') +
+              '" data-shop="craft" data-b="' + b + '" data-id="' + r.id + '" data-cost="' + r.fee + '"' +
               (can ? '' : ' disabled') + '>开工</button>' : '') + '</div>';
         }
+        html += '<div class="shop-b-body">' + body + '</div>';
       }
       html += '</div>';
     }
 
+    // —— 库存/订单/仓库段括进圆角矩形（2026-11-04 用户指定）——
+    html += '<div class="shop-market-card">';
     // —— 库存（直售）——
     const invIds = Object.keys(cat.recipes).filter((id) => (v.inv[id] || 0) > 0);
     if (invIds.length) {
@@ -6685,10 +7426,8 @@
       html += '<span class="shop-mat' + ((v.mats[m] || 0) > 0 ? '' : ' shop-mat-zero') + '">' +
         itemIcon(m) + esc(cat.mats[m]) + ' ' + (v.mats[m] || 0) + '</span>';
     }
-    html += '</div>';
-    // 内容无变化不重写（2026-11-03）：500ms 全量 innerHTML 重绘会吞掉重绘瞬间落在按钮上
-    // 的 click（节点被替换）；倒计时文本每秒才变一格，多数节拍可整段跳过
-    if (box.innerHTML !== html) box.innerHTML = html;
+    html += '</div></div>';
+    box.innerHTML = html;
   }
 
   async function shopAct(act, el) {
@@ -8816,6 +9555,8 @@
         '<div class="pet-detail-info">' +
           '<p class="pet-line">等级 <b>Lv.' + inst.lv + '</b> / ' + PET_LV_MAX_INST +
             '（词条效能 ×' + (1 + PET_AFF_LV_STEP * (inst.lv - 1)).toFixed(2) + '）</p>' +
+          '<p class="pet-line">战力 <b>' + fmt(petSoloPower(inst, petBasePower())) + '</b>' +
+            '（单宠口径：仅该宠出战相对无宠基线）</p>' +
           '<p class="pet-line">天赋 <b>' + talent + '</b></p>' +
           '<p class="pet-line">亲密度 ' + (state.pets[inst.sp] | 0) + ' / ' + PET_MAX_LV +
             ' · 信物 ' + (state.petTokens[inst.sp] | 0) + ' · 内丹 ' + (state.petCores[inst.sp] | 0) + '（物种级）</p>' +
@@ -9884,12 +10625,6 @@
 
   function openBattleModal(b) {
     if (!b) return;
-    if (state.autoHunt) {
-      state.autoHunt = false;
-      combatDirty = true;
-      save();
-      renderCombat();
-    }
     $('offlineModal').classList.remove('show');
     clearBattleTimers();
     document.querySelectorAll('.battle-damage').forEach((el) => el.remove());
@@ -12742,7 +13477,6 @@
       delete el.dataset.sp; // 清空必须连标记一起清：否则同一角色下个对话再登场会被旧标记跳过填充，留下空立绘
       return;
     }
-    const memo = STORY_CAST[sp] || { name: '?', color: '#999' };
     // 自愈兜底：标记匹配但内容不在场（任何路径清空/清丢了内容）也强制重填，
     // 保证「说话人登场 ⇒ 槽内必有立绘」这一不变式，杜绝空立绘复发
     if (el.dataset.sp !== sp || !el.querySelector('.story-art')) {
@@ -13268,7 +14002,7 @@
     if (mode === 'wild') {
       const maxZone = wildMaxUnlocked();
       const cur = currentLevel('wild');
-      // 分区按钮是静态结构：解锁数/所在关/展开组不变就不重建（自动巡猎每战都进来）
+      // 分区按钮是静态结构：解锁数/所在关/展开组不变就不重建
       const zsig = maxZone + '|' + cur + '|' + wildGroupOpen;
       if (panelSigs.combatZone !== zsig) {
         panelSigs.combatZone = zsig;
@@ -13360,12 +14094,6 @@
         : '扫荡选中的已通关' + (mode === 'tower' ? '层' : '关');
     }
 
-    const autoBtn = $('autoBtn');
-    autoBtn.textContent = needAscension()
-      ? '飞升一次后开启'
-      : (mode === 'wild' ? '自动巡猎：' : '连续挑战：') + (state.autoHunt ? '开' : '关');
-    autoBtn.disabled = !unlocked || needAscension();
-
     const battleBtn = $('combatBtn');
     battleBtn.disabled = !unlocked;
     if (!unlocked) {
@@ -13417,7 +14145,7 @@
     } else if (mode === 'endless') {
       $('combatHint').textContent = '无尽没有终点：每层词缀轮换、难度无限攀升，塔印产出最高。';
     } else {
-      $('combatHint').textContent = '区域越深，怪物属性越高；自动巡猎不弹窗，战后可点「回看战报」。';
+      $('combatHint').textContent = '区域越深，怪物属性越高；战后可点「回看战报」。';
     }
 
     // 战功/修炼列表是低频结构：每战都重建会让按钮悬停态闪烁，改签名门控
@@ -14011,19 +14739,20 @@
   }
 
   // 个体卡片行（renderPets 出战阵容 / renderPetBag 背包弹层共用）
-  const instRowOf = (inst) => {
+  const instRowOf = (inst, base) => {
     const def = petSpDef(inst.sp);
     const active = state.activePets.includes(inst.uid);
     const affTxt = inst.affixes.length
       ? inst.affixes.map((a) => petAffName(a.k) + ' +' + fmtPct(petAffShown(inst, a))).join(' · ')
       : '无词条';
+    const power = petSoloPower(inst, base == null ? petBasePower() : base);
     return (
       '<div class="pet-row inst' + (active ? ' active' : '') + '">' +
         '<span class="pet-art-mini" aria-hidden="true">' + petArtHtml(inst.sp) + '</span>' +
         '<div class="pet-main"><span class="pet-name r' + inst.r + '">' + def.name +
           ' <i class="pet-rbadge">' + RARITIES[inst.r].name + '</i>' +
           (active ? ' <em>出战中</em>' : '') + '</span>' +
-        '<p class="pet-desc">Lv.' + inst.lv + ' · ' + def.name + ' · ' + affTxt + '</p></div>' +
+        '<p class="pet-desc">战力 <b>' + fmt(power) + '</b> · Lv.' + inst.lv + ' · ' + affTxt + '</p></div>' +
         '<div class="pet-actions">' +
           '<button class="mini" data-inst="feed" data-uid="' + inst.uid + '"' +
             (inst.lv >= PET_LV_MAX_INST ? ' disabled' : '') + '>' +
@@ -14053,10 +14782,12 @@
     $('ticketCount').innerHTML = resIcon('petTickets') + '券 ' + fmt(state.petTickets);
     // —— 出战阵容（2026-11-02 用户指定：面板只显示出战的，其余收进背包点开才看）——
     const deployed = (state.activePets || []).map(petFindInst).filter(Boolean);
+    const powBase = petBasePower();
+    const lineupGain = Math.max(0, realPower() - powBase); // 阵容战力增益（乘区叠加，≠个体之和）
     let teamRows = '';
     for (let i = 0; i < state.petSlots; i++) {
       const inst = deployed[i];
-      teamRows += inst ? instRowOf(inst)
+      teamRows += inst ? instRowOf(inst, powBase)
         : '<div class="pet-row bag-empty"><span class="pet-icon" aria-hidden="true">＋</span>' +
           '<div class="pet-main"><span class="pet-name">空出战位</span>' +
           '<p class="pet-desc">打开下方背包，点「出战」上阵灵宠</p></div></div>';
@@ -14100,7 +14831,8 @@
         (coreLv ? ' · 内丹 ' + coreLv + ' 级' + (traits ? '（' + traits + '）' : '') : '');
       return (
         '<div class="pet-row">' +
-          '<span class="pet-icon" aria-hidden="true">' + (PET_ICONS[p.id] || p.icon) + '</span>' +
+          // 已解锁物种亮立绘（2026-11-03 用户反馈）：与背包个体行同款 44px 方卡，加载失败回退徽记
+          '<span class="pet-art-mini" aria-hidden="true">' + petArtHtml(p.id) + '</span>' +
           '<div class="pet-main"><span class="pet-name">' + p.name + '</span>' +
           '<p class="pet-desc">天赋 ' + bonusText + ' · 亲密度 ' + lv + ' / ' + PET_MAX_LV +
             ' · 信物 ' + tokenLv + ' / ' + TOKEN_MAX + ' · 内丹 ' + coreLv + ' / ' + CORE_MAX + '</p></div>' +
@@ -14128,10 +14860,11 @@
           '>扩容 +' + PET_BAG_STEP + '（' + fmt(petBagCost(state.petBagLv | 0)) + ' 灵石）</button>' : '') +
       '<button class="mini" data-pet="bagopen">打开</button>';
     $('petList').innerHTML =
-      '<div class="pet-section-title">出战阵容（' + deployed.length + ' / ' + state.petSlots + '）</div>' +
+      '<div class="pet-section-title">出战阵容（' + deployed.length + ' / ' + state.petSlots +
+        '）· 阵容战力 +' + fmt(lineupGain) + '</div>' +
       teamRows +
       '<div class="pet-section-title">物种图鉴 · 熟练度</div>' +
-      speciesRows;
+      '<div class="pet-dex-scroll">' + speciesRows + '</div>';
     armPetArtGuards($('petList'));
     if (petBagShown) renderPetBag();
   }
@@ -14149,16 +14882,9 @@
     petBagShown = false;
     $('petBagModal').classList.remove('show');
   }
-  // 个体战力估分（2026-11-03 背包排序用，仅展示口径）：品质为主、等级与词条值随
-  // 等级成长折算（petAffShown 同折算系数），可确定性比较
-  const petInstPower = (inst) => {
-    const lvMult = 1 + PET_AFF_LV_STEP * (Math.max(1, inst.lv | 0 || 1) - 1);
-    const aff = (inst.affixes || []).reduce((s, a) => s + (a.v || 0) * lvMult, 0);
-    return (inst.r + 1) * 10000 + (inst.lv | 0) * 100 + aff * 1000;
-  };
+  // 背包排序器：power（真实单宠战力）在 renderPetBag 内按当帧基线注入
   const PET_BAG_SORTERS = {
     quality: (a, b) => (b.r - a.r) || (b.lv - a.lv),
-    power: (a, b) => (petInstPower(b) - petInstPower(a)) || (b.r - a.r),
     species: (a, b) => ((PET_SP_INDEX[a.sp] ?? 99) - (PET_SP_INDEX[b.sp] ?? 99)) || (b.r - a.r) || (b.lv - a.lv),
     level: (a, b) => (b.lv - a.lv) || (b.r - a.r),
   };
@@ -14171,11 +14897,15 @@
         '<button class="bag-chip' + (petBagSort === k ? ' active' : '') + '" data-petsort="' + k + '">' + label + '</button>')
       .join('');
     const bagFull = state.petInsts.length >= petBagCap();
-    const sorted = state.petInsts.slice().sort(PET_BAG_SORTERS[petBagSort] || PET_BAG_SORTERS.quality);
+    const powBase = petBasePower();
+    const powers = new Map(state.petInsts.map((p) => [p.uid, petSoloPower(p, powBase)]));
+    const byPower = (a, b) => (powers.get(b.uid) - powers.get(a.uid)) || (b.r - a.r);
+    const sorters = Object.assign({}, PET_BAG_SORTERS, { power: byPower });
+    const sorted = state.petInsts.slice().sort(sorters[petBagSort] || sorters.quality);
     list.innerHTML = (bagFull
       ? '<p class="hint">背包已满——放生或合成腾位，也可回灵宠面板扩容。</p>'
       : (state.petInsts.length ? '' : '<p class="hint">背包空空如也——去「缚灵谷」探索捕捉，或合成升级品质。</p>')) +
-      sorted.map(instRowOf).join('');
+      sorted.map((p) => instRowOf(p, powBase)).join('');
     armPetArtGuards(list);
   }
 
@@ -14867,12 +15597,21 @@
           const left = p.doneAt - now;
           if (left > 0) {
             cls += ' fc-grow';
+            // 最后 1 分钟显示真实秒数并染浅绿（fc-near），只有 doneAt<=now 才「熟」——
+            // 原先 <60 秒就显示「熟」是显示撒谎：批量同播的庄稼整批进末分钟后，
+            // 一键收获按 doneAt 判「没有可收获」，用户侧表现为「熟了却收不了」（2026-11-04 用户报）
             label = left >= 3600000 ? Math.ceil(left / 3600000) + '时'
-              : left >= 60000 ? Math.ceil(left / 60000) + '分' : '熟';
-            if (left < 60000) cls += ' fc-ready';
+              : left >= 60000 ? Math.ceil(left / 60000) + '分'
+              : Math.max(1, Math.ceil(left / 1000)) + '秒';
+            if (left < 60000) cls += ' fc-near';
+            // 竖向生长进度条（2026-11-04 用户指定）：绿底自格底升起，按收获时间进度绘制
+            const sd = FARM_SEEDS.find((x) => x.id === p.id);
+            const pct = sd ? Math.max(0, Math.min(100, (1 - left / sd.ms) * 100)) : 0;
+            label = '<span class="farm-fill" style="height:' + pct.toFixed(1) + '%"></span>' +
+              '<span class="farm-cell-label">' + label + '</span>';
           } else {
             cls += ' fc-ready';
-            label = '熟';
+            label = '<span class="farm-fill" style="height:100%"></span><span class="farm-cell-label">熟</span>';
             attrs = ' data-harvest="' + cell + '" title="收获"';
           }
         } else {
@@ -15219,16 +15958,6 @@
     if (now - (window.__tabBeat || 0) > 2000) {
       window.__tabBeat = now;
       tabHeartbeat();
-    }
-
-    if (state.autoHunt && unlockedMode(uiMode) && !needAscension()) {
-      huntAcc += dt;
-      if (huntAcc >= HUNT_INTERVAL_S) {
-        huntAcc = 0;
-        doBattle(uiMode, { auto: true }); // 每场（含异步扣点）结束后由下个间隔重计
-      }
-    } else {
-      huntAcc = 0;
     }
 
     if (fishRod) fishTick();
@@ -16024,7 +16753,9 @@
       const aid = WORLD.guild && WORLD.guild.guild && WORLD.guild.guild.aid;
       const pendingSkill = aid && aid.from && aid.from.type === 'skill';
       if (pendingSkill) {
-        const gk = await claimGate('aid_skill', stoneGainEstimate(AID_SKILL.stones));
+        // 受领走独立领奖类型 aid_skill_recv（2026-11-04 修复）：与发起传功各 1 次/日，
+        // 原共用桶会被「先领两次他人传功」烧光，发起侧被 429 锁一天
+        const gk = await claimGate('aid_skill_recv', stoneGainEstimate(AID_SKILL.stones));
         if (!gk.ok) return;
       }
       const out = await worldFetch('/api/guild/aid/collect', { method: 'POST', body: '{}' });
@@ -16220,9 +16951,11 @@
     });
   }
 
-  // —— 面板折叠（2026-11-02 用户指定）：全部带标题的 panel 可折叠、默认折叠、
-  // 状态记在 localStorage（只记「展开」的面板，缺省即折叠），跨会话恢复上次状态 ——
-  const PANEL_FOLD_KEY = 'lingxia_panels';
+  // —— 面板折叠（2026-11-02 用户指定；2026-11-04 反转为默认展开）：全部带标题的
+  // panel 可折叠、默认展开、状态记在 localStorage（只记「折叠」的面板，缺省即展开），
+  // 跨会话恢复上次状态。键名升 v2：旧键记的是「展开」集合，语义反转后直接沿用会把
+  // 老玩家已展开的面板错折，弃用旧键人人从默认展开起步。
+  const PANEL_FOLD_KEY = 'lingxia_panels_folded_v2';
   // 永不折叠：页面抬头（灵匣纪元标题条）豁免——即使将来改形成 panel 也保持常开
   const PANEL_FOLD_EXEMPT = new Set(['灵匣纪元']);
   const panelFoldExempt = (p) =>
@@ -16237,14 +16970,14 @@
     document.querySelectorAll('section.panel[aria-label]').forEach((p) => {
       if (panelFoldExempt(p)) return;
       if (!p.querySelector(':scope > h2')) return;      // 无标题（如开箱台）不可折叠
-      if (!panelFoldMap()[p.getAttribute('aria-label')]) p.classList.add('folded');
+      if (panelFoldMap()[p.getAttribute('aria-label')]) p.classList.add('folded');
     });
   }
   function panelFoldToggle(p) {
     const folded = p.classList.toggle('folded');
     const map = panelFoldMap();
     const id = p.getAttribute('aria-label');
-    if (folded) delete map[id]; else map[id] = 1;
+    if (folded) map[id] = 1; else delete map[id];
     try { localStorage.setItem(PANEL_FOLD_KEY, JSON.stringify(map)); } catch (e) { /* 隐私模式忽略 */ }
   }
 
@@ -16386,6 +17119,8 @@
 
     $('breakBtn').addEventListener('click', breakthrough);
     $('ascendBtn').addEventListener('click', ascend);
+    $('ascendModalCancel').addEventListener('click', () => $('ascendModal').classList.remove('show'));
+    $('ascendModalGo').addEventListener('click', doAscend);
 
     // 境界清单开关（2026-11-03 与面板折叠分离）：点标题旁的 ▸/▾ 只展开/收起境界清单；
     // 标题本身走通用面板折叠（document 委托里按钮点击不会触发折叠，两动作互不重叠）
@@ -16449,20 +17184,6 @@
     });
 
     $('combatBtn').addEventListener('click', () => doBattle(uiMode));
-
-    $('autoBtn').addEventListener('click', () => {
-      if (!unlockedMode(uiMode)) return;
-      if (needAscension()) {
-        floatText('飞升一次后才能开启自动战斗', '#f87171');
-        return;
-      }
-      state.autoHunt = !state.autoHunt;
-      huntAcc = 0; // 首场也吃 1 分钟间隔：开启后由主循环节奏发起，连点开关不产生额外战斗
-      combatDirty = true;
-      save();
-      renderCombat();
-      floatText((uiMode === 'wild' ? '自动巡猎' : '连续挑战') + (state.autoHunt ? '开启' : '关闭'), '#d8b36a');
-    });
 
     $('zoneStrip').addEventListener('click', (e) => {
       const groupBtn = e.target.closest('.zone-group');
@@ -16728,6 +17449,8 @@
     $('gamble10Btn').addEventListener('click', () => doGamble(10));
     $('gambleModalClose').addEventListener('click', () => $('gambleModal').classList.remove('show'));
     $('gambleModalAgain').addEventListener('click', (e) => doGamble(Number(e.target.dataset.times) || 1));
+    // 钓鱼弹窗（2026-11-03 改版）：壳是静态的，只有关闭钮静态绑；玩法钮随 body 重建逐次绑
+    $('fishModalClose').addEventListener('click', () => $('fishModal').classList.remove('show'));
 
     // 秘境图事件弹层（2026-10-31）：仅按钮关闭（2026-11-01 起禁点遮罩关闭）
     $('mapEventBtn').addEventListener('click', () => $('mapEventModal').classList.remove('show'));

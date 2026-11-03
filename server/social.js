@@ -124,7 +124,7 @@ export function createSocialService(db) {
        ORDER BY u.power_score DESC LIMIT 50`),
     betterCount: db.prepare(
       "SELECT COUNT(*) AS n FROM users WHERE power_score > ? AND status = 'active'"),
-    byId: db.prepare('SELECT id, username, display_name, realm, power_score, guild_id, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at FROM users WHERE id = ?'),
+    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at FROM users WHERE id = ?'),
     // PvP（真人候选池不含假人；假人由 botCandidates 按战力就近补位）
     candidates: db.prepare(
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 0 AS bot
@@ -203,12 +203,10 @@ export function createSocialService(db) {
     earliestMember: db.prepare(
       'SELECT user_id FROM guild_members WHERE guild_id = ? ORDER BY joined_at LIMIT 1'),
     deleteGuild: db.prepare('DELETE FROM guilds WHERE id = ?'),
-    clearUserGuild: db.prepare('UPDATE users SET guild_id = NULL WHERE id = ?'),
     donateRow: db.prepare('SELECT amount FROM guild_donations WHERE guild_id = ? AND user_id = ? AND day = ?'),
     donateUpsert: db.prepare(
       `INSERT INTO guild_donations (guild_id, user_id, day, amount) VALUES (?, ?, ?, ?)
        ON CONFLICT(guild_id, user_id, day) DO UPDATE SET amount = amount + excluded.amount`),
-    setUsersGuild: db.prepare('UPDATE users SET guild_id = ? WHERE id = ?'),
     // 兑换码
     codeGet: db.prepare('SELECT * FROM redeem_codes WHERE code = ? AND deleted = 0'),
     codeUse: db.prepare('UPDATE redeem_codes SET used_count = used_count + 1 WHERE code = ?'),
@@ -730,7 +728,6 @@ export function createSocialService(db) {
       return sendJSON(res, 409, { error: '此盟名已被占用' });
     }
     stmts.joinGuild.run(guildId, ctx.user.id, 'leader', now);
-    stmts.setUsersGuild.run(guildId, ctx.user.id);
     return sendJSON(res, 200, { ok: true, guild: guildPayload(guildId, ctx.user.id) });
   }
 
@@ -745,7 +742,6 @@ export function createSocialService(db) {
       return sendJSON(res, 409, { error: '该仙盟已满员' });
     }
     stmts.joinGuild.run(guildId, ctx.user.id, 'member', Date.now());
-    stmts.setUsersGuild.run(guildId, ctx.user.id);
     return sendJSON(res, 200, { ok: true, guild: guildPayload(guildId, ctx.user.id) });
   }
 
@@ -753,7 +749,6 @@ export function createSocialService(db) {
     const row = stmts.myGuildRow.get(ctx.user.id);
     if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
     stmts.leaveGuild.run(row.id, ctx.user.id);
-    stmts.clearUserGuild.run(ctx.user.id);
     // 盟主退位：转给最早入盟者；无人则解散
     const g = stmts.guildGet.get(row.id);
     if (g && g.leader_id === ctx.user.id) {
@@ -777,7 +772,6 @@ export function createSocialService(db) {
     const target = stmts.myGuildRow.get(targetId);
     if (!target || target.id !== row.id) return sendJSON(res, 400, { error: '对方不在本盟' });
     stmts.leaveGuild.run(row.id, targetId);
-    stmts.clearUserGuild.run(targetId);
     return sendJSON(res, 200, { ok: true, guild: guildPayload(row.id, ctx.user.id) });
   }
 
