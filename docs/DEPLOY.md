@@ -30,6 +30,12 @@ git clone <你在阿里云 Codeup 的仓库地址> lingxia
 
 方式二：本地打包 zip → 宝塔「文件」上传到 `/www/wwwroot` → 解压为 `lingxia`。
 
+方式三：**混淆部署包**（对外发布推荐）——本地跑 `npm run build:deploy`（需先 `npm install` 装构建依赖 esbuild / javascript-obfuscator，仅构建机需要），产出 `dist/spirit-box-odyssey-deploy/` 目录与同名 `.zip`：前端 JS 混淆、CSS/HTML 压缩、`package.json` 已剥离 devDependencies（服务端依旧零依赖、解压后照常 `npm start`）。把 zip 上传到 `/www/wwwroot` 解压为 `lingxia` 即可。注意：
+
+- 包内不含 `data/`（首次启动自动生成）、`docker/`、`docs/`、`scripts/`；
+- 包内文件名不可改、不可加 hash——服务端 `server/index.js` 的 `PUBLIC_FILES` 白名单按文件名放行，改名即 404；
+- 每次构建会清空 `dist/` 里的历史产物，只保留最新一份（产物名不带版本号）。
+
 注意：
 - **不需要** `npm install`（服务端零第三方依赖）；
 - **不需要** 上传 `data/` 目录——数据库首次启动自动生成，且它本来就在 .gitignore 里。
@@ -200,6 +206,7 @@ ls data/                                # 期望出现 game.db（容器写入宿
 ## 日常运维
 
 - **更新代码**：宝塔终端 `cd /www/wwwroot/lingxia && git pull` → Node项目点「重启」。零构建、秒级生效；
+  用混淆部署包发布的，更新 = 本地重跑 `npm run build:deploy` → 上传新 zip 解压覆盖（`data/` 不在包内不会被碰）→ 重启项目。
 - **数据库备份**：宝塔 → 计划任务 → Shell 脚本（每日）：
 
   ```bash

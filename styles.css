@@ -4902,9 +4902,10 @@ body.theme-light .mini:disabled {
 .signlog-row b { color: var(--gold-2); font-weight: 600; }
 .signlog-row.signlog-debt, .signlog-row.signlog-debt b { color: var(--red); }
 
-/* 签到流水弹层列表（2026-11-03 用户指定）：面板原位改为弹层查看，滚动看全量 */
+/* 签到流水弹层列表（2026-11-03 弹层化；2026-11-04 改 15 行视口）：默认露出 15 行、
+   其余在容器内滚动（行高 ≈24px×15 ≈ 364px），窄屏以 60vh 兜底 */
 .signlog-list {
-  max-height: min(420px, 56vh);
+  max-height: min(364px, 60vh);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(216, 179, 106, 0.3) transparent;
@@ -5119,6 +5120,8 @@ body.theme-light .set-wild .set-name {
 body.theme-light .farm-chip.sel { color: var(--gold-dim); }
 .farm-chip.lack { border-color: var(--red); color: var(--red); }
 .farm-seedbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
+/* 洗练弹层里的种子条收窄上边距（原内联 style，CSP style-src 'self' 拦 innerHTML style 属性后改类） */
+.forge-reroll .farm-seedbar.reroll-bar { margin: 4px 0 0; }
 /* 购种/一键收获/一键播种收窄：不吃 .mini 的 flex:1，按内容定宽（2026-11-03 用户指定） */
 .farm-seedbar button[data-seedbuy],
 .farm-seedbar button[data-farmbatch] { flex: 0 0 auto; }
@@ -5202,6 +5205,12 @@ body.theme-light .farm-chip.sel { color: var(--gold-dim); }
 .pet-modal { z-index: 56; }
 /* 二次弹窗（弹层之上再开的弹层，如合成/熔铸结果、灵宠详情）：永远在最前面（2026-11-03 用户指定） */
 .modal.modal-sub { z-index: 60; }
+
+/* 通用确认弹层（2026-11-04 用户指定：全站替换原生 confirm）——层级压过一切子弹层，
+   文案行距与 .hint 对齐 */
+.modal.modal-confirm { z-index: 70; }
+.confirm-body { margin: 8px 0 4px; font-size: 13.5px; line-height: 1.6; color: var(--text); }
+.confirm-body p { margin: 6px 0; }
 .pet-hunt-card, .pet-fuse-card, .pet-detail-card {
   width: min(94vw, 430px);
   max-height: 88vh;

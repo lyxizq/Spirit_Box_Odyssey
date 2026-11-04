@@ -145,6 +145,19 @@ CREATE TABLE IF NOT EXISTS world_boss_hits (
   PRIMARY KEY (day, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_boss_hits_day ON world_boss_hits(day, damage DESC);
+-- 悬赏妖踪（2026-11-04 天下扩容）：每日三只精英妖，每人每只一日一场（胜负都占场），
+-- stones/dust 记实际赏格（服务端直发账本 + 授权流水时的实额，供复现展示）
+CREATE TABLE IF NOT EXISTS bounty_kills (
+  day        TEXT    NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slot       INTEGER NOT NULL,
+  win        INTEGER NOT NULL DEFAULT 0,
+  damage     REAL    NOT NULL DEFAULT 0,
+  stones     REAL    NOT NULL DEFAULT 0,
+  dust       REAL    NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, user_id, slot)
+);
 -- 兑换码：reward 为 JSON {stones, dust, tickets}；max_uses 0 = 不限次
 CREATE TABLE IF NOT EXISTS redeem_codes (
   code       TEXT    PRIMARY KEY,
@@ -234,6 +247,8 @@ const USER_COLUMNS = [
   ['stamina',      'INTEGER NOT NULL DEFAULT 300'],
   ['stamina_ts',   'INTEGER NOT NULL DEFAULT 0'],
   ['stamina_day',  "TEXT    NOT NULL DEFAULT ''"],
+  // 天梯日俸（2026-11-04 天下扩容）：按天梯段位每日领俸的当日领取标记（服务端直发账本）
+  ['ladder_pay_day', "TEXT  NOT NULL DEFAULT ''"],
 ];
 
 // 账本权威进度/计数列（2026-11-01 全量服务端校验迁移）：征战进度与每日计数以服务端

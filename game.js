@@ -100,8 +100,8 @@
 
   // 套装件随机掉率（2026-11-01 用户指定逐次下调，末档 2026-11-01 定值：
   // 野外随机 0.8%/保底 50 杀/无尽与复战扫荡 0.8%；离线巡猎估算与 UI 文案
-  // 同读本组常量，口径恒一致）。首通里程碑与满层/满野首通必掉是进度奖励骨架，不动
-  // 套装掉落（2026-11-01 二改，服务端 rollSpecialDrop 权威）：四模式统一「每胜 50 场
+  // 同读本组常量，口径恒一致）。首通里程碑必掉已废止——见下方「里程碑必掉已移除」。
+  // 保底（2026-11-01 二改，服务端 rollSpecialDrop 权威）：四模式统一「每胜 50 场
   // 保底 1 件（滚动计数，跨会话累计）」，每日每玩法保底最多 2 件（配额用尽计数挂起，
   // 次日自动补发）；随机 0.8%/场（含首通、复战、扫荡、离线巡猎）不受保底配额限制
   const WILD_SET_PITY = 50;      // 保底胜负计数：每 N 胜必掉 1 件（四模式同口径）
@@ -119,7 +119,7 @@
   // 里程碑必掉已移除（2026-11-01 用户指定）：套装件全部按概率掉落（服务端 rollSpecialDrop 权威）
 
   // 扫荡（2026-10-31）：已通关关卡 instant 重打；每日每玩法免费 10 次，用完可
-  // 灵石加购 20 万/次、每日至多加购 10 次。奖励口径：闯关/爬塔按「再战」5 折、
+  // 灵石加购 20 万/次、每日至多加购 30 次。奖励口径：闯关/爬塔按「再战」5 折、
   // 野外维持现状全额；一律无首通奖励、不推进关卡进度（野外击杀计数照常）。
   const SWEEP_DAILY_FREE = 10;
   const SWEEP_BUY_MAX = 30;
@@ -280,12 +280,12 @@
     { key: 'armor', name: '衣袍', icon: '衣' },
     { key: 'helm', name: '冠冕', icon: '冠' },
     { key: 'boots', name: '云靴', icon: '靴' },
-    { key: 'artifact', name: '法宝', icon: '宝' },
-    { key: 'talisman', name: '灵符', icon: '符' },
+    { key: 'legs', name: '护腿', icon: '腿' },
+    { key: 'wrist', name: '护腕', icon: '腕' },
     { key: 'bracelet', name: '手镯', icon: '镯' },
     { key: 'ring', name: '戒指', icon: '戒' },
-    { key: 'wrist', name: '护腕', icon: '腕' },
-    { key: 'legs', name: '护腿', icon: '腿' },
+    { key: 'artifact', name: '法宝', icon: '宝' },
+    { key: 'talisman', name: '灵符', icon: '符' },
     { key: 'band', name: '发箍', icon: '箍' },
     { key: 'wings', name: '翅膀', icon: '翼' },
   ];
@@ -521,7 +521,8 @@
   // 20% 空手 / 21% 翻车倒扣 1~3 倍。倒扣直接减余额：灵石可负债（负到赚回来为止，
   // 不吃增益、不动 totalStones），碎屑倒扣以 0 为底；果报双掷取优/劣（与赌石同口径）
   const SIGN_GAMBLE = { pBig: 49, pKeep: 10, pZero: 20, bigMin: 2, bigMax: 5, bustMin: 1, bustMax: 3 };
-  const SIGN_LOG_MAX = 30;   // 签到流水保留条数（新条目在前）
+  const SIGN_LOG_MAX = 31;   // 签到流水条数安全帽（新条目在前；真实保留窗口按下方 SIGN_LOG_DAYS 裁）
+  const SIGN_LOG_DAYS = 30;  // 流水只留近 30 天（2026-11-04 用户指定，按日历日裁剪）
   const SIGN_LOG_SHOW = 7;   // 战绩面板展示条数
 
   // 部位化后「最高强化」= 六槽强化等级的最大值
@@ -559,7 +560,7 @@
     { id: 'open10w', name: '开匣传奇', desc: '累计开箱 100000 次', cur: (s) => s.opens, target: 100000, stones: 200000, title: '开匣传奇' },
     { id: 'dust1k', name: '碎屑成山', desc: '累计获得 1000 碎屑', cur: (s) => s.dustTotal || 0, target: 1000, stones: 20000 },
     { id: 'petMax', name: '心意相通', desc: '任一灵宠亲密度达到 10', cur: (s) => Math.max(0, ...Object.values(s.pets || {})), target: 10, stones: 30000 },
-    { id: 'petAll', name: '四灵齐全', desc: '招募全部 4 只灵宠', cur: (s) => Object.keys(s.pets || {}).length, target: 4, stones: 50000, title: '驭灵师' },
+    { id: 'petAll', name: '四灵齐全', desc: '收服任意 4 种灵宠', cur: (s) => Object.keys(s.pets || {}).length, target: 4, stones: 50000, title: '驭灵师' },
     { id: 'tokenMax', name: '信物圆满', desc: '任一灵宠信物达到 10 级', cur: (s) => Math.max(0, ...Object.values(s.petTokens || {})), target: 10, stones: 40000 },
     { id: 'gongfaMax', name: '功法通玄', desc: '任一功法达到 5 级', cur: (s) => Math.max(s.gongfa.atk, s.gongfa.hp, s.gongfa.hui), target: 5, stones: 50000, title: '功法宗师' },
     { id: 'immortal5', name: '仙界大能', desc: '仙位达到 5', cur: (s) => s.immortal, target: 5, stones: 500000, title: '仙界大能' },
@@ -838,7 +839,7 @@
     { q: '心魔劫的触发与什么直接相关？', a: ['修为暴涨', '战力虚高', '灵石负债', '久不签到'], idx: 0 },
     { q: '「陈列室」陈列的是什么？', a: ['套装装备', '灵宠', '丹药', '功法'], idx: 0 },
     { q: '秘境图每次进入消耗什么？', a: ['行动力', '灵石', '碎屑', '体力'], idx: 0 },
-    { q: '灵田（灵圃）收获的两种资材是？', a: ['矿石与灵药', '灵石与碎屑', '灵石与修为', '碎屑与器魂'], idx: 0 },
+    { q: '灵圃采集收获的两种资材是？', a: ['矿石与灵药', '灵石与碎屑', '灵石与修为', '碎屑与器魂'], idx: 0 },
     { q: '道侣好感度提升的途径不包括？', a: ['赠礼', '同行历练', '闲聊', '切磋击败'], idx: 3 },
     { q: '兑换码在何处输入？', a: ['天下 · 兑换', '日常 · 签到', '工坊', '洞府'], idx: 0 },
     { q: '「赌狗签到」最低可能的结果是？', a: ['空手', '倒扣 1~3 倍', '正常奖励', '双倍奖励'], idx: 1 },
@@ -870,6 +871,29 @@
     { id: 'dr10', name: '金身', desc: '受伤 -10%', apply: (b) => { b.dr += 0.10; } },
     { id: 'revive', name: '不灭', desc: '战败后复活再战一次', special: 'revive' },
   ];
+
+  // 探幽已拿神物的属性合计（2026-11-04 用户指定）：面板直显当前 run 的实际加成，
+  // 折算口径与战斗一致（rogueFight 逐条 apply）——狂攻/铁体/磐石连乘，汲取/锐目/破军/金身累加
+  function rogueBuffSummary(buffs) {
+    const agg = { atk: 1, hp: 1, def: 1, lifesteal: 0, crit: 0, pierce: 0, dr: 0 };
+    let revive = false;
+    for (const id of buffs) {
+      const b = ROGUE_BUFFS.find((x) => x.id === id);
+      if (!b) continue;
+      if (b.special === 'revive') { revive = true; continue; }
+      if (b.apply) b.apply(agg);
+    }
+    const parts = [];
+    if (agg.atk !== 1) parts.push('攻 ×' + agg.atk.toFixed(2));
+    if (agg.hp !== 1) parts.push('血 ×' + agg.hp.toFixed(2));
+    if (agg.def !== 1) parts.push('防 ×' + agg.def.toFixed(2));
+    if (agg.lifesteal > 0) parts.push('吸血 +' + Math.round(agg.lifesteal * 100) + '%');
+    if (agg.crit > 0) parts.push('暴击 +' + Math.round(agg.crit * 100) + '%');
+    if (agg.pierce > 0) parts.push('破甲 +' + Math.round(agg.pierce * 100) + '%');
+    if (agg.dr > 0) parts.push('受伤 -' + Math.round(agg.dr * 100) + '%');
+    if (revive) parts.push('不灭 ✓');
+    return parts.join(' · ');
+  }
 
   const TRIALS = [
     { id: 'swift', name: '迅捷试炼', desc: '5 回合内击败野外守护兽', enemy: 'wild' },
@@ -1357,9 +1381,11 @@
 
   // 钓鱼（2026-11-03 弹窗改版用户指定）：五钓场 × 各 10 种鱼 = 50 种；鱼竿逐级升级，
   // 竿等即钓场解封线。每日 5 枚鱼饵，抛竿后时机条左右游走，停得越正鱼获越好。
-  // FISH_ALL 全局下标 = bestT（0..49）；旧五鱼保持 0..4 原位（老档 bestT 迁移兼容），
+  // FISH_ALL 全局下标 = bestT（0..53）；旧五鱼保持 0..4 原位（老档 bestT 迁移兼容）。
   // 旧 FISH_TABLE 五鱼概率改写入竹涧十鱼表，灵龙鱼化形赠宝口径不变（60% 物品 / 40% 3 万灵石）。
-  // 碎屑只留在竹涧/镜湖（价值低防碎屑包络），瀑潭起纯灵石；各场十鱼 p 和恒为 100。
+  // 碎屑只留在竹涧/镜湖（价值低防碎屑包络），瀑潭起纯灵石；各场鱼表 p 和恒为 100。
+  // 加鱼铁律：新鱼只准追加到对应钓场鱼表**末尾**——中途插入会整体后移后续鱼的全局
+  // 下标（gi=bestT 口径），老档 bestT「最旺」显示与旧档图鉴回填全部漂移（2026-11-04 化形龙鱼扩容即按此约束追加）。
   const FISH_BAIT_DAILY = 5;
   const FISH_BAIT_COST = 5000;
   const FISH_ROD_MS = 12000;           // 抛竿后 12 秒不收竿跑鱼
@@ -1387,8 +1413,8 @@
     {
       name: '镜湖', rod: 4, sub: '平如镜面的高山湖，映得出人心。',
       fish: [
-        { id: 'yunwen',   p: 26, name: '云纹鲫', stones: 12000, text: '鳞纹如行云。' },
-        { id: 'yueying',  p: 22, name: '月影鲦', dust: 150, text: '月下影动，倏忽不见。' },
+        { id: 'yunwen',   p: 23, name: '云纹鲫', stones: 12000, text: '鳞纹如行云。' },
+        { id: 'yueying',  p: 18, name: '月影鲦', dust: 150, text: '月下影动，倏忽不见。' },
         { id: 'bibo',     p: 16, name: '碧波鲈', stones: 30000, text: '湖水碧时它最肥。' },
         { id: 'jingxin',  p: 12, name: '镜心鲤', dust: 300, text: '心平如镜者方能钓得。' },
         { id: 'liuli',    p: 9,  name: '琉璃鳍', stones: 80000, text: '鳍膜透光如琉璃。' },
@@ -1397,13 +1423,14 @@
         { id: 'shuangyin', p: 2.5, name: '双生银鱼', stones: 450000, text: '一竿双获，成对不离。' },
         { id: 'longzi',   p: 1.5, name: '镜湖龙子', stones: 800000, text: '龙子游湖，鳞光十里。' },
         { id: 'longli',   p: 1,  name: '湖心龙鲤', big: true, stones: 1200000, text: '湖心之鲤，跃可化龙。' },
+        { id: 'yuehuali', p: 7,  name: '月华龙鲤', big: true, jackpot: 600000, itemDrop: true, text: '月华入水，鲤背生角。' },
       ],
     },
     {
       name: '瀑潭', rod: 7, sub: '千尺飞瀑下的深潭，雷气不散。',
       fish: [
-        { id: 'chiwei',  p: 28, name: '赤尾瀑鱼', stones: 40000, text: '逆瀑而上的赤尾勇者。' },
-        { id: 'tanying', p: 22, name: '潭影鲶', stones: 90000, text: '栖于潭影，钓者不见。' },
+        { id: 'chiwei',  p: 24, name: '赤尾瀑鱼', stones: 40000, text: '逆瀑而上的赤尾勇者。' },
+        { id: 'tanying', p: 19, name: '潭影鲶', stones: 90000, text: '栖于潭影，钓者不见。' },
         { id: 'hongpu',  p: 16, name: '虹瀑鲑', stones: 180000, text: '跃瀑时身披虹光。' },
         { id: 'lanqi',   p: 11, name: '岚气鳗', stones: 320000, text: '形如岚雾，握之即散。' },
         { id: 'leiwen',  p: 8,  name: '雷纹鲷', stones: 550000, text: '鳞带雷纹，雨天最活跃。' },
@@ -1412,13 +1439,14 @@
         { id: 'feili',   p: 2.5, name: '千尺飞鲤', stones: 2000000, text: '一跃千尺，鲤门传人。' },
         { id: 'tanjiao', p: 1.5, name: '潭中蛟', stones: 3200000, text: '蛟困浅潭，志在沧海。' },
         { id: 'leiyuan', p: 1,  name: '雷渊龙鲶', big: true, stones: 5000000, text: '雷渊之主，须髯挂电。' },
+        { id: 'leilinman', p: 7, name: '雷鳞龙鳗', big: true, jackpot: 2500000, itemDrop: true, text: '雷火淬鳞，鳗身将化。' },
       ],
     },
     {
       name: '沧溟', rod: 10, sub: '东海外海，浪高千尺，渔者以身试渊。',
       fish: [
-        { id: 'canglan', p: 28, name: '沧澜鲹', stones: 120000, text: '随潮而行，群游如澜。' },
-        { id: 'mingbo',  p: 21, name: '溟波蝶', stones: 220000, text: '翼展如蝶，掠波而飞。' },
+        { id: 'canglan', p: 24, name: '沧澜鲹', stones: 120000, text: '随潮而行，群游如澜。' },
+        { id: 'mingbo',  p: 18, name: '溟波蝶', stones: 220000, text: '翼展如蝶，掠波而飞。' },
         { id: 'shanhu',  p: 16, name: '珊瑚龙鲤', stones: 400000, text: '栖于珊瑚深处。' },
         { id: 'shenhai', p: 12, name: '深海鳐', stones: 700000, text: '深海之翼，静滑无声。' },
         { id: 'youlan',  p: 8,  name: '幽蓝枪鲔', stones: 1100000, text: '幽蓝之躯，剑破沧溟。' },
@@ -1427,13 +1455,14 @@
         { id: 'dengyu',  p: 2.5, name: '溟渊灯鱼', stones: 3500000, text: '头顶幽灯，照彻深渊。' },
         { id: 'jingyi',  p: 1.5, name: '沧溟鲸裔', stones: 5000000, text: '鲸裔游过，浪分两道。' },
         { id: 'haihuang', p: 1, name: '海皇龙滕', big: true, stones: 8000000, text: '沧溟之皇，鳞甲如城。' },
+        { id: 'cangtaoyao', p: 7, name: '沧涛龙鳐', big: true, jackpot: 4000000, itemDrop: true, text: '涛行千里，翼下藏龙。' },
       ],
     },
     {
       name: '星河', rod: 13, sub: '夜半倒悬于天顶的银色大河，凡竿不可及。',
       fish: [
-        { id: 'xingxie', p: 28, name: '星屑鱼', stones: 300000, text: '食星屑而生，夜发光尘。' },
-        { id: 'yinhe',   p: 21, name: '银河梭', stones: 550000, text: '梭行银河，一闪即逝。' },
+        { id: 'xingxie', p: 24, name: '星屑鱼', stones: 300000, text: '食星屑而生，夜发光尘。' },
+        { id: 'yinhe',   p: 18, name: '银河梭', stones: 550000, text: '梭行银河，一闪即逝。' },
         { id: 'yuelei',  p: 16, name: '月泪鲛', stones: 950000, text: '月泪凝鳞，泣则成珠。' },
         { id: 'chensha', p: 12, name: '辰砂鲤', stones: 1500000, text: '鳞染辰砂之色，赤如丹火。' },
         { id: 'liuguang', p: 8, name: '流光鲸', stones: 2400000, text: '背驮流光，游过星桥。' },
@@ -1442,10 +1471,11 @@
         { id: 'zhinv',   p: 2.5, name: '织女泪', stones: 7000000, text: '传说织女泣时化生。' },
         { id: 'longkun', p: 1.5, name: '银汉龙鲲', stones: 10000000, text: '鲲游银汉，北冥同款。' },
         { id: 'tianhe',  p: 1,  name: '天河锦鳞', big: true, stones: 16000000, text: '天河尽头的锦鳞，见者证道。' },
+        { id: 'xinghanqiu', p: 7, name: '星汉龙虬', big: true, jackpot: 8000000, itemDrop: true, text: '虬游星汉，一去化龙。' },
       ],
     },
   ];
-  // 全局鱼表（拼场序），gi = 全局下标（bestT 口径）；图标按鱼 id 查 FISH_ICONS（50 种逐鱼设计）
+  // 全局鱼表（拼场序），gi = 全局下标（bestT 口径）；图标按鱼 id 查 FISH_ICONS（54 种逐鱼设计）
   const FISH_ALL = [];
   FISH_SPOTS.forEach((sp, si) => {
     sp.fish.forEach((f, fi) => {
@@ -1457,6 +1487,11 @@
   const fishSpotOf = () => FISH_SPOTS[Math.min(FISH_SPOTS.length, Math.max(1, state.fishing.spot | 0)) - 1];
   // 各鱼小图标（2026-11-04 用户指定逐鱼设计）：id 与 FISH_ALL 同源，按物种形态绘形（鲶扁头带须/
   // 鲟尖吻背骨板/鳐菱翼/章鱼/海马/鲍贝/虾龟螺/鲸鲲龙蛇形…），.item-ic 前置位，16×16 viewBox
+  // 钓场集齐皇冠（2026-11-04 用户指定）：该钓场渔获图鉴全亮时，页签名前缀金冠
+  const FISH_CROWN_IC = '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M2 12.6 2.9 5.2 6.1 8 8 4 9.9 8 13.1 5.2 14 12.6Z" fill="#f2c14e" stroke="#8a6a1c" stroke-width=".9" stroke-linejoin="round"/>' +
+    '<path d="M4.8 10.6h6.4" stroke="#fff" stroke-width=".8" opacity=".55" stroke-linecap="round"/></svg>';
+
   const FISH_ICONS = {
   // —— 竹涧（溪涧淡水系）——
   xiaobai: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8c2-3 4.5-4.2 7-3.2 2 .8 3.4 1.9 4.6 3.2-1.2 1.3-2.6 2.4-4.6 3.2-2.5 1-5-.2-7-3.2Z" fill="#9dd3f0" stroke="#3d7ea6" stroke-width=".8"/><circle cx="11.4" cy="7" r=".8" fill="#1d3a4d"/><path d="M2.5 8 1 5.8v4.4Z" fill="#7cc0e8"/></svg>',
@@ -1512,6 +1547,11 @@
   yuntie: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M14.4 7.6c-1.2-1.4-2.8-2.3-4.7-2.5-2-.3-3.9.2-5.7 1.5L1.6 8l2.4 1.4c1.8 1.3 3.7 1.8 5.7 1.5 1.9-.2 3.5-1.1 4.7-2.5Z" fill="#78716c" stroke="#3f3b38" stroke-width=".8"/><path d="M2.2 7 1 4.6l2.6 1.6M1.6 8l-1.2 2.6 2.8-1.4" fill="#5c5651" stroke="#3f3b38" stroke-width=".6"/><circle cx="6.6" cy="7.6" r=".9" fill="none" stroke="#a29a94" stroke-width=".6"/><circle cx="9.4" cy="8.6" r=".7" fill="none" stroke="#a29a94" stroke-width=".6"/><path d="M8.4 5l.5-1.7M10.3 5.3l.8-1.6" stroke="#3f3b38" stroke-width=".8" stroke-linecap="round"/><circle cx="11.3" cy="7.3" r=".7" fill="#2a2622"/></svg>',
   zhinv: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8c2.4 3 3.8 5.2 3.8 7.2a3.8 3.8 0 1 1-7.6 0c0-2 1.4-4.2 3.8-7.2Z" fill="#bae6fd" stroke="#3b82a6" stroke-width=".8"/><path d="M6.6 9.2c0 1.2.8 2.2 1.9 2.5" stroke="#e0f2fe" stroke-width=".9" fill="none" stroke-linecap="round"/><circle cx="8" cy="8.6" r=".6" fill="#1d5a78"/></svg>',
   longkun: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M.8 8.6c2-3.4 4.8-5 8-4.4 2.3.4 4.3 1.8 6 4.4-1.7 2.6-3.7 4-6 4.4-3.2.6-6-1-8-4.4Z" fill="#8b5cf6" stroke="#4c1d95" stroke-width=".9"/><path d="M1.6 8.6.4 6.6l.4 4Z" fill="#7443e0"/><path d="M6.2 4.4 7 1.6l1.6 2.4M9.8 5l1.2-2.3 1.2 2.5" fill="#a78bfa" stroke="#4c1d95" stroke-width=".7" stroke-linejoin="round"/><path d="M4.4 8.2c2.2 1.2 4.6 1.3 6.8.3" stroke="#ddd6fe" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".85"/><circle cx="11.9" cy="7" r=".8" fill="#2a0f5e"/></svg>',
+  // —— 化形龙鱼（2026-11-04 用户指定：五场各一条 7% 可化形赠宝鱼，金纹示意化形）——
+  yuehuali: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 8c1.7-2.8 4.2-4 6.6-3 1.8.7 3.1 1.7 4.2 3-1.1 1.3-2.4 2.3-4.2 3-2.4 1-4.9-.2-6.6-3Z" fill="#dfe7f5" stroke="#6b7ea6" stroke-width=".8"/><path d="M2.6 8 1 6v4Z" fill="#bcc9e2"/><path d="M12.9 5.2 13.6 3l-2.3 1Z" fill="#f2c14e" stroke="#8a6a1c" stroke-width=".6"/><path d="M14.3 8.7c.8.4 1.3 1 1.5 1.8M13.9 6.4c.8-.3 1.4-.8 1.7-1.5" stroke="#8a6a1c" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M6 6.2a1.8 1.8 0 0 1 2.2-.1M5.6 9.4a1.8 1.8 0 0 0 2.4.2" stroke="#fff" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><path d="M7.4 6.6c.9 1 .9 2 0 3" stroke="#f2c14e" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.5" cy="7.1" r=".8" fill="#39496e"/></svg>',
+  leilinman: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 9.4c1.3-2.6 2.8-3.2 4.5-1.9s3.3 1 4.6-1.5c.6-1.2 1.5-1.9 2.8-2.2" fill="none" stroke="#7c83f0" stroke-width="2.4" stroke-linecap="round"/><path d="M13.7 3.8c.5-.3 1-.4 1.6-.4l-.9 1.8Z" fill="#ffe873" stroke="#92600c" stroke-width=".5"/><circle cx="13.3" cy="4.6" r=".5" fill="#23276e"/><path d="M5.6 6.4c.7.9.7 1.8 0 2.7M8.4 5.2c.6.8.6 1.7 0 2.5" stroke="#ffe873" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".95"/></svg>',
+  cangtaoyao: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6c2.6 1.6 4.4 3.4 5.2 5.4-1.6.8-3.3 1.2-5.2 1.2S4.4 8.8 2.8 8C3.6 6 5.4 4.2 8 2.6Z" fill="#4ec9b0" stroke="#17685a" stroke-width=".8"/><path d="M8 9.2v2.2c0 .9.4 1.6 1.2 2.1" fill="none" stroke="#17685a" stroke-width=".9" stroke-linecap="round"/><path d="M5.6 5c-.5 1.1-.5 2.3 0 3.4M10.4 5c.5 1.1.5 2.3 0 3.4" stroke="#a7f3df" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".85"/><path d="M8 3.4v4.8" stroke="#f2c14e" stroke-width=".7" stroke-linecap="round" opacity=".95"/><circle cx="6.8" cy="6.4" r=".5" fill="#0d3a30"/><circle cx="9.2" cy="6.4" r=".5" fill="#0d3a30"/></svg>',
+  xinghanqiu: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M.8 8.6c2-3.4 4.8-5 8-4.4 2.3.4 4.3 1.8 6 4.4-1.7 2.6-3.7 4-6 4.4-3.2.6-6-1-8-4.4Z" fill="#b48ef2" stroke="#4c1d95" stroke-width=".9"/><path d="M1.6 8.6.4 6.6l.4 4Z" fill="#9a6ae8"/><path d="M6.2 4.4 7 1.6l1.6 2.4M9.8 5l1.2-2.3 1.2 2.5" fill="#f2c14e" stroke="#8a6a1c" stroke-width=".7" stroke-linejoin="round"/><path d="M4.4 8.2c2.2 1.2 4.6 1.3 6.8.3" stroke="#f3e8ff" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.9" cy="7" r=".8" fill="#2a0f5e"/><path d="M4.2 10.2l.5-.5.5.5-.5.5Z" fill="#fff" opacity=".85"/></svg>',
   tianhe: '<svg class="item-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8c1.6-2.9 4-4.2 6.5-3.4 1.9.6 3.4 1.7 4.5 3.4-1.1 1.7-2.6 2.8-4.5 3.4C6 12.2 3.6 10.9 2 8Z" fill="#f59e0b" stroke="#92400e" stroke-width=".8"/><path d="M2 8 .4 6.2l.3 3.6Z" fill="#d97706"/><path d="M5.6 4.9C4.9 3.4 4.9 2 5.6.8M8.3 4.5c0-1.3.5-2.4 1.4-3.2M5.4 11c-.8 1.4-.9 2.7-.3 4M8.1 11.4c0 1.3-.4 2.4-1.2 3.3" stroke="#fbbf24" stroke-width="1" fill="none" stroke-linecap="round" opacity=".85"/><path d="M6.2 6.4a1.9 1.9 0 0 1 2.3-.1M5.8 9.6a1.9 1.9 0 0 0 2.5.2" stroke="#fff2cc" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="11.6" cy="7.2" r=".8" fill="#6b3a05"/></svg>',
 };
   const fishIcon = (f) => (f && FISH_ICONS[f.id]) || '';
@@ -1604,7 +1644,7 @@
     Math.round(GATHER_NODES[key].base * (1 + 0.1 * state.gather.nodes[key].lv));
   const HERB_ELIXIR_NEED = 10;   // 灵药合丹消耗
   const ORE_SOUL_NEED = 20;      // 矿石锻魂消耗
-  const MELT_NEED = 5;           // 装备熔铸材料件数（2026-10-31 起仅天→仙、仙→仙升星两档）
+  const MELT_NEED = 5;           // 装备熔铸材料件数（天→仙 / 仙→仙升星；地→天档 ×10 走 meltNeed()）
   // 熔铸成功率：每次在 30%~40% 均匀浮动（目标 35% 上下 5%，2026-11-03 用户指定）；失败材料与手续费不退
   const MELT_RATE_MIN = 0.30;
   const MELT_RATE_SPAN = 0.10;
@@ -2324,7 +2364,7 @@
         '<p><b>灵石淬炼</b>：灵石拿去淬炼开箱速度与收益，滚雪球越滚越快。</p>' +
         '<p><b>修为突破</b>：修为攒够就突破境界，境界越高，解锁的玩法越多——解锁时会弹窗告诉你。</p>' +
         '<p><b>秘境征战</b>：征战页打闯关 / 爬塔 / 野外，专属套装是战力的主力来源。</p>' +
-        '<p><b>进度无忧</b>：进度自动保存在本机并同步云端，离线也有挂机收益。</p>' +
+        '<p><b>进度无忧</b>：进度自动同步云端，换设备登录同一道号即可恢复，离线也有挂机收益。</p>' +
         '<p class="guide-tip clickable" id="guideTipJump">☝ 修炼页底部的「修行指南」面板随时可以回看全部玩法；设置页也可回看本教程（点击本行直达）。</p>',
     });
   }
@@ -2439,19 +2479,22 @@
       state.volume = Math.max(0, Math.min(1, Number(state.volume)));
       if (typeof state.lastSignIn !== 'string') state.lastSignIn = '';
       if (!['', 'normal', 'gamble'].includes(state.lastSignMode)) state.lastSignMode = '';
-      // 签到流水：清非法条目、封顶保最新；x 为赌狗带符号倍率（普通签到无此字段）
+      // 签到流水：清非法条目、只留近 30 天、条数安全帽保最新；x 为赌狗带符号倍率（普通签到无此字段）。
+      // d 存全日期 YYYY-MM-DD（旧档 MM-DD 短格式兼容放行，展示层裁月日）
       if (!Array.isArray(state.signLog)) state.signLog = [];
       state.signLog = state.signLog
         .filter((e) => e && typeof e === 'object' && !Array.isArray(e) &&
           typeof e.d === 'string' && (e.m === 'n' || e.m === 'g'))
         .slice(0, SIGN_LOG_MAX)
         .map((e) => ({
-          d: e.d.slice(0, 5),
+          d: e.d.slice(0, 10),
           m: e.m,
           x: typeof e.x === 'number' && isFinite(e.x) ? Math.max(-9.9, Math.min(9.9, e.x)) : undefined,
           s: fixInt(e.s, -1e12, 1e15),
           u: fixInt(e.u, 0, 1e12),
-        }));
+        }))
+        .filter((e) => (e.d.length === 10 ? e.d : todayStr().slice(0, 4) + '-' + e.d) >=
+          dateStrOf(Date.now() - SIGN_LOG_DAYS * 86400000));;
       if (!state.signStats || typeof state.signStats !== 'object' || Array.isArray(state.signStats)) {
         state.signStats = { plays: 0, big: 0, keep: 0, zero: 0, bust: 0, bestMult: 0, worstCut: 0 };
       }
@@ -2725,8 +2768,12 @@
       }
       state.rogue.best = fixInt(state.rogue.best, 0, ROGUE_FLOORS);
       if (state.rogue.run && typeof state.rogue.run === 'object') {
+        // 同款神物可叠拿且逐条生效（rogueFight 逐条 apply），校验只剔未知 id 与超量，
+        // 不得去重——原 new Set 写法会把刷新前的叠拿层数静默削平（2026-11-04 修复）
         const buffs = Array.isArray(state.rogue.run.buffs)
-          ? Array.from(new Set(state.rogue.run.buffs.filter((id) => ROGUE_BUFFS.some((b) => b.id === id))))
+          ? state.rogue.run.buffs
+            .filter((id) => ROGUE_BUFFS.some((b) => b.id === id))
+            .slice(0, ROGUE_FLOORS)
           : [];
         state.rogue.run = {
           floor: fixInt(state.rogue.run.floor, 1, ROGUE_FLOORS),
@@ -3267,11 +3314,12 @@
   // 各类灵石奖励沦为零头；早期（战力千级）系数近乎不变，后期大幅收敛
   const powerMult = () => 1 + Math.sqrt(Math.max(0, totalPower())) / 20;
 
-  const todayStr = () => {
-    const d = new Date();
+  const dateStrOf = (ms) => {
+    const d = new Date(ms);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
       String(d.getDate()).padStart(2, '0');
   };
+  const todayStr = () => dateStrOf(Date.now());
 
   function ensureDaily() {
     const today = todayStr();
@@ -3637,7 +3685,7 @@
     return state.stageCleared >= 5;
   }
 
-  // 需飞升过的通用门槛：自动战斗类功能与连开十次等便利功能，轮回≥1 才解锁
+  // 需飞升过的通用门槛：连开十次等便利功能，轮回≥1 才解锁（自动战斗已移除）
   // （仅 QoL 功能门槛，不锁战斗进度——进度墙由怪的难度自然形成）
   const needAscension = () => (state.ascensions | 0) < 1;
 
@@ -3645,7 +3693,7 @@
 
   // 各玩法解锁境界（下标与 REALMS 对齐）；未列出的玩法开局即开
   const FEATURE_GATES = {
-    gongfa: 2, rogue: 2, wander: 2, melt: 2,
+    gongfa: 2, rogue: 2, wander: 2, melt: 2, shop: 2, // shop = 云来坊市（server/shop.js REALM_GATE=2 同源）
     fish: 3,
     steward: 8, // 道童：渡劫后开启
     market: 3, bossrush: 3, craft: 3,
@@ -3681,6 +3729,9 @@
     { id: 'wander', name: '云游奇遇', where: '闲趣', cond: '境界「金丹」',
       check: () => featureOpen('wander'),
       desc: '行走江湖偶遇事件，善恶抉择改变果报；果报微调赌石与洗练的运气。' },
+    { id: 'shop', name: '云来坊市', where: '闲趣', cond: '境界「金丹」',
+      check: () => featureOpen('shop'),
+      desc: '丹房 / 器坊 / 符箓铺三栋建筑：牧场与灵圃收获自动入仓，成品直售兜底或接订单（1.8 倍溢价 + 商誉），商誉解锁新建筑。' },
     { id: 'steward', name: '道童', where: '修炼', cond: '境界「渡劫」',
       check: () => featureOpen('steward'),
       desc: '挂机策略中枢：自动穿戴、自动分解与黑市代购，睡觉也能变强。' },
@@ -3692,7 +3743,7 @@
       desc: '每日三件限购商品 + 20 万灵石开璞玉（单日 500 次），是灵石的重要消化口。' },
     { id: 'fish', name: '垂钓', where: '闲趣', cond: '境界「元婴」',
       check: () => featureOpen('fish'),
-      desc: '每日 5 枚鱼饵抛竿起钓，时机条停得越正鱼获越肥，灵龙鱼可化形赠宝。' },
+      desc: '五钓场 54 种鱼（每场一条 7% 化形龙鱼），竿等升级逐场解封；每日 5 枚鱼饵（可加购），时机条停得越正鱼获越肥，钓到点亮渔获图鉴。' },
     { id: 'bossrush', name: '首领连战', where: '征战 · 试炼', cond: '境界「元婴」',
       check: () => featureOpen('bossrush'),
       desc: '连打闯关首领，按总回合评级发奖，每日一次。' },
@@ -3701,7 +3752,7 @@
       desc: '分解专属件积攒器魂，定向打造指定部位的天品装备。' },
     { id: 'melt', name: '装备熔铸', where: '征战 · 装备', cond: '境界「金丹」',
       check: () => featureOpen('melt'),
-      desc: '五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率 35%±5%，失败材料与手续费不退，部位随机。' },
+      desc: '十件地品熔天品、五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率统一 35%±5%，失败材料与手续费不退，部位随机。' },
     { id: 'trials', name: '条件试炼', where: '征战 · 试炼', cond: '境界「化神」',
       check: () => featureOpen('trials'),
       desc: '每日三项限制试炼（速杀 / 禁吸血 / 限承伤），全通额外 60 碎屑。' },
@@ -3713,7 +3764,7 @@
       desc: '缚灵谷探索捕捉灵宠个体，三合一合成提品质，洗髓重随词条；亲密度/信物/内丹为物种级熟练度，出战给全局加成。' },
     { id: 'map', name: '秘境图', where: '征战', cond: '境界「化神」',
       check: () => featureOpen('map'),
-      desc: '每日 12 点行动力探雾开格：采矿、拾尘、斩妖、闯藏宝窟，越远越肥。' },
+      desc: '每日恢复 6 点行动力（上限 12，可灵石加购）探雾开格：采矿、拾尘、斩妖、闯藏宝窟，越远越肥。' },
     { id: 'treasure', name: '藏宝图', where: '征战 · 秘境图', cond: '境界「化神」',
       check: () => featureOpen('treasure'),
       desc: '征战胜利拾残片，五片合成藏宝图；宝点落在秘境图上，挖之得厚礼。' },
@@ -3729,9 +3780,9 @@
     { id: 'endless', name: '无尽秘境', where: '征战 · 秘境征战', cond: '通关爬塔 60 层',
       check: () => state.towerCleared >= ENDLESS_GATE,
       desc: '无限层挑战，坚壁 / 狂暴 / 厚血词缀轮换，0.8% 概率掉镇塔件。' },
-    { id: 'farm', name: '灵田', where: '闲趣 · 洞府', cond: '境界「合体」',
+    { id: 'farm', name: '方格牧场', where: '闲趣 · 洞府', cond: '境界「合体」',
       check: () => featureOpen('farm'),
-      desc: '三种灵籽按现实时间生长，下线也在长，收获得碎屑。' },
+      desc: '十二 × 十二格地四向开垦；七种种子 30 分钟～8 小时成熟，收获掉碎屑、洗炼石与随机种子。' },
     { id: 'museum', name: '陈列室', where: '闲趣 · 图鉴', cond: '境界「合体」',
       check: () => featureOpen('museum'),
       desc: '把各部位最强装备封存陈列，换全局收益加成，穿戴不受影响。' },
@@ -3741,9 +3792,9 @@
     { id: 'trib', name: '天劫', where: '征战 · 试炼', cond: '境界「仙人」',
       check: () => featureOpen('trib'),
       desc: '每三日九霄神雷来袭：提前用碎屑炼护体符减伤，抗住得重奖，输了亦无损。' },
-    { id: 'ascend', name: '飞升轮回', where: '修炼 · 境界', cond: '境界「仙人」· 1 亿灵石',
+    { id: 'ascend', name: '飞升轮回', where: '修炼 · 境界', cond: '境界「仙人」· 1000 亿灵石',
       check: () => state.realm >= REALMS.length - 1,
-      desc: '重置灵石、境界与淬炼换取仙缘，永久收益每点 +5%，并可挑战三系修行。' },
+      desc: '散尽 1000 亿灵石轮回：重置灵石、境界与淬炼换 1 点仙缘，灵石收益 +5%、修为 +50%（可叠加），并可挑战三系修行。' },
   ];
 
   // 检查解锁进度：announce 为 true 时对本次新解锁播报；返回本轮是否有新解锁
@@ -4424,12 +4475,14 @@
     save();
   }
 
-  function salvageAll() {
+  async function salvageAll() {
     if (!state.bag.length) {
       floatText('背包是空的', '#9aa4b2');
       return;
     }
-    if (!confirm('确定分解背包里的全部 ' + state.bag.length + ' 件装备？')) return;
+    if (!(await gameConfirm('确定分解背包里的全部 ' + state.bag.length + ' 件装备？',
+      { title: '一键分解', okText: '分解' }))) return;
+    if (!state.bag.length) return; // 弹层停留期间背包可能被清空（道童自动分解等）
 
     let value = 0;
     let dust = 0;
@@ -5400,7 +5453,7 @@
           '<button class="btn" data-act="reroll">洗练 ' + fmt(rc.cost) + resIcon('stones') +
             (rc.coupon ? '（券）' : '') + '</button>' +
           (Object.keys(need).length
-            ? '<div class="farm-seedbar" style="margin:4px 0 0">' + Object.keys(need).map((k) =>
+            ? '<div class="farm-seedbar reroll-bar">' + Object.keys(need).map((k) =>
                 '<span class="farm-chip' + ((state.rerollStones[k] | 0) < need[k] ? ' lack' : '') + '" title="' +
                 REROLL_STONES[k].name + '">' + REROLL_STONES[k].ic + '×' + need[k] + '</span>').join('') + '</div>'
             : '') +
@@ -5948,7 +6001,7 @@
             })
             .catch(() => { SHOP.loaded = false; }); // 失败/超时：下次进坊市重取权威库存
           for (const [id, n2] of Object.entries(body)) {
-            parts.push((SHOP.view && SHOP.view.catalog && SHOP.view.catalog.mats[id]) || MAT_NAMES[id] || id + ' ×' + n2);
+            parts.push(((SHOP.view && SHOP.view.catalog && SHOP.view.catalog.mats[id]) || MAT_NAMES[id] || id) + ' ×' + n2);
           }
         }
       } else if (key === 'token' && n > 0) {
@@ -5992,16 +6045,25 @@
     const box = $('wanderList');
     if (!box || !featureOpen('wander')) return;
     const kv = karma();
-    const sig = (state.wander.pending ? state.wander.pending.id : 'idle') + '|' + kv + '|' +
+    const ev = state.wander.pending && WANDER_EVENTS.find((w) => w.id === state.wander.pending.id);
+    // 结构签名不掺灵石（2026-11-04 用户报「奇遇有些选项点了没反应」）：挂遇期间挂机收益
+    // 每跨 1000 灵石就整卡 innerHTML 重绘，mousedown 落在旧节点、click 前节点被替换吞点击
+    // ——同 shop 7299 的病，同款修法：事件未变只原位同步花费按钮 disabled，不换节点
+    const sig = (ev ? ev.id : 'idle') + '|' + kv + '|' +
       (wanderResult ? wanderResult.text : '') + '|' +
-      (state.wander.pending
-        ? Math.floor(state.stones / 1000) // 花费型按钮的可用态随灵石变化即时刷新
-        : Math.ceil((WANDER_COOLDOWN - (Date.now() - state.wander.last)) / 60000));
-    if (panelSigs.wander === sig) return;
+      (ev ? '' : Math.ceil((WANDER_COOLDOWN - (Date.now() - state.wander.last)) / 60000));
+    if (panelSigs.wander === sig) {
+      if (!ev) return;
+      // 挂遇中原位刷新花费型按钮可用态（灵石变化即时生效，不重绘）
+      box.querySelectorAll('button[data-wander]').forEach((btn) => {
+        const c = ev.choices[Number(btn.dataset.wander)];
+        if (c && c.cost) btn.disabled = state.stones < c.cost;
+      });
+      return;
+    }
     panelSigs.wander = sig;
     let html = '<p class="hint">善恶抉择改变果报，果报微调赌石与洗练运气。当前果报：<b class="' +
       (kv > 0 ? 'k-good' : kv < 0 ? 'k-bad' : '') + '">' + (kv > 0 ? '+' : '') + kv + '</b></p>';
-    const ev = state.wander.pending && WANDER_EVENTS.find((w) => w.id === state.wander.pending.id);
     if (ev) {
       html += '<div class="wander-card">' +
         '<p class="wander-title">' + ev.title + '</p>' +
@@ -6201,7 +6263,7 @@
     let text = '';
     let cls = 'g-none';
     if (tier.big && tier.itemDrop) {
-      // 灵龙鱼化形（2026-11-01 口径不变）：60% 物品（10% 仙品）/ 40% 腹中藏宝
+      // 化形龙鱼（2026-11-04 起五场各一条）：60% 物品（10% 仙品）/ 40% 腹中藏宝
       cls = 'g-item';
       const gift = Math.random();
       if (gift < 0.6) {
@@ -6210,7 +6272,7 @@
         addItem(item);
         bagDirty = true;
         text = '「' + tier.name + '」化形赠宝：' + item.name + '（' + (xian ? '仙品' : '天品') + '）';
-        floatText('灵龙鱼化形！「' + item.name + '」', xian ? '#f87171' : '#ffd479');
+        floatText('「' + tier.name + '」化形！「' + item.name + '」', xian ? '#f87171' : '#ffd479');
         chime([659, 784, 1046, 1318]);
       } else {
         addStones(tier.jackpot);
@@ -6249,6 +6311,7 @@
     }
     state.stones -= FISH_BAIT_COST;
     state.fishing.bait++;
+    fishMsg = null; // 补饵只买饵：清掉上一竿的结果横幅，避免误读成补饵发放（2026-11-04 用户指定）
     beep(700, 0.06);
     render();
     save();
@@ -6265,6 +6328,7 @@
     }
     state.stones -= cost;
     state.fishing.rod = lv + 1;
+    fishMsg = null; // 升竿只升竿：同补饵口径，清掉上一竿的结果横幅（2026-11-04 用户指定）
     pushLog('鱼竿升到 Lv.' + (lv + 1) + '（- ' + fmt(cost) + ' 灵石）', 'sys');
     const unlock = FISH_SPOTS.find((sp) => sp.rod === lv + 1);
     if (unlock) {
@@ -6310,16 +6374,20 @@
     const canUp = rod < FISH_ROD_MAX;
     const upCost = FISH_ROD_COST(rod);
     const canBuy = state.stones >= FISH_BAIT_COST && state.fishing.bait < 99;
+    const dexedFlags = FISH_SPOTS.map((sp) =>
+      sp.fish.every((f) => state.fishing.dex[f.id] === 1) ? 1 : 0).join('');
     const sig = [state.fishing.bait, rod, state.fishing.spot, state.fishing.casts, state.fishing.bestT,
       fishRod ? 1 : 0, canBuy ? 1 : 0, canUp && state.stones >= upCost ? 1 : 0,
-      fishMsg ? fishMsg.text : ''].join('|');
+      fishMsg ? fishMsg.text : '', dexedFlags].join('|');
     if (panelSigs.fishModal === sig) return;
     panelSigs.fishModal = sig;
     const tabs = FISH_SPOTS.map((sp, i) => {
       const open = rod >= sp.rod;
+      const dexed = dexedFlags[i] === '1'; // dexedFlags 是 join 后的串，下标取出的字符必须按字符串比
       return '<button class="fish-spot' + (state.fishing.spot === i + 1 ? ' on' : '') +
         (open ? '' : ' locked') + '" data-spot="' + (i + 1) + '"' + (open ? '' : ' disabled') +
-        ' title="' + (open ? sp.sub : '鱼竿 Lv.' + sp.rod + ' 解封') + '">' + sp.name +
+        ' title="' + (open ? (dexed ? '已集齐本场全部鱼种 · ' : '') + sp.sub : '鱼竿 Lv.' + sp.rod + ' 解封') + '">' +
+        (dexed ? FISH_CROWN_IC : '') + sp.name +
         (open ? '' : ' <i>Lv.' + sp.rod + '</i>') + '</button>';
     }).join('');
     const rows = spot.fish.map((f) => {
@@ -6554,15 +6622,43 @@
     save();
   }
 
-  // 装备熔铸（2026-10-31 收敛为两档）：天品 ×5 → 仙品；仙品 ×5 → 星级 +1 的仙品
-  //（封顶 ★5，星级只乘算战力、不改 power 字段，服务端校验口径不变）。材料取最弱
-  // MELT_NEED 件（套装/专属件不入料），部位随机，手续费按档位固定。
+  // 装备熔铸（2026-10-31 收敛，2026-11-04 加地→天档为三档）：地品 ×10 → 天品；
+  // 天品 ×5 → 仙品；仙品 ×5 → 星级 +1 的仙品（封顶 ★5，星级只乘算战力、不改 power
+  // 字段，服务端校验口径不变）。材料取最弱 meltNeed(r) 件（套装/专属件不入料），
+  // 部位随机，手续费按档位固定，成功率统一 30%~40% 均匀浮动。
   // 熔铸结果弹层（2026-11-03 用户指定）：成功/失败都弹层告知——成功亮成品卡
   //（部位图标 + 品质色 + 星级战力），失败明示损耗
-  function showMeltResult(ok, item, r, fee) {
+  const meltNeed = (r) => (r === 3 ? 10 : MELT_NEED);
+  // 通用确认弹层（2026-11-04 用户指定：全站替换原生 confirm/prompt——本作本就无 prompt/alert，
+  // 7 处 confirm 全部迁入）：Promise 化，resolve(true/false)；再次唤起新确认时旧待答按「取消」结清，
+  // 防调用方悬挂。msg 允许内部拼接 HTML（含 resIcon 图标），均为游戏侧受控文本
+  let confirmResolve = null;
+  function gameConfirm(msg, opts) {
+    opts = opts || {};
+    if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    $('confirmTitle').textContent = opts.title || '请确认';
+    $('confirmBody').innerHTML = '<p>' + msg + '</p>';
+    $('confirmOk').textContent = opts.okText || '确定';
+    $('confirmCancel').textContent = opts.cancelText || '取消';
+    $('confirmModal').classList.add('show');
+    return new Promise((resolve) => { confirmResolve = resolve; });
+  }
+  function confirmAnswer(ok) {
+    $('confirmModal').classList.remove('show');
+    const r = confirmResolve;
+    confirmResolve = null;
+    if (r) r(ok);
+  }
+
+  function showMeltResult(ok, item, r, fee, need) {
     const body = $('meltResultBody');
     if (!body) return;
+    const n = need || meltNeed(r);
     $('meltResultTitle').textContent = ok ? '熔铸成功' : '熔铸失败';
+    // 结果态收尾：确认钮变「收下」、取消钮隐藏（确认态由 openMeltConfirm 布置）
+    $('meltResultOk').textContent = '收下';
+    $('meltResultCancel').classList.add('hidden');
+    meltPendingR = null;
     if (ok) {
       body.innerHTML =
         '<div class="equip-slot item-r' + item.r + ' melt-item-card">' +
@@ -6575,22 +6671,22 @@
         '<p class="hint">已熔出并入背包 · 花费 ' + fmt(fee) + resIcon('stones') + '</p>';
     } else {
       body.innerHTML =
-        '<p class="melt-fail-text">「' + RARITIES[r].name + '」×' + MELT_NEED + ' 与 ' +
+        '<p class="melt-fail-text">「' + RARITIES[r].name + '」×' + n + ' 与 ' +
           fmt(fee) + resIcon('stones') + ' 手续费俱耗，仙火未成。</p>' +
         '<p class="hint">材料与手续费不退，可再试一次。</p>';
     }
     $('meltResultModal').classList.add('show');
   }
   const meltStock = (r) => state.bag.filter((it) => it.r === r && !it.special).length;
-  const meltFee = (r) => (r === 4 ? RARITIES[5].stone * 10 : RARITIES[5].stone * 25);
-  function meltItem(r) {
-    if (r !== 4 && r !== 5) return;
-    const mats = state.bag
-      .filter((it) => it.r === r && !it.special)
-      .sort((a, b) => itemScore(a) - itemScore(b))
-      .slice(0, MELT_NEED);
-    if (mats.length < MELT_NEED) {
-      floatText(RARITIES[r].name + '不足（需 ' + MELT_NEED + ' 件）', '#f87171');
+  const meltFee = (r) => (r === 3 ? RARITIES[5].stone * 5 : r === 4 ? RARITIES[5].stone * 10 : RARITIES[5].stone * 25);
+  // 待确认的熔铸档位：null = 弹层处于结果态/关闭态（2026-11-04 用户指定：confirm 弃用，
+  // 熔铸改「弹层确认 → 确认后原弹层刷新为结果」两段式）
+  let meltPendingR = null;
+  function meltOpen(r) {
+    const need = meltNeed(r);
+    const stock = meltStock(r);
+    if (stock < need) {
+      floatText(RARITIES[r].name + '不足（需 ' + need + ' 件）', '#f87171');
       return;
     }
     const fee = meltFee(r);
@@ -6598,21 +6694,48 @@
       floatText('灵石不足（熔铸手续费）', '#f87171');
       return;
     }
-    const outLabel = r === 4
-      ? '熔出 1 件仙品装备（部位随机）'
-      : '熔出 1 件星级更高的仙品（封顶 ★5）';
+    meltPendingR = r;
+    const outLabel = r === 3
+      ? '熔出 1 件天品装备（部位随机）'
+      : r === 4 ? '熔出 1 件仙品装备（部位随机）'
+        : '熔出 1 件星级更高的仙品（封顶 ★5）';
+    $('meltResultTitle').textContent = '熔铸确认';
+    $('meltResultBody').innerHTML =
+      '<p class="hint">消耗背包最弱 <b>' + need + '</b> 件「' + RARITIES[r].name + '」装备' +
+        '（现有 ' + stock + ' 件），另缴手续费 ' + fmt(fee) + resIcon('stones') + '。</p>' +
+      '<p class="hint">' + outLabel + '；成功率 <b>35%±5%</b>（每次在 30%~40% 间浮动）。</p>' +
+      '<p class="hint">失败材料与手续费不退，确定动手？</p>';
+    $('meltResultOk').textContent = '确认熔铸';
+    $('meltResultCancel').classList.remove('hidden');
+    $('meltResultModal').classList.add('show');
+  }
+  function meltDo(r) {
+    const need = meltNeed(r);
+    const mats = state.bag
+      .filter((it) => it.r === r && !it.special)
+      .sort((a, b) => itemScore(a) - itemScore(b))
+      .slice(0, need);
+    // 弹层停留期间背包/灵石可能变动：执行前复核，不足即关弹层提示
+    if (mats.length < need) {
+      $('meltResultModal').classList.remove('show');
+      floatText(RARITIES[r].name + '不足（需 ' + need + ' 件）', '#f87171');
+      return;
+    }
+    const fee = meltFee(r);
+    if (state.stones < fee) {
+      $('meltResultModal').classList.remove('show');
+      floatText('灵石不足（熔铸手续费）', '#f87171');
+      return;
+    }
     const rate = meltRate();
-    if (!confirm('熔铸：消耗 ' + MELT_NEED + ' 件' + RARITIES[r].name + '装备（取最弱 ' + MELT_NEED +
-      ' 件）+' + fmt(fee) + ' 灵石，成功率 ' + Math.round(rate * 100) + '%（35% 上下浮动 5%），' +
-      outLabel + '。失败材料与手续费不退。确定？')) return;
     mats.forEach((it) => state.bag.splice(state.bag.indexOf(it), 1));
     state.stones -= fee;
     if (Math.random() >= rate) {
       bagDirty = true;
-      pushLog('熔铸失败：' + RARITIES[r].name + ' ×' + MELT_NEED + ' 与 ' + fmt(fee) +
+      pushLog('熔铸失败：' + RARITIES[r].name + ' ×' + need + ' 与 ' + fmt(fee) +
         ' 灵石手续费俱耗，仙火未成', 'sys');
       beep(220, 0.1);
-      showMeltResult(false, null, r, fee);
+      showMeltResult(false, null, r, fee, need);
       panelSigs.melt = null;
       render();
       paintBag(true);
@@ -6620,7 +6743,9 @@
       return;
     }
     let item;
-    if (r === 4) {
+    if (r === 3) {
+      item = makeItem(4);
+    } else if (r === 4) {
       item = makeItem(5);
     } else {
       item = makeItem(5);
@@ -7333,8 +7458,7 @@
       html += '<div class="shop-b' + (open ? '' : ' shop-b-locked') + '">';
       html += '<div class="shop-b-head"><span class="shop-b-name"><span class="shop-b-ic">' +
         (SHOP_BUILD_ICONS[b] || esc(def.icon)) + '</span>' + esc(def.name) +
-        (open ? ' <em>Lv.' + lv + '</em> <i title="席位随建筑等级解锁：13/25/37/49 级各 +1（Lv.49 满 5 席）">' +
-          myCrafts.length + '/' + slotsOf(def.max) + ' 席</i>' : '') + '</span>';
+        (open ? ' <em>Lv.' + lv + '</em> <i>' + myCrafts.length + '/' + slotsOf(lv) + ' 席</i>' : '') + '</span>';
       if (open && lv < def.max) {
         const up = Math.floor(def.cost * Math.pow(def.growth, lv));
         html += '<button class="mini' + (state.stones < up ? ' off' : '') +
@@ -7360,7 +7484,7 @@
             const left = Math.max(0, (c.doneAt - nowT) / 1000);
             const pct = Math.max(0, Math.min(100, (1 - left * 1000 / r.ms) * 100));
             bar = '<div class="shop-progress" data-ms="' + r.ms + '">' +
-              '<span class="shop-progress-fill" style="width:' + pct.toFixed(1) + '%"></span>' +
+              '<span class="shop-progress-fill" data-w="' + pct.toFixed(1) + '"></span>' +
               '<span class="shop-progress-text">制作中 · 剩余 ' + fmtDuration(left) + '</span></div>';
           }
           body += '<div class="shop-craft" data-doneat="' + c.doneAt + '"><span>' + itemIcon(c.id) + esc(r.name) + '</span>' + bar +
@@ -7428,6 +7552,12 @@
     }
     html += '</div></div>';
     box.innerHTML = html;
+    // CSP style-src 'self' 拦 innerHTML 里的 style 属性：进度条首帧宽度改 data-w 承载，
+    // 注入后走 CSSOM 补上（style 属性赋值不受 style-src 限制）；后续走针由上方 500ms
+    // 原位更新分支直接 .style.width 接管
+    box.querySelectorAll('.shop-progress-fill[data-w]').forEach((el) => {
+      el.style.width = el.dataset.w + '%';
+    });
   }
 
   async function shopAct(act, el) {
@@ -7436,7 +7566,8 @@
     if (act === 'sell') {
       const needByOrder = SHOP.view.orders.some((o, i) =>
         o.id === el.dataset.id && !SHOP.view.done.includes(i));
-      if (needByOrder && !confirm('有订单未提交，是否直售？')) return;
+      if (needByOrder && !(await gameConfirm('该成品还有订单未交付，仍要直售？',
+        { title: '直售确认', okText: '仍要直售' }))) return;
     }
     const body = act === 'build' ? { b: el.dataset.b }
       : act === 'craft' ? { b: el.dataset.b, id: el.dataset.id }
@@ -8478,16 +8609,20 @@
         st.bust++;
         if (cutS > st.worstCut) st.worstCut = cutS;
       }
-      entry = { d: todayStr().slice(5), m: 'g', x: g.mult, s: ds, u: du };
+      entry = { d: todayStr(), m: 'g', x: g.mult, s: ds, u: du };
     } else {
       ds = reward.stones ? addStones(reward.stones) : 0;
       du = reward.dust ? addDust(reward.dust) : 0;
       pushLog('签到 · 第 ' + dayNo + ' 天：' + reward.text, 'sys');
       chime([659, 880]);
       floatText('签到成功', '#d8b36a');
-      entry = { d: todayStr().slice(5), m: 'n', s: ds, u: du };
+      entry = { d: todayStr(), m: 'n', s: ds, u: du };
     }
     state.signLog.unshift(entry);
+    // 只留近 30 天（2026-11-04 用户指定）：按日历日裁剪；条数帽只防异常写入。
+    // 旧档条目是 MM-DD 短格式，按当前年补全再比较，避免整批误删
+    const cutoff = dateStrOf(Date.now() - SIGN_LOG_DAYS * 86400000);
+    state.signLog = state.signLog.filter((e) => (e.d.length === 10 ? e.d : todayStr().slice(0, 4) + '-' + e.d) >= cutoff);
     if (state.signLog.length > SIGN_LOG_MAX) state.signLog.length = SIGN_LOG_MAX;
 
     const milestone = SIGN_MILESTONES[state.signInDays];
@@ -8528,7 +8663,7 @@
       if (e.u) parts.push((e.u > 0 ? '+' : '-') + fmt(Math.abs(e.u)) + ' 碎屑');
       const mult = e.m === 'g' ? ' ×' + e.x.toFixed(1) : '';
       return '<div class="signlog-row' + (e.s < 0 ? ' signlog-debt' : '') + '">' +
-        '<span>' + e.d + ' · ' + (e.m === 'g' ? '赌狗' : '普通') + mult + '</span>' +
+        '<span>' + (e.d.length === 10 ? e.d.slice(5) : e.d) + ' · ' + (e.m === 'g' ? '赌狗' : '普通') + mult + '</span>' +
         '<b>' + (parts.length ? parts.join(' · ') : '空手而归') + '</b></div>';
     }).join('');
   }
@@ -8798,13 +8933,14 @@
   }
 
   // 放生个体：返还兽骨（品质越高越多）；亲密度/信物/内丹为物种级熟练度，不随个体放生回退
-  function releasePet(uid) {
+  async function releasePet(uid) {
     const inst = petFindInst(uid);
     if (!inst) return;
     const def = petSpDef(inst.sp);
     const refund = petReleaseBones(inst.r);
-    if (!confirm('放生「' + def.name + ' · ' + RARITIES[inst.r].name + '」？返还兽骨 ×' + refund +
-      '。亲密度/信物/内丹为物种级，不会清零。')) return;
+    if (!(await gameConfirm('放生「' + def.name + ' · ' + RARITIES[inst.r].name + '」？返还兽骨 ×' + refund +
+      '。亲密度/信物/内丹为物种级，不会清零。', { title: '放生灵宠', okText: '放生' }))) return;
+    if (!petFindInst(uid)) return; // 弹层停留期间个体可能已被合成/放生消耗
     state.petInsts = state.petInsts.filter((p) => p.uid !== uid);
     state.activePets = state.activePets.filter((x) => x !== uid);
     state.beastBones += refund;
@@ -9613,7 +9749,7 @@
   const immortalCost = () => state.immortal >= IMMORTAL_MAX ? Infinity
     : 1e10 * Math.pow(IMMORTAL_RATIO, state.immortal || 0);
 
-  function enterImmortal() {
+  async function enterImmortal() {
     if (state.ascensions < 1) return;
     if (state.immortal >= IMMORTAL_MAX) {
       floatText('仙位已满（' + IMMORTAL_MAX + '/' + IMMORTAL_MAX + '）', '#9aa4b2');
@@ -9624,7 +9760,8 @@
       floatText('灵石不足', '#f87171');
       return;
     }
-    if (!confirm('入仙界消耗 ' + fmt(cost) + ' 灵石，得 1 仙位：收益 +10%，秘境敌人与产出 ×1.05。确定？')) return;
+    if (!(await gameConfirm('入仙界消耗 ' + fmt(cost) + ' 灵石，得 1 仙位：收益 +10%，秘境敌人与产出 ×1.05。确定？',
+      { title: '入仙界', okText: '入仙界' }))) return;
     state.stones -= cost;
     state.immortal++;
     combatDirty = true;
@@ -14454,7 +14591,8 @@
 
     if (maxRealm) {
       $('expFill').style.width = '100%';
-      $('expText').textContent = '修为圆满';
+      // 仙人也要亮修为数（2026-11-04 用户指定）：功法参悟等仍耗修为，只写「圆满」看不见存量
+      $('expText').innerHTML = '修为圆满 · 现有 ' + fmt(state.exp) + resIcon('exp');
       $('breakBtn').textContent = '已至仙人';
       $('breakBtn').disabled = true;
     } else {
@@ -14462,7 +14600,7 @@
       const enough = state.exp >= cost;
       $('expFill').style.width = (Math.min(1, state.exp / cost) * 100).toFixed(1) + '%';
       $('expText').innerHTML = enough
-        ? '修为充足 · 可突破至 ' + REALMS[state.realm + 1]
+        ? '修为充足（' + fmt(state.exp) + '）· 可突破至 ' + REALMS[state.realm + 1]
         : fmt(state.exp) + ' / ' + fmt(cost) + resIcon('exp');
       $('breakBtn').textContent = '突破至 ' + REALMS[state.realm + 1];
       $('breakBtn').disabled = !enough;
@@ -15129,9 +15267,15 @@
   function renderGongfa() {
     const afford = Object.keys(GONGFA).map((k) =>
       state.gongfa[k] >= GONGFA[k].max ? 2 : state.exp >= gongfaCost(state.gongfa[k]) ? 1 : 0).join(',');
-    const sig = JSON.stringify(state.gongfa) + '|' + afford + '|' + state.immortal +
-      '|' + Math.floor(state.stones / 1e8);
-    if (panelSigs.gongfa === sig) return;
+    const sig = JSON.stringify(state.gongfa) + '|' + afford + '|' + state.immortal;
+    if (panelSigs.gongfa === sig) {
+      // 灵石只影响入仙界按钮可用态：原位同步（原 stones/1e8 桶整段重绘吞点击，2026-11-04）
+      const btn = $('immortalBtn');
+      if (btn && state.ascensions >= 1 && state.immortal < IMMORTAL_MAX) {
+        btn.disabled = state.stones < immortalCost();
+      }
+      return;
+    }
     panelSigs.gongfa = sig;
     $('gongfaList').innerHTML = Object.keys(GONGFA).map((key) => {
       const def = GONGFA[key];
@@ -15176,9 +15320,10 @@
     // 合丹按钮阈值是四成价（1200/2400），与全价桶（3000/6000）不重合——须单独入签名，
     // 否则灵石跨过四成线时按钮保持错误的禁用/可点（2026-11-01 修）
     const affordHerb = ELIXIRS.map((e) => state.stones >= Math.ceil(e.cost * 0.4) ? 1 : 0).join(',');
+    // afford/affordHerb 已是精确阈值入签名，灵石不再掺桶（2026-11-04：stones/2000 桶
+    // 在挂机收益下整段重绘吞点击——同 wander/shop 吞点击的病根）
     const sig = JSON.stringify(state.elixir.owned) + '|' + bucket + '|' + activeBucket + '|' + afford + '|' + affordHerb +
-      (c ? c.id : '') + '|' + Math.floor(state.gather.herb / HERB_ELIXIR_NEED) + '|' +
-      Math.floor(state.stones / 2000);
+      (c ? c.id : '') + '|' + Math.floor(state.gather.herb / HERB_ELIXIR_NEED);
     if (panelSigs.elixir === sig) return;
     panelSigs.elixir = sig;
     $('elixirList').innerHTML = ELIXIRS.map((def) => {
@@ -15221,16 +15366,22 @@
     panelSigs.trials = sig;
     $('rogueBest').textContent = '最远 ' + state.rogue.best + ' / ' + ROGUE_FLOORS + ' 层';
     const rogueBtn = $('rogueBtn');
+    const sumEl = $('rogueBuffSum');
     if (run) {
       rogueBtn.textContent = '挑战第 ' + run.floor + ' 层';
       rogueBtn.disabled = false;
       $('rogueStatus').textContent = '探幽进行中 · 神物：' +
         (run.buffs.length ? run.buffs.map((id) => ROGUE_BUFFS.find((b) => b.id === id).name).join('、') : '无');
+      const sum = rogueBuffSummary(run.buffs);
+      sumEl.textContent = sum ? '加成合计：' + sum : '';
+      sumEl.hidden = !sum;
     } else {
       rogueBtn.textContent = '开始探幽';
       rogueBtn.disabled = state.stageCleared < 10;
       $('rogueStatus').textContent = state.stageCleared < 10
         ? '通关闯关第 10 关解锁' : '未在进行中';
+      sumEl.textContent = '';
+      sumEl.hidden = true;
     }
     $('rogueGiveup').classList.toggle('hidden', !run);
 
@@ -15418,9 +15569,13 @@
   }
 
   function renderCraft() {
-    const sig = state.souls + '|' + Math.floor(state.stones / CRAFT_COST.stones) + '|' +
-      Math.floor(state.gather.ore / ORE_SOUL_NEED);
-    if (panelSigs.craft === sig) return;
+    const sig = state.souls + '|' + Math.floor(state.gather.ore / ORE_SOUL_NEED);
+    if (panelSigs.craft === sig) {
+      // 灵石只影响锻造按钮可用态：原位同步（原 stones/CRAFT_COST.stones 桶整段重绘吞点击，2026-11-04）
+      const can = state.souls >= CRAFT_COST.souls && state.stones >= CRAFT_COST.stones;
+      $('craftList').querySelectorAll('button[data-craft]').forEach((b) => { b.disabled = !can; });
+      return;
+    }
     panelSigs.craft = sig;
     $('soulCount').innerHTML = resIcon('souls') + ' 器魂 ' + fmt(state.souls);
     $('craftList').innerHTML = SLOTS.map((s) => {
@@ -15434,16 +15589,24 @@
 
   // 装备熔铸面板：两档各一行（天→仙 / 仙→仙升星），材料实时盘点不入档
   function renderMelt() {
-    const sig = state.bag.length + '|' + Math.floor(state.stones / 10);
-    if (panelSigs.melt === sig) return;
+    const sig = state.bag.length;
+    if (panelSigs.melt === sig) {
+      // 灵石只影响熔铸按钮可用态：原位同步（原 stones/10 桶几乎每帧重绘吞点击，2026-11-04）
+      $('meltList').querySelectorAll('button[data-melt]').forEach((b) => {
+        const r = Number(b.dataset.melt);
+        b.disabled = meltStock(r) < meltNeed(r) || state.stones < meltFee(r);
+      });
+      return;
+    }
     panelSigs.melt = sig;
-    $('meltList').innerHTML = [4, 5].map((r) => {
+    $('meltList').innerHTML = [3, 4, 5].map((r) => {
       const n = meltStock(r);
-      const can = n >= MELT_NEED && state.stones >= meltFee(r);
-      const out = r === 4 ? '仙品' : '仙品 ★+1';
+      const need = meltNeed(r);
+      const can = n >= need && state.stones >= meltFee(r);
+      const out = r === 3 ? '天品' : r === 4 ? '仙品' : '仙品 ★+1';
+      // 按钮只留档位与库存（2026-11-04 用户指定）：概率/费用/损耗说明进确认弹层
       return '<button class="mini" data-melt="' + r + '"' + (can ? '' : ' disabled') + '>' +
-        RARITIES[r].name + ' ×' + n + ' → ' + out +
-        '（成功率 35%±5% · ' + fmt(meltFee(r)) + ' 灵石/件）</button>';
+        RARITIES[r].name + ' ×' + n + ' → ' + out + '</button>';
     }).join('');
   }
 
@@ -15607,11 +15770,11 @@
             // 竖向生长进度条（2026-11-04 用户指定）：绿底自格底升起，按收获时间进度绘制
             const sd = FARM_SEEDS.find((x) => x.id === p.id);
             const pct = sd ? Math.max(0, Math.min(100, (1 - left / sd.ms) * 100)) : 0;
-            label = '<span class="farm-fill" style="height:' + pct.toFixed(1) + '%"></span>' +
+            label = '<span class="farm-fill" data-h="' + pct.toFixed(1) + '"></span>' +
               '<span class="farm-cell-label">' + label + '</span>';
           } else {
             cls += ' fc-ready';
-            label = '<span class="farm-fill" style="height:100%"></span><span class="farm-cell-label">熟</span>';
+            label = '<span class="farm-fill" data-h="100"></span><span class="farm-cell-label">熟</span>';
             attrs = ' data-harvest="' + cell + '" title="收获"';
           }
         } else {
@@ -15630,6 +15793,11 @@
       html += '<div class="' + cls + '"' + attrs + '>' + label + '</div>';
     }
     $('farmGrid').innerHTML = html;
+    // CSP style-src 'self' 拦 innerHTML 里的 style 属性：竖向生长条高度改 data-h 承载，
+    // 注入后走 CSSOM 补上（transition height 1.2s 照常生效）
+    $('farmGrid').querySelectorAll('.farm-fill[data-h]').forEach((el) => {
+      el.style.height = el.dataset.h + '%';
+    });
   }
 
   function renderChapter() {
@@ -15992,7 +16160,8 @@
   // 服务端为准的运行时缓存；guild 里的 level 供 baseGain 仙盟加成读取
   const WORLD = {
     rank: null, pvp: null, boss: null, guild: null, guildList: null, ladder: null,
-    bossBusy: false, arenaBusy: {}, gBossBusy: false,
+    bounty: null,
+    bossBusy: false, arenaBusy: {}, gBossBusy: false, bountyBusy: {}, payBusy: false,
   };
   // 立盟门槛（2026-11-01 用户指定）：境界「化神」+ 1000 万灵石 + 2 万修为（服务端同口径校验）
   const GUILD_CREATE_COST = 10000000;
@@ -16040,6 +16209,7 @@
     bossLoad();
     guildLoad();
     guildListLoad();
+    bountyLoad();
   }
 
   // ---- 战力榜 ----
@@ -16135,6 +16305,18 @@
     $('ladderMe').textContent = me.rank > 0
       ? '我的排名：第 ' + me.rank + ' 名 · ' + me.rating + ' 分（' + me.wins + '胜' + me.losses + '负）'
       : '尚未入榜：赢下第一场切磋即上榜。';
+    // 天梯日俸（2026-11-04 天下扩容）：档位/数额服务端现算下发，按钮只反映状态
+    const pay = data.pay || {};
+    const btn = $('ladderPayBtn');
+    if (btn) {
+      btn.disabled = !pay.can;
+      btn.textContent = pay.claimed ? '今日俸禄已领' : '领取今日天梯俸';
+    }
+    $('ladderPayHint').textContent = pay.games > 0
+      ? (pay.claimed
+        ? '今日已领「' + pay.tierName + '」档俸 +' + fmt(pay.amount) + ' 灵石，明日再来。'
+        : '当前「' + pay.tierName + '」档，可领 ' + fmt(pay.amount) + ' 灵石；段位越高俸越厚。')
+      : '先在竞技场打一场，俸禄才会记你名下。';
   }
 
   // ---- 竞技场 ----
@@ -16532,7 +16714,8 @@
   async function guildLeave() {
     const g = WORLD.guild && WORLD.guild.guild;
     if (!g) return;
-    if (!confirm('确定退出「' + g.name + '」？' + (g.isLeader ? '盟位将转交最早入盟的同门。' : ''))) return;
+    if (!(await gameConfirm('确定退出「' + g.name + '」？' + (g.isLeader ? '盟位将转交最早入盟的同门。' : ''),
+      { title: '退出仙盟', okText: '退出' }))) return;
     try {
       await worldFetch('/api/guild/leave', { method: 'POST', body: JSON.stringify({}) });
       WORLD.guild = { guild: null };
@@ -16545,7 +16728,8 @@
 
   async function guildKick(id) {
     const m = ((WORLD.guild || {}).guild || {}).members?.find((x) => x.id === id);
-    if (!confirm('确定将同门「' + (m ? m.name : '该成员') + '」移出仙盟？此操作不可撤销。')) return;
+    if (!(await gameConfirm('确定将同门「' + (m ? m.name : '该成员') + '」移出仙盟？此操作不可撤销。',
+      { title: '移出同门', okText: '移出' }))) return;
     try {
       const out = await worldFetch('/api/guild/kick', { method: 'POST', body: JSON.stringify({ userId: id }) });
       WORLD.guild = { guild: out.guild };
@@ -16801,6 +16985,114 @@
     } catch (e) {
       floatText(e.message, '#f87171');
     }
+  }
+
+  // ---- 天梯日俸 / 悬赏妖踪（2026-11-04 天下扩容） ----
+
+  async function ladderPay() {
+    if (WORLD.payBusy) return;
+    WORLD.payBusy = true;
+    try {
+      const out = await worldFetch('/api/ladder/pay', { method: 'POST', body: '{}' });
+      // 服务端直发账本：客户端平加响应实额（不二次放大，与征战结算同口径）
+      state.stones += out.stones;
+      state.totalStones += out.stones;
+      pushLog('领取天梯俸（「' + out.tierName + '」档 · ' + out.rating + ' 分）：+' + fmt(out.stones) + ' 灵石', 'special');
+      floatText('+' + fmt(out.stones) + ' 灵石', '#facc15');
+      chime([660, 880, 1046]);
+      save();
+      paintResources();
+      ladderLoad(); // 刷新按钮与提示的当日领取态
+    } catch (e) {
+      floatText(e.message, '#f87171');
+    }
+    WORLD.payBusy = false;
+  }
+
+  // 精英妖以我的天梯快照为基底按倍率缩放（服务端同源公式；本地只做战斗动画，
+  // 胜负与赏格一律以服务端复算为准——同竞技场/妖王口径）
+  function bountyEnemyOf(snap, mult) {
+    return {
+      atk: snap.atk * 0.55 * mult,
+      hp: snap.hp * 3.2 * mult,
+      def: snap.def * 0.8 * mult,
+      crit: 0.05, critMult: 2, lifesteal: 0, dr: 0,
+      pierce: Math.min(0.3, 0.05 * mult),
+    };
+  }
+
+  async function bountyLoad() {
+    try {
+      WORLD.bounty = await worldFetch('/api/bounty');
+      renderBounty();
+    } catch (e) {
+      $('bountyList').innerHTML = '<p class="hint">加载失败：' + esc(e.message) + '</p>';
+    }
+  }
+
+  function renderBounty() {
+    const b = WORLD.bounty;
+    if (!b) return;
+    $('bountyDay').textContent = b.day;
+    $('bountyList').innerHTML = (b.elites || []).map((el) => {
+      const enemy = bountyEnemyOf(combatSnapOf(playerCombatStats()), el.mult);
+      return '<div class="arena-card">' +
+        '<div class="ac-head"><b>' + esc(el.name) + ' · ' + esc(el.title) + '</b>' +
+        '<span>约 ' + fmt(enemy.hp) + ' 气血 · 赏 ' + fmt(el.reward.stones) + ' 灵石 +' + fmt(el.reward.dust) + ' 碎屑</span></div>' +
+        '<button class="btn tiny" data-act="bounty" data-slot="' + el.slot + '"' + (el.done ? ' disabled' : '') + '>' +
+        (el.done ? (el.win ? '已讨平' : '今日已败') : '出战') + '</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function bountyFight(slot) {
+    const b = WORLD.bounty;
+    if (!b || WORLD.bountyBusy[slot]) return;
+    const el = b.elites.find((x) => x.slot === slot);
+    if (!el || el.done) return;
+    WORLD.bountyBusy[slot] = true;
+    try {
+      const mine = playerCombatStats();
+      const snap = combatSnapOf(mine);
+      const enemy = bountyEnemyOf(snap, el.mult);
+      const sim = simulateBattle(snap, enemy);
+      showBattlePopup({
+        name: el.name, icon: '',
+        kicker: '悬赏妖踪 · ' + el.title,
+        hp: enemy.hp,
+        avatarSvg: MONSTER_ART.yaowang('#c96f5e'),
+        closeText: '离开', // 胜负与赏格以服务端复算为准，面板结算
+      }, sim, { title: '悬赏妖踪', playerHp: mine.hp });
+      const out = await worldFetch('/api/bounty/fight', { method: 'POST', body: JSON.stringify({ slot }) });
+      el.done = true;
+      el.win = out.win;
+      el.stones = out.stones;
+      el.dust = out.dust;
+      if (out.win) {
+        // 服务端直发账本：客户端平加响应实额（不二次放大，与征战结算同口径）
+        state.stones += out.stones;
+        state.totalStones += out.stones;
+        state.dust += out.dust;
+        state.dustTotal += out.dust;
+        pushLog('讨平「' + el.name + ' · ' + el.title + '」！+' + fmt(out.stones) + ' 灵石 · +' + fmt(out.dust) + ' 碎屑', 'special');
+        floatText('+' + fmt(out.stones) + ' 灵石', '#facc15');
+        chime([523, 659, 784]);
+      } else {
+        pushLog('「' + el.name + ' · ' + el.title + '」过于凶悍，今日败北（' + sim.rounds + ' 回合）', 'sys');
+        floatText('败北 · 明日再战', '#f87171');
+      }
+      save();
+      paintResources();
+      renderBounty();
+    } catch (e) {
+      if (e && e.status === 409) {
+        persist(); // 快照/存档未就绪：立即补推，几秒后可再战
+        floatText('快照同步中，几秒后再战', '#f87171');
+      } else {
+        floatText(e.message, '#f87171');
+      }
+    }
+    WORLD.bountyBusy[slot] = false;
   }
 
   /* ---------------- 事件 ---------------- */
@@ -17074,6 +17366,13 @@
       if (btn) arenaFight(Number(btn.dataset.id));
     });
     $('bossAttack').addEventListener('click', bossAttack);
+    // 悬赏妖踪：列表内出战按钮走委托（卡片随 renderBounty 重建）
+    $('bountyList').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act="bounty"]');
+      if (btn && !btn.disabled) bountyFight(Number(btn.dataset.slot));
+    });
+    // 天梯日俸：一键领取当日段位俸
+    $('ladderPayBtn').addEventListener('click', ladderPay);
     $('guildBox').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act]');
       if (!btn) return;
@@ -17285,7 +17584,25 @@
     $('fuseGo').addEventListener('click', petFuse);
     $('fuseAuto').addEventListener('click', petFuseAutoFill);
     $('petFuseResultOk').addEventListener('click', () => $('petFuseResultModal').classList.remove('show'));
-    $('meltResultOk').addEventListener('click', () => $('meltResultModal').classList.remove('show'));
+    $('meltResultOk').addEventListener('click', () => {
+      // 两段式弹层（2026-11-04）：确认态点「确认熔铸」执行熔铸并原弹层刷新为结果；
+      // 结果态点「收下」关闭
+      if (meltPendingR != null) {
+        const r = meltPendingR;
+        meltPendingR = null;
+        meltDo(r);
+        return;
+      }
+      $('meltResultModal').classList.remove('show');
+    });
+    $('meltResultCancel').addEventListener('click', () => {
+      meltPendingR = null;
+      $('meltResultModal').classList.remove('show');
+    });
+
+    // 通用确认弹层按钮（gameConfirm 定义在 showMeltResult 前）
+    $('confirmOk').addEventListener('click', () => confirmAnswer(true));
+    $('confirmCancel').addEventListener('click', () => confirmAnswer(false));
     $('huntZones').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-zone]');
       if (!b || b.disabled) return;
@@ -17442,7 +17759,7 @@
     $('meltList').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-melt]');
       if (!btn || btn.disabled) return;
-      meltItem(Number(btn.dataset.melt));
+      meltOpen(Number(btn.dataset.melt));
     });
 
     $('gambleBtn').addEventListener('click', () => doGamble(1));
@@ -17664,7 +17981,8 @@
     });
 
     $('resetBtn').addEventListener('click', async () => {
-      if (!confirm('确定重置全部进度？云端存档与账本一并清除，此操作不可撤销。')) return;
+      if (!(await gameConfirm('确定重置全部进度？云端存档与账本一并清除，此操作不可撤销。',
+        { title: '重置进度', okText: '确认重置' }))) return;
       try {
         const res = await fetch('/api/reset', {
           method: 'POST',

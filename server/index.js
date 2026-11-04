@@ -382,8 +382,9 @@ async function handleApi(req, res, pathname) {
     return sendJSON(res, 404, { error: 'not found' });
   }
 
-  // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 兑换码（social.js 内再按方法分发）
-  if (/^\/api\/(rank|ladder|pvp|boss|guild|redeem)/.test(pathname)) {
+  // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 悬赏妖踪 / 兑换码
+  //（social.js 内再按方法分发）
+  if (/^\/api\/(rank|ladder|pvp|boss|guild|bounty|redeem)/.test(pathname)) {
     const user = auth.getSessionUser(req);
     if (!user) return sendJSON(res, 401, { error: '未登录' });
     let body = null;

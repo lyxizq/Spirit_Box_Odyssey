@@ -328,7 +328,7 @@ export function createPetsService(db, staminaSvc) {
           if (roll <= 0) { spId = zone.pool[i]; break; }
         }
         const spDef = PET_SP_MAP[spId];
-        const r = rollBandRarity(spDef, z.cap);
+        const r = rollBandRarity(spDef, zone.cap);
         const enc = rollPetInst(spId, r, 1);
         enc.at = now;
         h.enc = enc;

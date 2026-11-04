@@ -448,18 +448,19 @@ export function createSaveService(db) {
       else {
         if (!isInt(data.fishing.bait, 0, 99)) bad('鱼饵越界');
         if (!isInt(data.fishing.casts, 0, 1e9)) bad('垂钓计数越界');
-        // 鱼档（2026-11-03 弹窗改版）：全局鱼表 50 种（五钓场 ×10），bestT 0..49；
-        // 旧档 0..4 下标与新表同位（旧五鱼保持原下标），老档无需迁移
-        if (!isInt(data.fishing.bestT, -1, 49)) bad('鱼档越界');
+        // 鱼档（2026-11-03 弹窗改版，2026-11-04 扩容）：全局鱼表 54 种（五钓场，每场
+        // 追加一条化形龙鱼），bestT 0..53；旧五鱼 0..4 原位、加鱼只准末尾追加（客户端
+        // 铁律），下标无漂移、老档无需迁移；只查上界不复制 id 白名单
+        if (!isInt(data.fishing.bestT, -1, 53)) bad('鱼档越界');
         // 竿等/钓场（2026-11-03 补字段）：竿等即钓场解封线（1..15），钓场 1..5；
         // undefined 放行按客户端默认 1 计（旧客户端推档不带）
         if (data.fishing.rod !== undefined && !isInt(data.fishing.rod, 1, 15)) bad('鱼竿越界');
         if (data.fishing.spot !== undefined && !isInt(data.fishing.spot, 1, 5)) bad('钓场越界');
-        // 图鉴点亮表（2026-11-04 补字段）：键 ⊆ 鱼 id 形（小写短串）、值 0/1、至多 50 键——
-        // 纯展示零收益面，结构校验即可，不复制 50 个 id 白名单；undefined 放行（旧档兼容）
+        // 图鉴点亮表（2026-11-04 补字段）：键 ⊆ 鱼 id 形（小写短串）、值 0/1、至多 54 键——
+        // 纯展示零收益面，结构校验即可，不复制 54 个 id 白名单；undefined 放行（旧档兼容）
         const fdex = data.fishing.dex;
         if (fdex !== undefined) {
-          if (!fdex || typeof fdex !== 'object' || Array.isArray(fdex) || Object.keys(fdex).length > 50) {
+          if (!fdex || typeof fdex !== 'object' || Array.isArray(fdex) || Object.keys(fdex).length > 54) {
             bad('钓鱼图鉴非法');
           } else {
             for (const k of Object.keys(fdex)) {

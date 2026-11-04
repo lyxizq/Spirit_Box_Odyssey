@@ -4,6 +4,7 @@
 // 灵石类花费（加购/立盟/捐献）凭增速账本余额（save_ledger，saves.js 维护）校验。
 import { sendJSON, SlidingWindow } from './http-util.js';
 import { simulateBattle, bossEnemyOf } from './battle.js';
+import { findBannedWord } from './moderation.js';
 
 const GUILD_CAP = 30;                 // 仙盟人数上限
 // 基金阶梯（2026-11-01 用户指定）：升到第 N 级累计需 20万×N(N-1)/2——首次 20 万，
@@ -36,6 +37,32 @@ const REDEEM_RE = /^[A-Z0-9]{4,32}$/;
 const GUILD_NAME_RE = /^[\u4e00-\u9fa5A-Za-z0-9]{2,8}$/;
 const GUILD_CREATE_COST = 10000000;   // 立盟灵石（2026-11-01 用户指定 5 万→1000 万；另有 2 万修为 + 境界化神门槛）
 const TASK_CLAIM_REWARD = { stones: 20000, contribution: 25 }; // 每项盟任务领取奖励
+
+// —— 悬赏妖踪（2026-11-04 天下扩容）：每日三只精英妖 ——
+// 敌人以玩家自己的 PvP 快照为基底按倍率缩放（快照含装备词条，人人有得打且不随服膨胀）；
+// 每人每只一日一场，胜负都占场；胜负由服务端 simulateBattle 复算，战胜赏格服务端直发
+// 账本 + action_log 授权流水。倍率/赏格公式与 game.js bountyEnemyOf 同源，改动须双侧同步。
+const BOUNTY_TIERS = [
+  { mult: 1.0, title: '妖将' },
+  { mult: 1.7, title: '妖将统领' },
+  { mult: 2.6, title: '妖王亲卫' },
+];
+const ELITE_NAMES = ['血牙', '玄鳞', '赤瞳', '蚀骨', '霜翼', '雷煞', '幽爪', '焚尾'];
+const BOUNTY_STONE_BASE = 2e4;        // 赏格基线
+const BOUNTY_STONE_PER_POWER = 1 / 40; // 赏格随战力成长（power/40）
+const BOUNTY_STONE_CAP = 3e5;         // 单只赏格封顶（×倍率后最高 78 万/日）
+const BOUNTY_DUST_BASE = 6;
+const BOUNTY_DUST_PER_POWER = 1 / 1e6;
+const BOUNTY_DUST_CAP = 300;
+
+// —— 天梯日俸（2026-11-04 天下扩容）：按当前天梯分档位每日领俸 ——
+// 需职业生涯打过一场竞技场；数额服务端现算直发（账本 + 授权流水），client 不传数额
+const LADDER_PAY_TIERS = [
+  { min: 1300, name: '登峰', stones: 6e5 },
+  { min: 1100, name: '入阁', stones: 2.5e5 },
+  { min: 900,  name: '立雪', stones: 1e5 },
+  { min: 0,    name: '初阶', stones: 3e4 },
+];
 
 // 盟任务：进度全部由服务端从真实行为表聚合（捐献额 / 盟妖王伤害 / 盟员切磋场数）。
 // donate 目标取单人每日捐献上限，保证独行侠盟也能做完。
@@ -124,7 +151,7 @@ export function createSocialService(db) {
        ORDER BY u.power_score DESC LIMIT 50`),
     betterCount: db.prepare(
       "SELECT COUNT(*) AS n FROM users WHERE power_score > ? AND status = 'active'"),
-    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at FROM users WHERE id = ?'),
+    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at, ladder_pay_day FROM users WHERE id = ?'),
     // PvP（真人候选池不含假人；假人由 botCandidates 按战力就近补位）
     candidates: db.prepare(
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 0 AS bot
@@ -286,6 +313,23 @@ export function createSocialService(db) {
     // 修为余额（同账本口径）：立盟双币消耗的修为侧原子扣款与退款
     ledgerSpendExp: db.prepare('UPDATE save_ledger SET exp = exp - ? WHERE user_id = ? AND exp >= ?'),
     ledgerRefundExp: db.prepare('UPDATE save_ledger SET exp = exp + ? WHERE user_id = ?'),
+    // —— 2026-11-04 天下扩容：悬赏妖踪 / 天梯日俸 ——
+    bountyGet: db.prepare(
+      'SELECT win, damage, stones, dust FROM bounty_kills WHERE day = ? AND user_id = ? AND slot = ?'),
+    bountyIns: db.prepare(
+      `INSERT INTO bounty_kills (day, user_id, slot, win, damage, stones, dust, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(day, user_id, slot) DO NOTHING`),
+    // 服务端直发的账本侧入账（悬赏赏格 / 天梯俸禄）：主计数列 + 授权流水双记，
+    // checkVelocity 的 s.stones/s.dust 会把这批收益计入增速包络（防「余额跳变」误拒）
+    ledgerRow: db.prepare('SELECT user_id FROM save_ledger WHERE user_id = ?'),
+    ledgerAddStonesDust: db.prepare(
+      'UPDATE save_ledger SET stones = stones + ?, total_stones = total_stones + ?, dust_total = dust_total + ? WHERE user_id = ?'),
+    ledgerAddStones: db.prepare(
+      'UPDATE save_ledger SET stones = stones + ?, total_stones = total_stones + ? WHERE user_id = ?'),
+    logAction: db.prepare(
+      'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    ladderPayDaySet: db.prepare('UPDATE users SET ladder_pay_day = ? WHERE id = ?'),
   };
 
   // 账本灵石原子扣款（2026-10-31 复审升级）：严格足额才扣成功——查而不扣时同一笔账本
@@ -466,10 +510,50 @@ export function createSocialService(db) {
     }));
     const myRow = stmts.ladderBetter.get(myRating).n + 1;
     const myGames = me ? me.pvp_wins + me.pvp_losses : 0;
+    // 天梯日俸状态（2026-11-04 天下扩容）：当日已领 / 可领档位与数额由服务端现算下发
+    const today = dayStr();
+    const tier = ladderPayTierOf(myRating);
+    const claimed = !!me && me.ladder_pay_day === today;
+    const pay = {
+      claimed,
+      games: myGames,
+      tierName: tier.name,
+      amount: tier.stones,
+      can: !claimed && myGames > 0,
+    };
     return sendJSON(res, 200, {
       top,
       me: { rank: myGames > 0 ? myRow : 0, rating: myRating, wins: me ? me.pvp_wins : 0, losses: me ? me.pvp_losses : 0 },
+      pay,
     });
+  }
+
+  const ladderPayTierOf = (rating) =>
+    LADDER_PAY_TIERS.find((t) => rating >= t.min) || LADDER_PAY_TIERS[LADDER_PAY_TIERS.length - 1];
+
+  // 天梯日俸：职业生涯打过一场即可每日按当前段位领俸；服务端直发账本 + 授权流水，
+  // ladder_pay_day 防重领。无账本行（刚注册未传档）走 409，客户端补推后自愈。
+  function ladderPay(req, res, ctx) {
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
+    if (me.pvp_wins + me.pvp_losses <= 0) {
+      return sendJSON(res, 400, { error: '先在竞技场打一场，俸禄才会记你名下' });
+    }
+    const today = dayStr();
+    if (me.ladder_pay_day === today) return sendJSON(res, 429, { error: '今日俸禄已领，明日再来' });
+    if (!stmts.ledgerRow.get(me.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再领' });
+    const tier = ladderPayTierOf(me.pvp_rating);
+    db.exec('BEGIN');
+    try {
+      stmts.ledgerAddStones.run(tier.stones, tier.stones, me.id);
+      stmts.logAction.run(me.id, today, 'ladder_pay', tier.stones, 0, 0, 0, Date.now());
+      stmts.ladderPayDaySet.run(today, me.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, stones: tier.stones, tierName: tier.name, rating: me.pvp_rating });
   }
 
   function eloDelta(ra, rb, win) {
@@ -697,6 +781,11 @@ export function createSocialService(db) {
     if (!GUILD_NAME_RE.test(name)) {
       return sendJSON(res, 400, { error: '盟名需 2-8 位中文、英文或数字' });
     }
+    // 屏蔽词校验（2026-11-04 用户指令）：盟名公共可见（名录/榜单），命中即拒
+    const banned = findBannedWord(name);
+    if (banned) {
+      return sendJSON(res, 400, { error: '盟名不能含有屏蔽词「' + banned + '」，请更换' });
+    }
     if (stmts.myGuildRow.get(ctx.user.id)) {
       return sendJSON(res, 409, { error: '你已在仙盟中，先退盟再创' });
     }
@@ -781,6 +870,11 @@ export function createSocialService(db) {
     const row = stmts.myGuildRow.get(ctx.user.id);
     if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
     if (row.role !== 'leader') return sendJSON(res, 403, { error: '仅盟主可改公告' });
+    // 屏蔽词校验（2026-11-04 用户指令）：公告全盟可见，命中即拒
+    const banned = findBannedWord(clean);
+    if (banned) {
+      return sendJSON(res, 400, { error: '公告不能含有屏蔽词「' + banned + '」，请修改' });
+    }
     stmts.setNotice.run(clean, row.id);
     return sendJSON(res, 200, { ok: true, notice: clean });
   }
@@ -977,6 +1071,85 @@ export function createSocialService(db) {
     return sendJSON(res, 200, { ok: true, reward: out, note: row.note });
   }
 
+  // ---------------- 悬赏妖踪 ----------------
+
+  // 敌人以玩家自己的 PvP 快照为基底缩放（快照已含装备词条；服务端权威公式，
+  // game.js bountyEnemyOf 同源）。t1 大多数人可胜，t3 要 Builds 成型才有把握。
+  function bountyEnemyOf(snap, mult) {
+    return {
+      atk: snap.atk * 0.55 * mult,
+      hp: snap.hp * 3.2 * mult,
+      def: snap.def * 0.8 * mult,
+      crit: 0.05, critMult: 2, lifesteal: 0, dr: 0,
+      pierce: Math.min(0.3, 0.05 * mult),
+    };
+  }
+
+  // 当日三妖：名字由日期种子确定性推导（全服同榜）；赏格随个人战力成长、按倍率放大
+  function bountyRewardOf(power, mult) {
+    const p = Math.max(0, power);
+    const stones = Math.round(Math.min(BOUNTY_STONE_CAP, BOUNTY_STONE_BASE + Math.floor(p * BOUNTY_STONE_PER_POWER)) * mult);
+    const dust = Math.round(Math.min(BOUNTY_DUST_CAP, BOUNTY_DUST_BASE + Math.floor(p * BOUNTY_DUST_PER_POWER)) * mult);
+    return { stones, dust };
+  }
+
+  function bountyState(req, res, ctx) {
+    const me = stmts.byId.get(ctx.user.id);
+    const power = me ? me.power_score : 0;
+    const today = dayStr();
+    const seed = [...today].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const elites = BOUNTY_TIERS.map((t, slot) => {
+      const rec = stmts.bountyGet.get(today, ctx.user.id, slot);
+      return {
+        slot,
+        name: ELITE_NAMES[(seed + slot * 3) % ELITE_NAMES.length],
+        title: t.title,
+        mult: t.mult,
+        reward: bountyRewardOf(power, t.mult),
+        done: !!rec,
+        win: rec ? !!rec.win : false,
+        stones: rec && rec.win ? rec.stones : 0,
+        dust: rec && rec.win ? rec.dust : 0,
+      };
+    });
+    return sendJSON(res, 200, { day: today, elites });
+  }
+
+  function bountyFight(req, res, ctx) {
+    const slot = Math.floor(Number(ctx.body && ctx.body.slot));
+    if (!(slot >= 0 && slot < BOUNTY_TIERS.length)) return sendJSON(res, 400, { error: '参数无效' });
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
+    const today = dayStr();
+    if (stmts.bountyGet.get(today, me.id, slot)) {
+      return sendJSON(res, 429, { error: '这只妖将今日已交过手，明日再来' });
+    }
+    // 胜负由服务端复算（同 PvP/妖王口径）：快照八项缺失走 409 且不占当日场次
+    let snap = null;
+    try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { /* 快照缺失 */ }
+    if (!snapOk(snap)) {
+      return sendJSON(res, 409, { error: '战斗快照未就绪，已触发重新同步，几秒后再战' });
+    }
+    if (!stmts.ledgerRow.get(me.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再战' });
+    const tier = BOUNTY_TIERS[slot];
+    const sim = simulateBattle(snap, bountyEnemyOf(snap, tier.mult));
+    const win = sim.win ? 1 : 0;
+    const rw = win ? bountyRewardOf(me.power_score, tier.mult) : { stones: 0, dust: 0 };
+    db.exec('BEGIN');
+    try {
+      stmts.bountyIns.run(today, me.id, slot, win, sim.dealt || 0, rw.stones, rw.dust, Date.now());
+      if (win) {
+        stmts.ledgerAddStonesDust.run(rw.stones, rw.stones, rw.dust, me.id);
+        stmts.logAction.run(me.id, today, 'bounty', rw.stones, rw.dust, 0, 0, Date.now());
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, win: !!win, stones: rw.stones, dust: rw.dust, done: true });
+  }
+
   // ---------------- 路由分发 ----------------
 
   // POST 统一走限流；GET 放行。返回 true 表示已处理。
@@ -1008,6 +1181,9 @@ export function createSocialService(db) {
       case '/api/guild/shop/buy': return write ? (guildShopBuy(req, res, ctx), true) : false;
       case '/api/guild/aid': return write ? (guildAid(req, res, ctx), true) : false;
       case '/api/guild/aid/collect': return write ? (guildAidCollect(req, res, ctx), true) : false;
+      case '/api/bounty':      return bountyState(req, res, ctx), true;
+      case '/api/bounty/fight': return write ? (bountyFight(req, res, ctx), true) : false;
+      case '/api/ladder/pay':  return write ? (ladderPay(req, res, ctx), true) : false;
       case '/api/redeem':      return write ? (redeem(req, res, ctx), true) : false;
       default:                 return false;
     }

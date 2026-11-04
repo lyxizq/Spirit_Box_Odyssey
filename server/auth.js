@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { sendJSON, randomToken, sha256, sleep, SlidingWindow } from './http-util.js';
+import { findBannedWord } from './moderation.js';
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -158,6 +159,11 @@ export function createAuthService(db) {
     if (!USERNAME_RE.test(username) || RESERVED.has(username.toLowerCase())) {
       return sendJSON(res, 400, { error: '道号需为 2-16 位中文、英文、数字或下划线，且不与保留名冲突' });
     }
+    // 屏蔽词校验（2026-11-04 用户指令）：道号即初始显示名（公共可见），一并拦
+    const banned = findBannedWord(username);
+    if (banned) {
+      return sendJSON(res, 400, { error: '道号不能含有屏蔽词「' + banned + '」，请更换' });
+    }
     if (password.length < 8 || password.length > 64 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
       return sendJSON(res, 400, { error: '口令需 8-64 位，且同时包含字母与数字' });
     }
@@ -252,6 +258,11 @@ export function createAuthService(db) {
     const name = typeof ctx.body?.name === 'string' ? ctx.body.name.trim() : '';
     if (!DISPLAY_NAME_RE.test(name)) {
       return sendJSON(res, 400, { error: '显示名需为 2-16 位中文、英文、数字或下划线' });
+    }
+    // 屏蔽词校验（2026-11-04 用户指令）：命中即拒绝，词随 error 透出给客户端提示
+    const banned = findBannedWord(name);
+    if (banned) {
+      return sendJSON(res, 400, { error: '显示名不能含有屏蔽词「' + banned + '」，请修改' });
     }
     const row = stmts.byId.get(user.id);
     if (!row) return sendJSON(res, 500, { error: '账号状态异常' });
