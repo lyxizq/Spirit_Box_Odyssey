@@ -4,6 +4,7 @@
 import { sendJSON, SlidingWindow } from './http-util.js';
 import { checkVelocity, ledgerOf, equipPowerOf } from './economy.js';
 import { PET_SPECIES, PET_LV_MAX, PET_INST_MAX } from './pets.js';
+import { SIGIL_DEFS } from './items.js';
 
 const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
 const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
@@ -52,7 +53,7 @@ export function createSaveService(db) {
          wild_cleared = '[]', wild_kills = '{}', wild_repeat_day = '', wild_repeat_used = 0,
          sweep_day = '', sweep_used = '{}', sweep_bought = '{}',
          trial_day = '', trial_done = '[]', offline_at = 0, set_pity = NULL,
-         pet_hunt = NULL,
+         pet_hunt = NULL, pet_walk = NULL,
          cli_sync = NULL,
          /* claim_days 保留（2026-11-03）：天道录无 gate 梯子只靠 claim_days 做「终身一次」，
             清空会让 reset×tide 变成可重复领取（3 次/时）；重置清进度但不清领取史 */
@@ -265,6 +266,14 @@ export function createSaveService(db) {
       if (!g || typeof g !== 'object' || !DEEP.AFFIX_KEYS.has(g.k)) return bad(where + ' 宝石键非法');
       if (!isInt(g.t, 1, 3)) return bad(where + ' 宝石等级越界');
     }
+    // 神纹（2026-11-04，可选键模式）：仅仙品（r5，含套装件）可带，键白名单——
+    // 参数取 items.js SIGIL_DEFS 表，装备上只存 { k }，无数值面（改 v 无意义）
+    if (it.sigil !== undefined) {
+      if (!it.sigil || typeof it.sigil !== 'object' || Array.isArray(it.sigil) ||
+        !SIGIL_DEFS[it.sigil.k]) return bad(where + ' 神纹键非法');
+      if (it.r !== 5) return bad(where + ' 神纹仅仙品可刻');
+      if (Object.keys(it.sigil).length > 2) return bad(where + ' 神纹字段越界');
+    }
     return null;
   }
 
@@ -315,6 +324,19 @@ export function createSaveService(db) {
     // speedLv 喂开箱 interval——客户端 UPGRADES.gain.max=60 / speed.max=50，越界即改档
     if (data.gainLv !== undefined && !isInt(data.gainLv, 0, 60)) bad('gainLv 越界');
     if (data.speedLv !== undefined && !isInt(data.speedLv, 0, 50)) bad('speedLv 越界');
+    // 本命法宝（2026-11-04，可选键模式）：结构钳制——部位白名单、经验/等级界内、
+    // 等级 ≤ 轮回解锁上限（3+2×min(轮回,3)）；账本真值对账在 store()（更高一层防线）
+    if (data.bond !== undefined) {
+      const b = data.bond;
+      if (!b || typeof b !== 'object' || Array.isArray(b)) bad('本命法宝数据非法');
+      else {
+        if (b.slot && !DEEP.SLOT_KEYS.has(b.slot)) bad('本命法宝部位非法');
+        if (!isInt(b.exp, 0, 1e9)) bad('本命法宝器灵经验越界');
+        const asc = isInt(data.ascensions, 0, 1e6) ? data.ascensions : 0;
+        if (!isInt(b.lv, 0, 9) || b.lv > 3 + 2 * Math.min(asc, 3)) bad('本命法宝器灵等级越界');
+        if (Object.keys(b).length > 3) bad('本命法宝字段越界');
+      }
+    }
     // 部位强化 / 部位宝石（2026-10-31 部位化：强化与宝石改绑槽位，键 ⊆ 六槽位）
     if (data.enh !== undefined) {
       if (!data.enh || typeof data.enh !== 'object' || Array.isArray(data.enh)) bad('部位强化表非法');
@@ -448,19 +470,19 @@ export function createSaveService(db) {
       else {
         if (!isInt(data.fishing.bait, 0, 99)) bad('鱼饵越界');
         if (!isInt(data.fishing.casts, 0, 1e9)) bad('垂钓计数越界');
-        // 鱼档（2026-11-03 弹窗改版，2026-11-04 扩容）：全局鱼表 54 种（五钓场，每场
-        // 追加一条化形龙鱼），bestT 0..53；旧五鱼 0..4 原位、加鱼只准末尾追加（客户端
+        // 鱼档（2026-11-03 弹窗改版，2026-11-04 两次扩容）：全局鱼表 200 种（十钓场 ×20，
+        // 每场一条化形龙鱼），bestT 0..153；旧五鱼 0..4 原位、加鱼只准末尾追加（客户端
         // 铁律），下标无漂移、老档无需迁移；只查上界不复制 id 白名单
-        if (!isInt(data.fishing.bestT, -1, 53)) bad('鱼档越界');
-        // 竿等/钓场（2026-11-03 补字段）：竿等即钓场解封线（1..15），钓场 1..5；
+        if (!isInt(data.fishing.bestT, -1, 153)) bad('鱼档越界');
+        // 竿等/钓场（2026-11-03 补字段，2026-11-04 扩容）：竿等即钓场解封线（1..20），钓场 1..10；
         // undefined 放行按客户端默认 1 计（旧客户端推档不带）
-        if (data.fishing.rod !== undefined && !isInt(data.fishing.rod, 1, 15)) bad('鱼竿越界');
-        if (data.fishing.spot !== undefined && !isInt(data.fishing.spot, 1, 5)) bad('钓场越界');
-        // 图鉴点亮表（2026-11-04 补字段）：键 ⊆ 鱼 id 形（小写短串）、值 0/1、至多 54 键——
-        // 纯展示零收益面，结构校验即可，不复制 54 个 id 白名单；undefined 放行（旧档兼容）
+        if (data.fishing.rod !== undefined && !isInt(data.fishing.rod, 1, 20)) bad('鱼竿越界');
+        if (data.fishing.spot !== undefined && !isInt(data.fishing.spot, 1, 10)) bad('钓场越界');
+        // 图鉴点亮表（2026-11-04 补字段）：键 ⊆ 鱼 id 形（小写短串）、值 0/1、至多 200 键——
+        // 纯展示零收益面，结构校验即可，不复制 id 白名单；undefined 放行（旧档兼容）
         const fdex = data.fishing.dex;
         if (fdex !== undefined) {
-          if (!fdex || typeof fdex !== 'object' || Array.isArray(fdex) || Object.keys(fdex).length > 54) {
+          if (!fdex || typeof fdex !== 'object' || Array.isArray(fdex) || Object.keys(fdex).length > 200) {
             bad('钓鱼图鉴非法');
           } else {
             for (const k of Object.keys(fdex)) {
@@ -468,7 +490,69 @@ export function createSaveService(db) {
             }
           }
         }
+        // —— 每日鱼王（2026-11-04 日常扩容）——
+        // kingCasts：今日鱼王窗口内已抛竿数（保底计步，0..99）；kings：近 31 天「日期→鱼 id」
+        // 战绩（纯展示）；kingDex：鱼王徽记（id→累计次数，≤54 键）。三键 undefined 放行旧档。
+        if (data.fishing.kingCasts !== undefined && !isInt(data.fishing.kingCasts, 0, 99)) bad('鱼王抛竿计数越界');
+        const fkings = data.fishing.kings;
+        if (fkings !== undefined) {
+          if (!fkings || typeof fkings !== 'object' || Array.isArray(fkings) || Object.keys(fkings).length > 31) {
+            bad('鱼王战绩非法');
+          } else {
+            for (const k of Object.keys(fkings)) {
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !/^[a-z]{2,12}$/.test(String(fkings[k] || ''))) {
+                bad('鱼王战绩键值非法'); break;
+              }
+            }
+          }
+        }
+        const fkdex = data.fishing.kingDex;
+        if (fkdex !== undefined) {
+          if (!fkdex || typeof fkdex !== 'object' || Array.isArray(fkdex) || Object.keys(fkdex).length > 200) {
+            bad('鱼王徽记非法');
+          } else {
+            for (const k of Object.keys(fkdex)) {
+              if (!/^[a-z]{2,12}$/.test(k) || !isInt(fkdex[k], 0, 1e4)) { bad('鱼王徽记键值非法'); break; }
+            }
+          }
+        }
       }
+    }
+    // —— 七日征程（2026-11-04 日常扩容）：周键 + 当周点亮日期（≤7 个、日期形）+ 领取态 +
+    // 完成周数。进度纯客户端记账（点亮规则=当日任一日活领取），周大奖走 /api/claim
+    // journey 槽做周锁，此处只做结构校验防脏档毒基线。
+    if (data.journey !== undefined) {
+      const j = data.journey;
+      if (!j || typeof j !== 'object' || Array.isArray(j)) bad('七日征程字段非法');
+      else {
+        if (j.week !== undefined && (typeof j.week !== 'string' || j.week.length > 16)) bad('七日征程周键非法');
+        if (j.days !== undefined) {
+          if (!Array.isArray(j.days) || j.days.length > 7) bad('七日征程点亮表非法');
+          else for (const d of j.days) {
+            if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) { bad('七日征程日期非法'); break; }
+          }
+        }
+        if (j.claimed !== undefined && j.claimed !== true && j.claimed !== false) bad('七日征程领取态非法');
+        if (j.weeks !== undefined && !isInt(j.weeks, 0, 1e6)) bad('七日征程周数越界');
+      }
+    }
+    // —— 遛宠日常（2026-11-04）：客户端镜像（权威在 save_ledger.pet_walk），纯展示校验
+    if (data.petWalk !== undefined) {
+      const w = data.petWalk;
+      if (!w || typeof w !== 'object' || Array.isArray(w)) bad('遛宠字段非法');
+      else {
+        for (const k of ['day', 'spot', 'buffDay']) {
+          if (w[k] !== undefined && (typeof w[k] !== 'string' || w[k].length > 16)) bad('遛宠 ' + k + ' 非法');
+        }
+        if (w.start !== undefined && !isInt(w.start, 0, 4e12)) bad('遛宠时间戳越界');
+        if (w.done !== undefined && w.done !== true && w.done !== false) bad('遛宠完成态非法');
+      }
+    }
+    // —— 仙盟共修心得（2026-11-04）：当日增益日期戳（增益本体是客户端乘区，无数额面）
+    if (data.guildCult !== undefined) {
+      const c = data.guildCult;
+      if (!c || typeof c !== 'object' || Array.isArray(c)) bad('共修心得字段非法');
+      else if (c.buffDay !== undefined && (typeof c.buffDay !== 'string' || c.buffDay.length > 16)) bad('共修日期戳非法');
     }
     if (data.petCores !== undefined) {
       if (!data.petCores || typeof data.petCores !== 'object' || Array.isArray(data.petCores)) bad('内丹表非法');
@@ -524,10 +608,10 @@ export function createSaveService(db) {
     if (data.petSeq !== undefined && !isInt(data.petSeq, 0, 1e9)) bad('灵宠序号越界');
     // 出战位（2026-11-03 补校验）：activePets 直接喂 battle.js petAggOf/内丹/stoneBuff，
     // 原先零校验——重复 uid 或超长数组会把天赋/词条/内丹加成 ×N 复读并放大服务端
-    // 结算发放。口径：数组 ≤5（客户端 PET_SLOT_MAX）、元素为合法 uid 或旧档物种 id、
+    // 结算发放。口径：数组 ≤6（客户端 PET_SLOT_MAX，2026-11-04 5→6）、元素为合法 uid 或旧档物种 id、
     // 全局去重、数字 uid 必须存在于 petInsts（旧档物种字符串按 battle.js 双读兼容放行）
     if (data.activePets !== undefined) {
-      if (!Array.isArray(data.activePets) || data.activePets.length > 5) {
+      if (!Array.isArray(data.activePets) || data.activePets.length > 6) {
         bad('出战灵宠表非法');
       } else {
         const instUids = new Set((Array.isArray(data.petInsts) ? data.petInsts : [])
@@ -573,6 +657,64 @@ export function createSaveService(db) {
           const n = data.gather.nodes[k];
           if (!n || typeof n !== 'object' || Array.isArray(n)) { bad('灵圃节点非法'); break; }
           if (!isInt(n.lv, 0, 60)) bad('灵圃等级越界');
+        }
+      }
+    }
+    // —— 修炼扩容（2026-11-04）：闭关/历练镜像与道基/星图/道韵字段。
+    // 可选键模式（旧档缺省放行，2026-11-03 教训）；道韵上界 = 开箱数 ×0.05 + 2000
+    //（实际来源 ≈ 每 100 开 1 缕 + 突破/顿悟，×5 余量兜 bonus 面；凝率 10→100 已随
+    //  2026-11-04 用户指定收紧，功能未上线无存量档，上界同步收紧不留旧余量）
+    if (data.seclusion !== undefined) {
+      if (!data.seclusion || typeof data.seclusion !== 'object' || Array.isArray(data.seclusion)) {
+        bad('闭关字段非法');
+      } else {
+        if (data.seclusion.dur !== undefined && !isInt(data.seclusion.dur, 0, 2)) bad('闭关时长档越界');
+        if (data.seclusion.incense !== undefined && !isInt(data.seclusion.incense, 0, 3)) bad('香火档越界');
+        if (data.seclusion.until !== undefined && typeof data.seclusion.until !== 'number') bad('闭关时间戳非法');
+        if (data.seclusion.auto !== undefined && typeof data.seclusion.auto !== 'boolean') bad('自动续关类型非法');
+      }
+    }
+    if (data.steward !== undefined) {
+      if (!data.steward || typeof data.steward !== 'object' || Array.isArray(data.steward)) {
+        bad('道童字段非法');
+      } else {
+        if (data.steward.lore !== undefined && !isInt(data.steward.lore, 0, 1e6)) bad('历练见闻越界');
+        if (data.steward.apt !== undefined && !isInt(data.steward.apt, 0, 3)) bad('道童资质越界');
+        if (data.steward.autoSecl !== undefined && typeof data.steward.autoSecl !== 'boolean') bad('自动续关类型非法');
+        const dsp = data.steward.dispatch;
+        if (dsp !== undefined && dsp !== null) {
+          if (!dsp || typeof dsp !== 'object' || Array.isArray(dsp)) bad('历练派遣非法');
+          else {
+            if (typeof dsp.dest !== 'string' || !/^[a-z]{2,12}$/.test(dsp.dest)) bad('历练目的地非法');
+            if (dsp.h !== undefined && !isInt(dsp.h, 1, 8)) bad('历练时长越界');
+            if (dsp.start !== undefined && typeof dsp.start !== 'number') bad('历练时间戳非法');
+          }
+        }
+      }
+    }
+    if (data.daoji !== undefined) {
+      if (!data.daoji || typeof data.daoji !== 'object' || Array.isArray(data.daoji)) bad('道基字段非法');
+      else {
+        if (data.daoji.el !== undefined && data.daoji.el !== '' && !DEEP.ELEMENT_KEYS.has(data.daoji.el)) bad('道基五行非法');
+        if (data.daoji.stage !== undefined && !isInt(data.daoji.stage, 0, 5)) bad('道基阶数越界');
+        if (data.daoji.picked !== undefined && typeof data.daoji.picked !== 'boolean') bad('道基改道标记非法');
+      }
+    }
+    if (data.daoyun !== undefined &&
+      !isInt(data.daoyun, 0, Math.floor((Number(data.opens) || 0) * 0.05) + 2000)) bad('道韵越界');
+    if (data.xingtu !== undefined) {
+      if (!data.xingtu || typeof data.xingtu !== 'object' || Array.isArray(data.xingtu)) bad('星图字段非法');
+      else if (data.xingtu.lit !== undefined) {
+        const lit = data.xingtu.lit;
+        if (!Array.isArray(lit) || lit.length > 30) bad('星图点亮表非法');
+        else {
+          const seen = new Set();
+          for (const id of lit) {
+            if (typeof id !== 'string' || !/^[abc](?:10|[1-9])$/.test(id) || seen.has(id)) {
+              bad('星图节点非法'); break;
+            }
+            seen.add(id);
+          }
         }
       }
     }
@@ -738,6 +880,22 @@ export function createSaveService(db) {
         return sendJSON(res, 400, { error: '存档校验失败' });
       }
     }
+    // —— 本命法宝账本对账（2026-11-04）：器灵等级/经验由战斗结算记账
+    //（save_ledger.bond_lv/bond_exp），推送档不得「高于」账本真值（防改档直拉等级
+    // 喂大战斗面板；combat.js 战斗前还会按账本二次注入，这里是入库侧收口）。
+    // 客户端落后于账本（未吸收响应/多开）推低值不误拒，与 pet_seq/cli_sync 同哲学；
+    // 升级瞬间账本 exp 缩水（exp -= need），故低一级时经验不比。
+    if (prevRow && data.bond && data.bond.slot) {
+      const lLv = Math.max(0, Math.floor(Number(prevRow.bond_lv) || 0));
+      const lExp = Math.max(0, Math.floor(Number(prevRow.bond_exp) || 0));
+      const pLv = Math.max(0, Math.floor(Number(data.bond.lv) || 0));
+      const pExp = Math.max(0, Math.floor(Number(data.bond.exp) || 0));
+      if (pLv > lLv || (pLv === lLv && pExp > lExp)) {
+        console.error('[saves] 本命法宝超账本真值拒收 user=' + ctx.user.id +
+          '：push lv/exp=' + pLv + '/' + pExp + ' > ledger ' + lLv + '/' + lExp);
+        return sendJSON(res, 400, { error: '存档校验失败' });
+      }
+    }
     // —— 连点器判定（服务端裁定）：30s 滑窗累计手动点击增量 ——
     let clickBanUntil = prevRow ? (prevRow.click_ban_until || 0) : 0;
     // clicks 不做 |0：32 位截断下每次恰好 +2^32（validateDeep 上限 1e12 内合法）会让
@@ -836,6 +994,14 @@ export function createSaveService(db) {
   // /api/claim 在发放前记入 action_log（sanctionedSince 计入包络）并做当日次数锁；
   // 数额由客户端按增益链预估上报，服务端只钳「单笔上限 × 当日次数」，上限含增益余量。
   // 赌石暂未接入（概率玩法，P3 迁移时随上收一并处理；其头奖砖窗约 1~2 小时可自愈）。
+  // game.js storyReq 同源（红尘再启 2026-11-04）：base = 25×3.4^vi，十卷后接 1.75^n 缓曲线；
+  // 隐藏关取 li = 卷关数（每卷 5 关）→ ×(1+5×0.28)。改客户端公式必须同步此处。
+  const storyHiddenReqSrv = (vi, perVol) => {
+    const base = vi < 10
+      ? 25 * Math.pow(3.4, vi)
+      : 25 * Math.pow(3.4, 9) * Math.pow(1.75, vi - 9);
+    return base * (1 + perVol * 0.28);
+  };
   const CLAIM_RULES = {
     sign:           { cap: 1.5e8, perDay: 1 },  // 签到+赌狗（day7 1200万 × 赌狗×5 × 增益余量）
     sign_milestone: { cap: 2.5e10, perDay: 1 }, // 签到里程碑（day1000 = 100 亿）
@@ -862,6 +1028,9 @@ export function createSaveService(db) {
     aid_skill_recv: { cap: 7.5e6, perDay: 1 },      // 我领取同门传功
     boss_daily:     { cap: 1e6, perDay: 1 },    // 妖王讨伐伤害奖励（40 万封顶 × 余量）
     gboss_daily:    { cap: 4e5, perDay: 1 },    // 盟妖王伤害奖励（16 万封顶 × 余量）
+    // —— 2026-11-04 日常扩容 ——
+    journey:        { cap: 5e7, perWeek: 1 },   // 七日征程周大奖（2000 万 × 余量）
+    fishking:       { cap: 5e5, perDay: 1 },    // 每日鱼王（20 万 + 素材，素材客户端平加）
     // 战力动态上限类：数额随玩家战力成长（power = 账本装备分），dyn 系数按
     // 「客户端公式上界 × realPower ≤ 装备分×2500 × 2.5 余量」反推，见各领取点注释
     tribulation:    { cap: 1e6, perDay: 1, dyn: 6.5e4 },  // 天劫：realPower×10
@@ -933,7 +1102,8 @@ export function createSaveService(db) {
     try { map = prevRow.claim_days ? JSON.parse(prevRow.claim_days) : {}; } catch (e) { map = {}; }
     if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
 
-    // 两类领取：periodic（日/周锁次数）与 tide（天道录档位，终身一次 + 账本进度门槛）
+    // 两类领取：periodic（日/周锁次数）与 onceEver（终身一次：tide 天道录档位 /
+    // story_hidden 隐藏关首通），onceEver 携带 {list, key} 指向 claim_days 内的终身数组
     let amount = 0;
     let onceEver = null;
     if (kind === 'tide') {
@@ -946,10 +1116,28 @@ export function createSaveService(db) {
       if (lad.gate && !(Number(prevRow[lad.gate]) >= tier)) {
         return sendJSON(res, 409, { error: '天道录进度未达档位' });
       }
-      onceEver = ladder + ':' + tier;
+      onceEver = { list: 'tide', key: ladder + ':' + tier };
       const claimed = Array.isArray(map.tide) ? map.tide : [];
-      if (claimed.includes(onceEver)) return sendJSON(res, 429, { error: '该档位已领取' });
+      if (claimed.includes(onceEver.key)) return sendJSON(res, 429, { error: '该档位已领取' });
       amount = Math.round(lad.base * Math.pow(lad.ratio, idx));
+    } else if (kind === 'story_hidden') {
+      // 隐藏关「尘缘未了」首通大赏（2026-11-04 红尘再启）：数额服务端按卷自算，
+      // 客户端上报数额不采信。进度门槛 = 隐藏关建议战力 ≤ realPower 上界
+      //（账本装备分 ×2500，与自报战力一致性门同锚）——新号想伪造满进度直领大赏，
+      // 得先伪造等量装备分过账本包络，伪造面收敛到「账本内合理成长」。
+      // 终身一次走 claim_days.shid（与 tide 同机制，分桶防互相覆盖）。
+      const vi = Math.round(Number(ctx.body && ctx.body.sv));
+      const VOLS = 30, PER_VOL = 5; // game.js STORY_VOLUMES 同源常数：30 卷 × 5 关
+      if (!(vi >= 0 && vi < VOLS)) return sendJSON(res, 400, { error: '未知隐藏关' });
+      const req = Math.round(storyHiddenReqSrv(vi, PER_VOL)); // 先取整：与客户端 storyReq 完全同源
+      amount = Math.round(req * 40);
+      const cap = 1e4 + 2500 * Number(prevRow.power || 0);
+      if (amount > cap) {
+        return sendJSON(res, 409, { error: '尘缘未了：战力尚未至此（建议战力 ' + Math.round(req) + '）' });
+      }
+      onceEver = { list: 'shid', key: 'v' + vi };
+      const claimed = Array.isArray(map.shid) ? map.shid : [];
+      if (claimed.includes(onceEver.key)) return sendJSON(res, 429, { error: '该隐藏关首通赏已领取' });
     } else {
       const rule = CLAIM_RULES[kind];
       if (!rule) return sendJSON(res, 400, { error: '未知领奖类型' });
@@ -971,9 +1159,9 @@ export function createSaveService(db) {
 
     const nextJson = JSON.stringify((() => {
       if (!onceEver) return map;
-      const claimed = Array.isArray(map.tide) ? map.tide.slice() : [];
-      claimed.push(onceEver);
-      return Object.assign({}, map, { tide: claimed });
+      const claimed = Array.isArray(map[onceEver.list]) ? map[onceEver.list].slice() : [];
+      claimed.push(onceEver.key);
+      return Object.assign({}, map, { [onceEver.list]: claimed });
     })());
     db.exec('BEGIN');
     try {

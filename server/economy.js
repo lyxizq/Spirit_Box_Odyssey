@@ -273,13 +273,16 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
 
   // —— 5) 放大字段限速：仙位/轮回直接放宽战力天花板（量级校验对它们放行），
   // 增速与「可支配灵石」挂钩且不做与灵石无关的每推保底（复审：3 分钟 curl 可拉满）。
-  // 飞升门槛 1000 亿灵石/次（2026-11-03 用户指定，game.js ASCEND_STONES 同源）：
-  // 配额 = 2√(pot/1e11)，窗口内多次飞升的 Σ√ ≤ 2√pot，×2 余量精确覆盖；
+  // 飞升门槛递增式（2026-11-04 用户指定，game.js ascendStonesOf 同源）：
+  // 第 n 次飞升门槛 = 1e11×n；窗口内从 prev+1 飞到 asc 的累计门槛 = 1e11×Σ(k, prev+1..asc)
+  // = 1e11×(asc(asc+1)−prev(prev+1))/2。校验 pot ≥ 累计门槛×0.5（余量只防推送滞后误拒：
+  // 合法飞升瞬间 pot ≥ 当次门槛 ≥ need×1，0.5 不会放水到「攒一半门槛就飞」以下）。
   // 入仙界逐级 ×5 灵石（累计 (5^k-1)/4×1e8 ≤ pot ⟺ k ≤ log5(4·pot/1e8+1)），无保底。
   const pot = Math.max(0, prev.stones) + Math.max(0, dTotal) + 5e7 * days + Math.max(0, s.stones);
-  const ascAllow = 2 * Math.sqrt(pot / 1e11);
-  if (asc - prev.ascensions > ascAllow) {
-    return '轮回次数增速异常（+' + (asc - prev.ascensions) + '，配额 ' + Math.floor(ascAllow) + '）';
+  const ascNeed = ((asc * (asc + 1)) - (prev.ascensions * (prev.ascensions + 1))) / 2;
+  if (asc > prev.ascensions && pot < ascNeed * 0.5e11) {
+    return '轮回次数增速异常（累计门槛 ' + Math.round(ascNeed * 1e11).toExponential(2) +
+      '，可支配 ' + pot.toExponential(2) + '）';
   }
   const immAllow = Math.floor(Math.log(4 * pot / 1e8 + 1) / Math.log(5));
   if (immortal - prev.immortal > immAllow) {
@@ -288,12 +291,15 @@ export function checkVelocity(prev, next, elapsedMs, sanctioned, srv) {
 
   // —— 6) 碎屑 / 招募券 / 修为增速（价值低，宽松包络兜底）——
   // 碎屑/招募券是随机掉落 + 一次性奖励（妖王/商店/成就），短窗口小样本下期望口径趋近 0，
-  // 必须给绝对下限（券 3 张 / 尘 2 万每窗口），否则「刚开 1 箱掉 1 券」都会被拒（实测踩过）。
-  // 璞玉赌石（2026-11-03 修复）：20 万灵石/次纯客户端消耗、单次碎屑最高 2.6 万（0.13 尘/灵石），
-  // 包络按「窗口内客户端灵石消耗 ×0.15」计入——十连乃至五百连/日都不再误拒，
-  // 而其他灵石消耗（淬炼/购种/黑市碎屑包 ≤0.05 尘/灵石）远低于该系数，刷尘面不变
+  // 必须给绝对下限（券 3 张 / 尘 200 万每窗口），否则「刚开 1 箱掉 1 券」都会被拒（实测踩过）。
+  // 2026-11-04 线上砖修复：生产环境跑过「碎屑 ×100」的中间版本（已回滚），存量档 dustTotal
+  // 里躺着 ×100 口径的合法积累，收紧回原值后旧档推送被「碎屑收益增速异常」永久拒收
+  // （cli_sync 只在成功推送时前进，pending 增量永不吸收）——尘窗口四项系数维持放大档
+  // （250000 尘/开箱、2e8×天、绝对底 2e8、灵石消耗折算 ×15）消化存量；碎屑是最低价值
+  // 货币、贴包络的小幅作弊本就不承诺拦截，防砖优先。
+  // 璞玉赌石：20 万灵石/次纯客户端消耗，包络按「窗口内客户端灵石消耗 ×15」计入。
   const spentStones = Math.max(0, -dStones);
-  if (dDust > Math.max(0, dOpens) * 2500 + 2e6 * days + 2e4 + spentStones * 0.15 + Math.max(0, s.dust)) {
+  if (dDust > Math.max(0, dOpens) * 250000 + 2e8 * days + 2e8 + spentStones * 15 + Math.max(0, s.dust)) {
     return '碎屑收益增速异常（+' + dDust.toExponential(2) + '）';
   }
   if (dTickets > Math.max(0, dOpens) * 0.01 + 50 * days + 3 + Math.max(0, s.tickets)) {

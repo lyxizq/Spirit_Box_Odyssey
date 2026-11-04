@@ -158,6 +158,46 @@ CREATE TABLE IF NOT EXISTS bounty_kills (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (day, user_id, slot)
 );
+-- 洞府访客（2026-11-04 日常扩容）：每日一位访客三选一互动，每人每日一次（选定即占），
+-- choice=duel/gift/ask；stones/dust 记服务端直发实额（账本 + 授权流水）
+CREATE TABLE IF NOT EXISTS visitor_acts (
+  day        TEXT    NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  choice     TEXT    NOT NULL,
+  win        INTEGER NOT NULL DEFAULT 0,
+  stones     REAL    NOT NULL DEFAULT 0,
+  dust       REAL    NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, user_id)
+);
+-- 仙盟共修（2026-11-04 日常扩容）：盟池按日归零——pool 记当日盟员共修累计灵石，
+-- members 快照记当时人数（档位门槛 ×人数快照，防中途进出盟刷档）
+CREATE TABLE IF NOT EXISTS guild_cult (
+  day        TEXT    NOT NULL,
+  guild_id   INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+  stones     REAL    NOT NULL DEFAULT 0,
+  members    INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, guild_id)
+);
+CREATE TABLE IF NOT EXISTS guild_cult_log (
+  day        TEXT    NOT NULL,
+  guild_id   INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  times      INTEGER NOT NULL DEFAULT 0,
+  stones     REAL    NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, guild_id, user_id)
+);
+-- 档位领取史：达档全盟可领（每人每档一次/日），tier 从 1 起
+CREATE TABLE IF NOT EXISTS guild_cult_claims (
+  day        TEXT    NOT NULL,
+  guild_id   INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tier       INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, guild_id, user_id, tier)
+);
 -- 兑换码：reward 为 JSON {stones, dust, tickets}；max_uses 0 = 不限次
 CREATE TABLE IF NOT EXISTS redeem_codes (
   code       TEXT    PRIMARY KEY,
@@ -249,6 +289,8 @@ const USER_COLUMNS = [
   ['stamina_day',  "TEXT    NOT NULL DEFAULT ''"],
   // 天梯日俸（2026-11-04 天下扩容）：按天梯段位每日领俸的当日领取标记（服务端直发账本）
   ['ladder_pay_day', "TEXT  NOT NULL DEFAULT ''"],
+  // 回忆之战（2026-11-04 红尘再启）：周常首领已出战标记（ISO 周键，服务端直发周赏）
+  ['memory_week',   "TEXT    NOT NULL DEFAULT ''"],
 ];
 
 // 账本权威进度/计数列（2026-11-01 全量服务端校验迁移）：征战进度与每日计数以服务端
@@ -265,6 +307,14 @@ export const LEDGER_COLUMNS = [
   ['trial_day',      "TEXT    NOT NULL DEFAULT ''"],
   ['trial_done',     "TEXT    NOT NULL DEFAULT '[]'"],
   ['offline_at',     'INTEGER NOT NULL DEFAULT 0'],
+  // 本命法宝器灵（2026-11-04）：胜场经验由战斗结算记账，等级/经验真值在账本——
+  // 推送档 bond 不得高于账本（saves.js store 对账），防改档直拉等级
+  ['bond_lv',        'INTEGER NOT NULL DEFAULT 0'],
+  ['bond_exp',       'INTEGER NOT NULL DEFAULT 0'],
+  // 修炼扩容（2026-11-04 修炼扩容）：闭关打坐 / 道童历练的进行中会话真值（JSON：
+  // {start,dur,incense} / {dest,start,h}），结算由 server/cultivation.js 服务端复算
+  ['seclusion_json', "TEXT    NOT NULL DEFAULT ''"],
+  ['dispatch_json',  "TEXT    NOT NULL DEFAULT ''"],
 ];
 
 // 账本表迁移（2026-10-31 复审）：早版把 stones 等建成 INTEGER，node:sqlite 读 >2^53 的
@@ -351,6 +401,8 @@ export function openDb(dbPath) {
   // JSON {day, hunts, pity, enc:{sp,r,lv,affixes,at}}——hunt 掷遭遇、capture 消费，
   // 两阶段分离防客户端重掷（pets.js petHuntOf）
   ensureColumn(db, 'save_ledger', 'pet_hunt', 'TEXT');
+  // 遛宠日常（2026-11-04）：进行中的遛宠 {start, spot} JSON，墙钟权威在服务端
+  ensureColumn(db, 'save_ledger', 'pet_walk', 'TEXT');
   // 灵宠 uid 水位 + 销账（2026-11-03 伪面收窄）：uid 一律由服务端发放（pets.js nextPetUid，
   // 捕捉/合成的响应带真实 uid），pet_seq = 已发放的最大 uid，NULL = 旧行未初始化
   //（首推/首笔发放时从存档镜像最大 uid 种入，语义同账本种基线）；saves.js store() 拒收

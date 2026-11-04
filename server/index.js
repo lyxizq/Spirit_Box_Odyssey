@@ -13,6 +13,7 @@ import { createStaminaService } from './stamina.js';
 import { createCombatService } from './combat.js';
 import { createPetsService } from './pets.js';
 import { createShopService } from './shop.js';
+import { createCultivationService } from './cultivation.js';
 import { sendJSON, readBody, getIp, isSecure, sameOrigin, acceptsGzip, gzipBody, GZIP_MIN_SIZE } from './http-util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +31,7 @@ const stamina = createStaminaService(db);
 const combat = createCombatService(db, stamina);
 const pets = createPetsService(db, stamina);
 const shop = createShopService(db);
+const cultivation = createCultivationService(db);
 
 const SESSION_COOKIE = 'lx_session';
 const AUTH_BODY_LIMIT = 32 * 1024;    // 登录 / 注册请求体上限
@@ -382,9 +384,25 @@ async function handleApi(req, res, pathname) {
     return sendJSON(res, 404, { error: 'not found' });
   }
 
-  // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 悬赏妖踪 / 兑换码
-  //（social.js 内再按方法分发）
-  if (/^\/api\/(rank|ladder|pvp|boss|guild|bounty|redeem)/.test(pathname)) {
+  // 修炼玩法（2026-11-04 修炼扩容）：闭关打坐 / 道童历练
+  //（cultivation.js 内再按方法分发；定时会话真值在账本 JSON 列，结算服务端复算）
+  if (/^\/api\/cult(\/|$)/.test(pathname)) {
+    const user = auth.getSessionUser(req);
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    let body = null;
+    if (method === 'POST') {
+      if (!sameOrigin(req) || !needBodyJson()) return sendJSON(res, 403, { error: '请求被拒绝' });
+      const { tooLarge, text } = await readBody(req, AUTH_BODY_LIMIT);
+      if (tooLarge) return sendJSON(res, 413, { error: '请求体过大' });
+      try { body = JSON.parse(text || '{}'); } catch (e) { body = null; }
+    }
+    if (cultivation.handle(req, res, { method, pathname, user, body })) return;
+    return sendJSON(res, 404, { error: 'not found' });
+  }
+
+  // 天下玩法：排行 / 天梯 / PvP / 世界 BOSS / 仙盟 / 悬赏妖踪 / 回忆之战 / 洞府访客 / 兑换码
+  //（social.js 内再按方法分发；新增 social 路径前缀必须同步此正则，否则 404）
+  if (/^\/api\/(rank|ladder|pvp|boss|guild|bounty|memory|visitor|redeem)/.test(pathname)) {
     const user = auth.getSessionUser(req);
     if (!user) return sendJSON(res, 401, { error: '未登录' });
     let body = null;

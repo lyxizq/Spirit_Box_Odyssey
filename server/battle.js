@@ -10,13 +10,67 @@
 // 全量聚合 / elementBonus 五行克制 / 结算公式（stoneGain/expGain/trophy）。
 // 同源断言：scripts/parity-check.mjs 用同一份存档分别跑客户端与服务端函数比对。
 
-import { SETS, SLOTS } from './items.js';
+import { SETS, SLOTS, SIGIL_DEFS } from './items.js';
 import { PET_SPECIES, PET_AFF_LV_STEP } from './pets.js';
 
 // 竞技场快照结构：{atk, hp, def, crit, critMult, lifesteal, dr, pierce}
 // 2026-11-01 P1 起征战四模式也走本函数：补 events 逐回合记录 + playerHp/enemyHp
 // 初始血量 + timeout（与 game.js simulateBattle 同字段），客户端战斗弹窗动画/战报
 // 直接消费服务端战报；PvP/妖王路径多出的字段忽略即可。
+// —— 神纹 / 本命法宝（2026-11-04，game.js 同源；改动必同步客户端）——
+// 神纹表在 items.js（物品域，saves.js validateItem 同表校验），此处只导入消费。
+
+// 本命法宝器灵技能（lv 3/6/9 逐档点亮；升级经验由服务端战斗结算记账）
+export const BOND_SKILLS = [
+  { lv: 3, name: '破阵', desc: '对首领伤害 +15%', skill: { id: 'vsboss', mult: 1.15 } },
+  { lv: 6, name: '守心', desc: '前 2 回合受到伤害 -15%', skill: { id: 'ward', rounds: 2, mult: 0.85 } },
+  { lv: 9, name: '崩山', desc: '暴击伤害 +25%', skill: { id: 'critdmg', v: 0.25 } },
+];
+// 升级经验曲线：lv→lv+1 需 120×2.1^lv；等级上限随轮回解锁（0 轮 3 级起步，3 轮封顶 9）
+export const bondNeed = (lv) => Math.round(120 * Math.pow(2.1, lv));
+export const bondCap = (ascensions) => 3 + 2 * Math.min(Math.max(0, Math.floor(ascensions || 0)), 3);
+// 每胜器灵经验：关卡深度主导，首领/首通加成，扫荡/复战按 rewardScale 折算
+export const bondExpOf = ({ level, boss, first, rewardScale }) =>
+  Math.round((6 + (level || 0) * 0.5 + (boss ? 8 : 0) + (first ? 6 : 0)) *
+    Math.min(1, Math.max(0, rewardScale == null ? 1 : rewardScale)));
+
+// 战斗技能聚合（套装技能 + 神纹 + 器灵，player.skills 由 playerCombatStats 聚合下发）。
+// 全部确定性规则，无新增概率分支；同键叠加规则：护盾/反伤/回元/暴伤加算，
+// 斩杀/不屈/锐气取最强一档，守心取最弱一档（受伤减免不叠最狠）。
+// game.js simulateBattle 内 battleSkillAgg 同源——改动必同步两处。
+function battleSkillAgg(skills) {
+  const agg = {
+    shield: 0, thorns: 0, regen: 0, critdmg: 0, lsup: 0, firstcrit: false,
+    execFrac: 0, execMult: 1, lastFrac: 0, lastMult: 1,
+    openRounds: 0, openMult: 1, vsBoss: 1, wardRounds: 0, wardMult: 1,
+  };
+  for (const s of skills || []) {
+    if (!s || !s.id) continue;
+    if (s.id === 'shield') agg.shield += s.v || 0;
+    else if (s.id === 'thorns') agg.thorns += s.v || 0;
+    else if (s.id === 'regen') agg.regen += s.v || 0;
+    else if (s.id === 'critdmg') agg.critdmg += s.v || 0;
+    else if (s.id === 'lsup') agg.lsup += s.v || 0;
+    else if (s.id === 'firstcrit') agg.firstcrit = true;
+    else if (s.id === 'exec') {
+      agg.execFrac = Math.max(agg.execFrac, s.frac || 0);
+      agg.execMult = Math.max(agg.execMult, s.mult || 1);
+    } else if (s.id === 'laststand') {
+      agg.lastFrac = Math.max(agg.lastFrac, s.frac || 0);
+      agg.lastMult = Math.max(agg.lastMult, s.mult || 1);
+    } else if (s.id === 'opening') {
+      agg.openRounds = Math.max(agg.openRounds, s.rounds || 0);
+      agg.openMult = Math.max(agg.openMult, s.mult || 1);
+    } else if (s.id === 'vsboss') {
+      agg.vsBoss = Math.max(agg.vsBoss, s.mult || 1);
+    } else if (s.id === 'ward') {
+      agg.wardRounds = Math.max(agg.wardRounds, s.rounds || 0);
+      agg.wardMult = Math.min(agg.wardMult, s.mult || 1);
+    }
+  }
+  return agg;
+}
+
 export function simulateBattle(player, enemy) {
   let php = player.hp;
   let ehp = enemy.hp;
@@ -25,35 +79,64 @@ export function simulateBattle(player, enemy) {
   let taken = 0;
   let crits = 0;
   const events = [];
+  // 战斗技能（套装/神纹/器灵，2026-11-04）：无 skills 字段的快照（PvP 对手）按无技能计
+  const agg = battleSkillAgg(player.skills);
+  let shieldHp = Math.max(0, player.hp * agg.shield); // 开场护盾池（吸收敌方伤害）
+  const hpMax = player.hp;
+  const lsIn = player.lifesteal + agg.lsup;
 
   while (php > 0 && ehp > 0 && rounds < 120) {
     rounds++;
 
-    const crit = Math.random() < player.crit;
-    let dmg = Math.max(1, player.atk - enemy.def * (1 - player.pierce));
+    let atkNow = player.atk;
+    if (agg.lastFrac > 0 && php < hpMax * agg.lastFrac) atkNow *= agg.lastMult;   // 百战不屈
+    if (agg.openRounds > 0 && rounds <= agg.openRounds) atkNow *= agg.openMult;   // 破阵锐气
+    if (enemy.boss && agg.vsBoss > 1) atkNow *= agg.vsBoss;                        // 破阵（器灵）
+    const crit = (rounds === 1 && agg.firstcrit) || Math.random() < player.crit;
+    let dmg = Math.max(1, atkNow - enemy.def * (1 - player.pierce));
     dmg *= 0.9 + Math.random() * 0.2;
-    if (crit) dmg *= player.critMult;
+    if (crit) dmg *= player.critMult * (1 + agg.critdmg);
     dmg = Math.max(1, Math.floor(dmg));
+    if (agg.execFrac > 0 && ehp < enemy.hp * agg.execFrac) {
+      dmg = Math.max(1, Math.floor(dmg * agg.execMult));                           // 噬骨猎杀/斩杀
+    }
 
     ehp -= dmg;
     dealt += dmg;
     if (crit) crits++;
     let heal = 0;
-    if (player.lifesteal > 0) {
-      heal = Math.floor(dmg * player.lifesteal);
-      php = Math.min(player.hp, php + heal);
-    }
+    if (lsIn > 0) heal += Math.floor(dmg * lsIn);
+    if (agg.regen > 0) heal += Math.floor(hpMax * agg.regen);                      // 观星回元/回春
+    if (heal > 0) php = Math.min(hpMax, php + heal);
     events.push({
       side: 'player', round: rounds, damage: dmg, crit, heal,
       playerHp: Math.max(0, php), enemyHp: Math.max(0, ehp),
     });
     if (ehp <= 0) break;
 
-    const edmg = Math.max(1, Math.floor(Math.max(1, enemy.atk - player.def) * (1 - player.dr)));
+    const edmgFull = Math.max(1, Math.floor(Math.max(1, enemy.atk - player.def) * (1 - player.dr)));
+    let edmg = edmgFull;
+    if (agg.wardRounds > 0 && rounds <= agg.wardRounds) {
+      edmg = Math.max(1, Math.floor(edmg * agg.wardMult));                         // 守心（器灵）
+    }
+    let absorb = 0;
+    if (shieldHp > 0 && edmg > 0) {
+      absorb = Math.min(shieldHp, edmg);
+      shieldHp -= absorb;
+      edmg -= absorb;                                                              // 塔影庇护/玉璧
+    }
     php -= edmg;
     taken += edmg;
+    let thorn = 0;
+    if (agg.thorns > 0 && edmgFull > 0) {
+      thorn = Math.floor(edmgFull * agg.thorns);                                   // 玄鳞反震/荆棘
+      if (thorn > 0) {
+        ehp -= thorn;
+        dealt += thorn;
+      }
+    }
     events.push({
-      side: 'enemy', round: rounds, damage: edmg,
+      side: 'enemy', round: rounds, damage: edmg, absorb, thorns: thorn,
       playerHp: Math.max(0, php), enemyHp: Math.max(0, ehp),
     });
   }
@@ -339,7 +422,7 @@ for (const s of PET_SPECIES) PET_SP_MAP[s.id] = s;
 // activePets 现存实例 uid（数字）；旧档迁移前可能残留物种 id（字符串），双读兼容。
 // 去重 + 封长（2026-11-03 纵深兜底，validateDeep 已加同口径校验）：重复 uid / 超长数组
 // 会把天赋、个体词条、内丹、灵石内丹 buff 全部 ×N 复读（战斗面板与结算发放同步放大）
-const PET_SLOT_MAX = 5; // game.js 同源
+const PET_SLOT_MAX = 6; // game.js 同源（2026-11-04 出战位 5 → 6）
 function activePetInsts(data) {
   const out = [];
   const insts = Array.isArray(data.petInsts) ? data.petInsts : [];
@@ -431,6 +514,28 @@ const SKIES = [
   { name: '妖云压城', pierce: 0.03, pet: 2 },
 ];
 const DAO_BONUS = { qing: { gain: 0.08 }, bai: { atk: 0.05 }, shi: { hp: 0.06 } };
+// 五行道基（2026-11-04 修炼扩容，game.js DAOJI_BONUS 同源）：金丹择道，逐阶乘区
+const DAOJI_BONUS = {
+  jin: { atk: 0.02 }, mu: { gain: 0.04 }, shui: { def: 0.03 }, huo: { crit: 0.015 }, tu: { hp: 0.03 },
+};
+// 道悟星图（2026-11-04 修炼扩容，game.js xingtuAgg 同源）：三支各 10 节点，
+// 前 9 小节点 1%、末节点 5%（攻/守）或 10%（收益）；结构校验见 saves.js validateDeep
+function xingtuAggOf(data) {
+  const agg = { atk: 0, hp: 0, def: 0, gain: 0 };
+  const lit = data.xingtu && Array.isArray(data.xingtu.lit) ? data.xingtu.lit : [];
+  for (const id of lit) {
+    if (typeof id !== 'string') continue;
+    const m = /^([abc])(10|[1-9])$/.exec(id);
+    if (!m) continue;
+    const idx = Number(m[2]);
+    if (m[1] === 'a') agg.atk += idx === 10 ? 0.05 : 0.01;
+    else if (m[1] === 'b') {
+      if (idx === 10) agg.def += 0.10;
+      else agg.hp += 0.01;
+    } else agg.gain += idx === 10 ? 0.10 : 0.01;
+  }
+  return agg;
+}
 const WEEK_BUFF_IDS = ['dust', 'stone', 'pet', 'forge'];
 
 const dayStrOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -621,6 +726,22 @@ export function playerCombatStats(data, env) {
   atk *= 1 + (dao.atk || 0);
   hp *= 1 + (dao.hp || 0);
 
+  // 五行道基（2026-11-04 修炼扩容，game.js 同源位，改一处必改两处）：金丹择道逐阶乘区
+  const dj = data.daoji || {};
+  const djStage = Math.max(0, Math.min(5, Math.floor(num(dj.stage))));
+  const djDef = dj.el && DAOJI_BONUS[dj.el] ? DAOJI_BONUS[dj.el] : null;
+  if (djDef && djStage > 0) {
+    if (djDef.atk) atk *= 1 + djDef.atk * djStage;
+    if (djDef.hp) hp *= 1 + djDef.hp * djStage;
+    if (djDef.def) def *= 1 + djDef.def * djStage;
+    if (djDef.crit) crit += djDef.crit * djStage;
+  }
+  // 道悟星图（2026-11-04 修炼扩容，game.js 同源位）：三支点亮加成
+  const xAgg = xingtuAggOf(data);
+  if (xAgg.atk) atk *= 1 + xAgg.atk;
+  if (xAgg.hp) hp *= 1 + xAgg.hp;
+  if (xAgg.def) def *= 1 + xAgg.def;
+
   // 套装战斗加成（穿戴件计数）
   const setCounts = { tower: 0, stage: 0, wild: 0 };
   for (const s of SLOTS) {
@@ -634,6 +755,41 @@ export function playerCombatStats(data, env) {
       if (setCounts[key] >= bonus.need) bonus.apply(b);
     }
   }
+  // 套装混搭共鸣（2026-11-04，game.js 同源位）：≥2 套各凑 2 件 → 攻血防 ×(1+0.03×套数)
+  let crossSets = 0;
+  for (const key of Object.keys(SETS)) if (setCounts[key] >= 2) crossSets++;
+  if (crossSets >= 2) {
+    const crossMult = 1 + 0.03 * crossSets;
+    b.atk *= crossMult;
+    b.hp *= crossMult;
+    b.def *= crossMult;
+  }
+
+  // 战斗技能聚合（2026-11-04 套装技能化/神纹/本命法宝）：顺序固定——套装（SETS 键序）
+  // → 神纹（SLOTS 槽序）→ 器灵（lv 档位序），双端聚合结果逐项一致（parity 门比对）
+  const skills = [];
+  for (const key of Object.keys(SETS)) {
+    for (const s of SETS[key].skills || []) {
+      if (setCounts[key] >= s.need) skills.push(s.skill);
+    }
+  }
+  for (const s of SLOTS) {
+    const it = data.equipped && data.equipped[s.key];
+    const sg = it && it.sigil && SIGIL_DEFS[it.sigil.k];
+    if (sg) skills.push(sg.skill);
+  }
+  const bondLv = Math.max(0, Math.min(9,
+    Math.floor(num(data.bond && data.bond.lv))));
+  for (const t of BOND_SKILLS) {
+    if (bondLv >= t.lv) skills.push(t.skill);
+  }
+  // 器灵共鸣：等级 → 攻血防 ×(1+0.012·lv)（lv9 ≈ +10.8%，共鸣量级内不动经济包络）
+  if (bondLv > 0) {
+    const bondMult = 1 + 0.012 * bondLv;
+    b.atk *= bondMult;
+    b.hp *= bondMult;
+    b.def *= bondMult;
+  }
 
   // 修行（2026-11-01 口径：战意/体魄消费端 ×GROWTH_SCALE）
   atk = b.atk * (1 + 0.03 * GROWTH_SCALE * num(data.trainAtk));
@@ -646,7 +802,7 @@ export function playerCombatStats(data, env) {
 
   return {
     power, atk, hp, def, crit, critMult, lifesteal,
-    dr, pierce: Math.min(1, pierce), counts: setCounts,
+    dr, pierce: Math.min(1, pierce), counts: setCounts, skills,
   };
 }
 
@@ -669,7 +825,7 @@ export function elementBonusOf(data, enemyEl) {
 
 const RARITY_WEIGHTS = [1000, 350, 100, 25, 2, 0.6]; // 与 game.js RARITIES 权重同源（仙品 0.4→0.6 为 2026-11-01 用户指定，此处补同步）
 const RARITY_EXP = [0, 1, 3, 8, 20, 50];
-const EQUIP_CHANCE = 0.075; // 2026-11-01 用户指定：掉率改逐箱随机 5%~10%（game.js equipChance），期望口径取均值 7.5%
+const EQUIP_CHANCE = 0.25; // 2026-11-04 用户指定：掉率改逐箱随机 20%~30%（game.js equipChance 同源），期望口径取均值 25%
 
 function weightsOf(data) {
   // luckLv 钳制（UPGRADES.luck.max=60，客户端 applySaveData 同口径）：validateDeep 未校验
@@ -717,12 +873,19 @@ export function baseGainOf(data, env) {
   // gainLv:1e9 会把 /api/combat/offline 的灵石期望抬到 1e12+/轮——且该发放走 srv
   // 差额豁免被增速包络自动放行（UPGRADES.gain.max=60，validateDeep 已加同口径校验）
   const gainLv = Math.max(0, Math.min(60, Math.floor(Number(data.gainLv) || 0)));
+  // 木道基收益乘区 + 星图天机支（2026-11-04 修炼扩容，game.js baseGain 同源位，改一处必改两处）
+  const dj = data.daoji || {};
+  const djGain = dj.el === 'mu'
+    ? 1 + 0.04 * Math.max(0, Math.min(5, Math.floor(num(dj.stage)))) : 1;
+  const xingtuGain = xingtuAggOf(data).gain;
   return (3 + 0.9 * gainLv) * realmMult * prestigeMult * powerMult
     * (1 + colGain + petGain + caveGain)
     * (1 + 0.1 * num(data.immortal))
     * (data.title ? 1.02 : 1)
     * (1 + museum + ordealFanYi)
     * (1 + (sc.gain || 0) + (sky.gain || 0) + ((dao && dao.gain) || 0))
+    * djGain
+    * (1 + xingtuGain)
     * (1 + 0.005 * guildLevel)
     * elixirGain;
 }
@@ -771,6 +934,17 @@ function stoneBuffParts(data) {
 
 // 结算公式（game.js doBattle stoneGain/expGain + addStones 增益同源）。
 // 2026-11-01 起灵石全额在服务端算毕（含周/时辰/天象/内丹加成），客户端平加入账。
+// 突破门槛梯（game.js REALM_COSTS / realmCostOf 同源）：供征战单场修为帽使用。
+// game.js realmCostOf(i) = REALM_COSTS[i] × 2.5^轮回，i=realm+1 越界 clamp 到末位
+//（末位 = 仙人→飞升门槛 50 亿）。帽 = 门槛×10%（2026-11-04 中削档），帽住爬塔/无尽
+// 高层 REQ 尾段爆炸（lv200 单场万亿级）的修为面；灵石不受帽影响。
+const REALM_COSTS = [0, 60, 400, 2500, 20000, 160000, 1600000, 20000000, 300000000, 5000000000];
+function realmExpCapOf(data) {
+  const realm = Math.max(0, Math.min(REALM_COSTS.length - 1, Math.floor(Number(data && data.realm) || 0)));
+  const asc = Math.max(0, Math.floor(Number(data && data.ascensions) || 0));
+  return Math.max(1, Math.ceil(REALM_COSTS[realm] * Math.pow(2.5, asc) * 0.1));
+}
+
 export function settleGain({ mode, level, first, rewardScale, boss, data, sweep }, env) {
   const cfg = MODES[mode];
   const bossScale = boss ? 1.8 : 1;
@@ -785,11 +959,13 @@ export function settleGain({ mode, level, first, rewardScale, boss, data, sweep 
 
   const expMult = (1 + 0.10 * ((data.cave && data.cave.library) || 0)) *
     (1 + 0.05 * ((data.gongfa && data.gongfa.hui) || 0));
-  // 征战修为统一 ×60（2026-11-01 用户指定三连改：扫荡×100 → 扫荡/首通×100 → 全路径×60）——
-  // 扫荡/首通/复战同倍率；灵石不受此倍率影响。修为仅在服务端结算，客户端平加响应值
-  const boostExpMult = 60;
-  const expGain = Math.floor(
-    req * cfg.exp * MODE_EXP_MULT * bossScale * firstScale * rewardScale * boostExpMult * expMult
+  // 征战修为统一 ×20（2026-11-04 中削档：×60 是 11-01 三连改残留，叠加 REQ 尾段曲线后
+  // 爬塔/无尽高层单场万亿级，直接击穿突破门槛）+ 单场帽 = 下一境界门槛×10%（realmExpCapOf）。
+  // 扫荡/首通/复战同倍率同帽；灵石不受此倍率/帽影响。修为仅在服务端结算，客户端平加响应值。
+  const boostExpMult = 20;
+  const expGain = Math.min(
+    realmExpCapOf(data),
+    Math.floor(req * cfg.exp * MODE_EXP_MULT * bossScale * firstScale * rewardScale * boostExpMult * expMult)
   );
 
   let trophy = 1 + Math.floor(level / cfg.trophyStep);

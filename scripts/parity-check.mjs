@@ -106,19 +106,25 @@ const data = {
   ordealDone: ['wuJiang', 'kuXing', 'fanYi'],
   setCollection: { tower: ['weapon', 'armor', 'helm', 'boots', 'artifact', 'talisman'], stage: ['weapon', 'ring'], wild: ['legs'] },
   equipped: {
-    weapon: ITEM('weapon', 4, 500, 'jin', [{ k: 'atk', v: 0.06 }, { k: 'crit', v: 0.02 }], { star: 2 }),
-    armor: ITEM('armor', 5, 800, 'mu', [{ k: 'hp', v: 0.10 }, { k: 'def', v: 0.05 }, { k: 'ls', v: 0.02 }], { star: 1 }),
-    helm: ITEM('helm', 3, 200, 'shui', [{ k: 'pierce', v: 0.025 }]),
-    boots: ITEM('boots', 2, 60, 'huo', []),
+    // 套装技能/混搭共鸣/神纹覆盖（2026-11-04）：weapon+helm=tower 2 件（塔影庇护）、
+    // armor+boots=stage 2 件（破阵锐气）、legs+wrist=wild 2 件（噬骨猎杀）→
+    // 三套各 2 件触发混搭共鸣 ×1.09；weapon/armor 带神纹、bond Lv.6（破阵+守心）——
+    // skills 聚合两端逐项比对。注意套装件只能出现在 6 个套装部位上
+    weapon: ITEM('weapon', 4, 500, 'jin', [{ k: 'atk', v: 0.06 }, { k: 'crit', v: 0.02 }], { star: 2, special: true, setKey: 'tower', sigil: { k: 'thorns' } }),
+    armor: ITEM('armor', 5, 800, 'mu', [{ k: 'hp', v: 0.10 }, { k: 'def', v: 0.05 }, { k: 'ls', v: 0.02 }], { star: 1, special: true, setKey: 'stage', sigil: { k: 'critdmg' } }),
+    helm: ITEM('helm', 3, 200, 'shui', [{ k: 'pierce', v: 0.025 }], { special: true, setKey: 'tower' }),
+    boots: ITEM('boots', 2, 60, 'huo', [], { special: true, setKey: 'stage' }),
     artifact: ITEM('artifact', 4, 450, 'tu', [{ k: 'atk', v: 0.075 }, { k: 'hp', v: 0.08 }]),
     talisman: ITEM('talisman', 1, 15, 'jin', []),
     bracelet: ITEM('bracelet', 5, 700, 'mu', [{ k: 'hp', v: 0.09 }, { k: 'atk', v: 0.05 }, { k: 'crit', v: 0.015 }], { special: true, setKey: 'tower' }),
     ring: ITEM('ring', 5, 650, 'shui', [{ k: 'ls', v: 0.03 }, { k: 'pierce', v: 0.02 }, { k: 'atk', v: 0.04 }], { special: true, setKey: 'tower' }),
-    wrist: null,
-    legs: ITEM('legs', 3, 180, 'huo', [{ k: 'def', v: 0.06 }]),
+    wrist: ITEM('wrist', 3, 210, 'jin', [{ k: 'atk', v: 0.05 }], { special: true, setKey: 'wild' }),
+    legs: ITEM('legs', 3, 180, 'huo', [{ k: 'def', v: 0.06 }], { special: true, setKey: 'wild' }),
     band: null,
     wings: ITEM('wings', 0, 5, 'tu', []),
   },
+  // 本命法宝（2026-11-04）：器灵 Lv.6（轮回 2 上限 7 内合法）→ 破阵 + 守心生效
+  bond: { slot: 'weapon', exp: 300, lv: 6 },
   elixir: { id: 'atk', until: Date.now() + 60 * 60000 },
   daoLv: { married: 'bai' },
   title: '剑侠',
@@ -157,6 +163,17 @@ for (const k of ['power', 'atk', 'hp', 'def', 'crit', 'critMult', 'lifesteal', '
 }
 console.log('playerCombatStats  ✓ power=' + ps.power.toExponential(2) +
   ' atk=' + ps.atk.toExponential(2) + ' hp=' + ps.hp.toExponential(2));
+
+// 战斗技能聚合（2026-11-04 套装技能/神纹/器灵）：顺序敏感，逐项 JSON 比对——
+// 聚合顺序漂移会让 simulateBattle 的叠加上界/优先级两端不一致
+const csSkills = JSON.stringify(cs.skills || []);
+const psSkills = JSON.stringify(ps.skills || []);
+if (csSkills !== psSkills) {
+  fails++;
+  console.error('  ✗ stats.skills: client=' + csSkills + ' server=' + psSkills);
+} else {
+  console.log('battle skills  ✓ [' + ps.skills.map((s) => s.id).join(', ') + ']');
+}
 
 // —— 2) 难度曲线 + 怪物属性（确定性字段）——
 for (const mode of ['stage', 'tower', 'wild', 'endless']) {

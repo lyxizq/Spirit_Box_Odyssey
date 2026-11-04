@@ -62,6 +62,19 @@ export const PET_BAG_STEP = 10;
 export const PET_BAG_MAX_LV = 5;
 export const petBagCapOf = (mirror) =>
   PET_BAG_BASE + PET_BAG_STEP * Math.max(0, Math.min(PET_BAG_MAX_LV, Math.floor(Number(mirror && mirror.petBagLv) || 0)));
+
+// —— 遛宠日常（2026-11-04）：每日一次，带出战灵宠出游，10 分钟墙钟（服务端权威，
+// 存 save_ledger.pet_walk）后带回随机小奖。奖励走实物资源（碎屑过账本+授权流水；
+// 兽骨/鱼饵/草籽客户端按响应平加），不碰灵石盘子。
+export const PET_WALK_MS = 10 * 60 * 1000;
+export const PET_WALK_SPOTS = [
+  { id: 'ting', name: '洞府庭前' },
+  { id: 'hu',   name: '镜湖畔' },
+  { id: 'gu',   name: '缚灵谷外' },
+];
+const WALK_DUST_MIN = 20, WALK_DUST_MAX = 60;   // 碎屑（账本 dust_total + 授权流水）
+const WALK_BONES_MIN = 10, WALK_BONES_MAX = 30; // 兽骨（客户端平加）
+const WALK_SEED_W = { cao: 38, hua: 22, guo: 15, sui: 10, lian: 7, tong: 5, xing: 3 }; // combat.js MAT_SEED_WEIGHTS 同源
 // 品质带内 roll 的相对权重（offset 0..5）：越往上越稀
 const BAND_WEIGHTS = [100, 38, 12, 3.5, 1, 0.3];
 // 收服基础成功率（按品质）；镇抚策略加成后封顶 95%。
@@ -171,6 +184,13 @@ export function createPetsService(db, staminaSvc) {
     spendLedger: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
     spendTickets: db.prepare('UPDATE save_ledger SET pet_tickets = pet_tickets - ? WHERE user_id = ? AND pet_tickets >= ?'),
     setPetHunt: db.prepare('UPDATE save_ledger SET pet_hunt = ? WHERE user_id = ?'),
+    // 遛宠日常（2026-11-04）：进行中的遛宠 {start, spot} 墙钟权威在账本列
+    getWalk: db.prepare('SELECT pet_walk FROM save_ledger WHERE user_id = ?'),
+    setWalk: db.prepare('UPDATE save_ledger SET pet_walk = ? WHERE user_id = ?'),
+    addWalkDust: db.prepare('UPDATE save_ledger SET dust_total = dust_total + ? WHERE user_id = ?'),
+    // walkLogAction：带 dust 实额的授权流水（stmts.logAction 固定 0/0 不适用）
+    walkLogAction: db.prepare(
+      'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, 0, ?, 0, 0, ?)'),
     // uid 发号（2026-11-03 伪面收窄）：pet_seq 水位列见 db.js 注
     initPetSeq: db.prepare('UPDATE save_ledger SET pet_seq = ? WHERE user_id = ?'),
     bumpPetSeq: db.prepare('UPDATE save_ledger SET pet_seq = COALESCE(pet_seq, 0) + 1 WHERE user_id = ?'),
@@ -634,6 +654,101 @@ export function createPetsService(db, staminaSvc) {
     }
   }
 
+  // ---------------- 遛宠日常（2026-11-04） ----------------
+
+  const walkOf = (led) => {
+    try { return JSON.parse(led.pet_walk || 'null'); } catch (e) { return null; }
+  };
+  const walkSpot = (id) => PET_WALK_SPOTS.find((s) => s.id === id);
+
+  // 带出战灵宠出门：每日一次。pet_walk 列三态——{start,spot,day} 进行中 / {day,done}
+  // 今日已遛完（防当日重开）/ NULL 无记录；墙钟以 start 为准，客户端只做倒计时展示
+  function walk(req, res, ctx) {
+    if (!window.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '操作过于频繁，请稍后再试' }, { 'Retry-After': '5' });
+    }
+    const spot = walkSpot(ctx.body && ctx.body.spot);
+    if (!spot) return sendJSON(res, 400, { error: '未知的遛宠地点' });
+    const now = Date.now();
+    const saveRow = stmts.getSave.get(ctx.user.id);
+    if (!saveRow) return sendJSON(res, 400, { error: '尚未创建云端存档' });
+    const mirror = loadMirror(saveRow.data);
+    if (featureRealmOf(mirror) < 4) return sendJSON(res, 403, { error: '灵宠玩法化神（境界 4）解锁' });
+    const actives = Array.isArray(mirror.activePets) ? mirror.activePets : [];
+    if (!actives.length) return sendJSON(res, 400, { error: '先出战一只灵宠再遛它' });
+    db.exec('BEGIN');
+    try {
+      const led = ensureLedger(ctx.user.id, mirror, now);
+      const cur = walkOf(led);
+      const today = dayStr(now);
+      // 今日已遛完（完成记录保留当日防重开）；进行中的遛宠原样返回不重置（同 hunt
+      // pending 两阶段口径，多端安全）
+      if (cur && cur.day === today && cur.done) {
+        db.exec('COMMIT');
+        return sendJSON(res, 429, { error: '今日已遛过宠，明日再来' });
+      }
+      if (cur && cur.start > 0 && !cur.done) {
+        db.exec('COMMIT');
+        return sendJSON(res, 200, {
+          ok: true, held: true, spot: cur.spot || spot.id, start: cur.start, ms: PET_WALK_MS,
+          remaining: Math.max(0, PET_WALK_MS - (now - cur.start)),
+        });
+      }
+      stmts.setWalk.run(JSON.stringify({ start: now, spot: spot.id, day: today }), ctx.user.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, spot: spot.id, start: now, ms: PET_WALK_MS, name: spot.name });
+  }
+
+  function walkStatus(req, res, ctx) {
+    const led = stmts.getLedger.get(ctx.user.id);
+    const cur = led ? walkOf(led) : null;
+    if (!cur || !cur.start || cur.done) return sendJSON(res, 200, { active: false });
+    return sendJSON(res, 200, {
+      active: true, spot: cur.spot || '', start: cur.start, ms: PET_WALK_MS,
+      remaining: Math.max(0, PET_WALK_MS - (Date.now() - cur.start)),
+    });
+  }
+
+  function walkCollect(req, res, ctx) {
+    if (!window.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '操作过于频繁，请稍后再试' }, { 'Retry-After': '5' });
+    }
+    const now = Date.now();
+    const led = stmts.getLedger.get(ctx.user.id);
+    if (!led) return sendJSON(res, 409, { error: '存档同步中，稍后再试' });
+    const cur = walkOf(led);
+    if (!cur || !cur.start || cur.done) return sendJSON(res, 400, { error: '没有进行中的遛宠' });
+    const today = dayStr(now);
+    const remaining = PET_WALK_MS - (now - cur.start);
+    if (remaining > 0) {
+      return sendJSON(res, 429, { error: '还在溜达呢（剩余 ' + Math.ceil(remaining / 60000) + ' 分钟）', remaining });
+    }
+    const dust = WALK_DUST_MIN + Math.floor(Math.random() * (WALK_DUST_MAX - WALK_DUST_MIN + 1));
+    const bones = WALK_BONES_MIN + Math.floor(Math.random() * (WALK_BONES_MAX - WALK_BONES_MIN + 1));
+    // 草籽 1~2（权重与 combat.js MAT_SEED_WEIGHTS 同源）
+    const seedKeys = Object.keys(WALK_SEED_W);
+    let roll = Math.random() * 100;
+    let seedId = seedKeys[0];
+    for (const k of seedKeys) { roll -= WALK_SEED_W[k]; if (roll < 0) { seedId = k; break; } }
+    const seedN = 1 + (Math.random() < 0.5 ? 1 : 0);
+    db.exec('BEGIN');
+    try {
+      // 完成记录保留当日（walk 以 day+done 防一日多次），跨日 walk() 覆写
+      stmts.setWalk.run(JSON.stringify({ day: today, done: 1 }), ctx.user.id);
+      stmts.addWalkDust.run(dust, ctx.user.id);
+      stmts.walkLogAction.run(ctx.user.id, today, 'pet_walk', dust, now);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, dust, bones, bait: 1, seed: { id: seedId, n: seedN }, day: today });
+  }
+
   // 模式 B 前缀分发（social.handle 同款）：index.js 已完成鉴权与 body 解析。
   // 命中即回 true（sendJSON 返回 falsy，index.js 以返回值判断是否已响应，防双重 send）
   function handle(req, res, ctx) {
@@ -643,9 +758,12 @@ export function createPetsService(db, staminaSvc) {
     if (ctx.method === 'POST' && p === 'fuse') { fuse(req, res, ctx); return true; }
     if (ctx.method === 'POST' && p === 'reroll') { reroll(req, res, ctx); return true; }
     if (ctx.method === 'POST' && p === 'huntbuy') { huntbuy(req, res, ctx); return true; }
+    if (ctx.method === 'POST' && p === 'walk') { walk(req, res, ctx); return true; }
+    if (ctx.method === 'POST' && p === 'walk/collect') { walkCollect(req, res, ctx); return true; }
     if (ctx.method === 'GET' && p === 'pending') { pending(req, res, ctx); return true; }
+    if (ctx.method === 'GET' && p === 'walk') { walkStatus(req, res, ctx); return true; }
     return false;
   }
 
-  return { handle, hunt, capture, fuse, reroll, pending, huntbuy };
+  return { handle, hunt, capture, fuse, reroll, pending, huntbuy, walk, walkCollect, walkStatus };
 }

@@ -19,6 +19,8 @@ import {
   // （OFFLINE_HUNT_PITY 已废止：离线巡猎并入四模式统一 50 胜保底 + 每日 2 件口径）
   SWEEP_DAILY_FREE, SWEEP_BUY_MAX, SWEEP_BUY_COST, WILD_REPEAT_DAILY,
   TRIALS, TRIAL_REWARD,
+  // 本命法宝（2026-11-04）：器灵经验曲线/上限/胜场经验在 battle.js（game.js 同源）
+  bondNeed, bondCap, bondExpOf,
 } from './battle.js';
 import { SLOTS, SETS, makeSpecialItem } from './items.js';
 
@@ -104,6 +106,8 @@ export function createCombatService(db, staminaSvc) {
       `UPDATE save_ledger SET wild_repeat_day = ?, wild_repeat_used = ?,
          sweep_day = ?, sweep_used = ?, sweep_bought = ? WHERE user_id = ?`),
     setOfflineAt: db.prepare('UPDATE save_ledger SET offline_at = ? WHERE user_id = ?'),
+    // 本命法宝器灵（2026-11-04）：等级/经验真值落账本，推送档对账见 saves.js store
+    setBond: db.prepare('UPDATE save_ledger SET bond_lv = ?, bond_exp = ? WHERE user_id = ?'),
     setTrial: db.prepare('UPDATE save_ledger SET trial_day = ?, trial_done = ? WHERE user_id = ?'),
     spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
     logAction: db.prepare(
@@ -176,6 +180,28 @@ export function createCombatService(db, staminaSvc) {
     return Math.min(WILD_MAX, max);
   }
   const featureRealmOf = (mirror) => Math.max(Math.floor(num(mirror.realm)), Math.floor(num(mirror.realmPeak)));
+
+  // —— 本命法宝（2026-11-04）——
+  // 真值注入：战斗面板的器灵等级以账本为权威（防改档直拉等级喂大 playerCombatStats），
+  // 镜像只供认主部位（slot 无战力含义）。须在 ensureLedger 之后、playerCombatStats 之前调用
+  function applyBondTruth(mirror, led) {
+    const slot = mirror.bond && mirror.bond.slot;
+    if (!slot) { mirror.bond = null; return; }
+    mirror.bond = { slot, lv: Math.floor(num(led.bond_lv)) };
+  }
+
+  // 胜场器灵经验入账 + 升级循环（在线 fight / 离线巡猎共用一份口径）。
+  // 未认主或已到上限（cap 随轮回 3/5/7/9 解锁）不发；到顶经验清零。返回响应回传的新 bond 态
+  function bondAccrue(userId, led, mirror, gain) {
+    if (!(gain > 0) || !(mirror.bond && mirror.bond.slot)) return null;
+    const cap = bondCap(Math.floor(num(led.ascensions)));
+    let lv = Math.floor(num(led.bond_lv));
+    let exp = Math.floor(num(led.bond_exp)) + Math.floor(gain);
+    while (lv < cap && exp >= bondNeed(lv)) { exp -= bondNeed(lv); lv++; }
+    if (lv >= cap) exp = 0;
+    stmts.setBond.run(lv, exp, userId);
+    return { slot: mirror.bond.slot, lv, exp };
+  }
 
   function ensureLedger(userId, mirror, now) {
     let led = stmts.getLedger.get(userId);
@@ -256,8 +282,7 @@ export function createCombatService(db, staminaSvc) {
     db.exec('BEGIN');
     try {
       const led = ensureLedger(ctx.user.id, mirror, now);
-
-      // —— 体力闸门（内嵌，替代客户端先调 /api/stamina/spend）——
+      applyBondTruth(mirror, led); // 本命法宝等级以账本为权威（喂战斗面板前注入）
       const spent = deductOne(ctx.user.id, now);
       if (!spent.ok) {
         const st = staminaState(ctx.user.id, now);
@@ -391,6 +416,7 @@ export function createCombatService(db, staminaSvc) {
       let special = null;
       let pitySpecial = null;
       let progress = null;
+      let bond = null;
 
       if (result.win) {
         const rewardScale = sweepLevel !== null ? (mode === 'wild' ? 1 : 0.5) : (replay ? 0.5 : 1);
@@ -403,6 +429,9 @@ export function createCombatService(db, staminaSvc) {
         trophy = gains.trophy;
         stmts.addStonesExp.run(stoneGain, stoneGain, expGain, ctx.user.id);
         stmts.logAction.run(ctx.user.id, today, 'fight', stoneGain, 0, 0, expGain, now);
+        // 器灵经验（2026-11-04）：胜场发放，扫荡/复战随 rewardScale 折算；账本级记账
+        bond = bondAccrue(ctx.user.id, led, mirror,
+          bondExpOf({ level, boss: enemy.boss, first, rewardScale }));
 
         if (mode === 'wild') {
           wildKills[level] = Math.floor(num(wildKills[level])) + 1;
@@ -461,6 +490,7 @@ export function createCombatService(db, staminaSvc) {
         element: elb,
         stoneGain, expGain, trophy, trophyField: TROPHY_FIELDS[mode], frag, special, pitySpecial,
         matDrops,
+        bond,
         progress,
         stamina: spent.view,
         // 权威计数回传（事务后的值）：客户端镜像精确对齐，本地只做展示预判
@@ -494,6 +524,7 @@ export function createCombatService(db, staminaSvc) {
     db.exec('BEGIN');
     try {
       let led = ensureLedger(ctx.user.id, mirror, now);
+      applyBondTruth(mirror, led); // 本命法宝等级以账本为权威（喂战斗面板前注入）
       const prev = Math.floor(num(led.offline_at)) || now; // 首次不追溯（防存量玩家凭空白得）
       const elapsedS = Math.min(OFFLINE_CAP_S, Math.max(0, (now - prev) / 1000));
       if (elapsedS < 60) {
@@ -514,6 +545,7 @@ export function createCombatService(db, staminaSvc) {
       let exp = 0;
       let opens = 0;
       let hunt = null;
+      let bond = null;
 
       if (n > 0) {
         opens = n;
@@ -580,6 +612,9 @@ export function createCombatService(db, staminaSvc) {
             }
             setPityMap.wild = [pityWins, pityDay, pityN];
             stmts.setSetPity.run(JSON.stringify(setPityMap), ctx.user.id);
+            // 离线巡猎胜场器灵经验（2026-11-04）：与在线胜场同一 bondExpOf 口径批量结算
+            bond = bondAccrue(ctx.user.id, led, mirror,
+              bondExpOf({ level, boss: false, first: false, rewardScale: 1 }) * winsPaid);
             hunt = {
               wins: winsPaid, hunts, stones: huntStones, exp: huntExp,
               trophy: winsPaid * trophyEach, drops, clamped: winsPaid < wins,
@@ -604,7 +639,7 @@ export function createCombatService(db, staminaSvc) {
       return sendJSON(res, 200, {
         ok: true, settled: opens > 0 || !!(hunt && hunt.wins > 0),
         elapsed: Math.floor(elapsedS), opens, stones, exp: Math.floor(exp),
-        hunt, stamina: st ? staminaView(st.cur) : null,
+        hunt, bond, stamina: st ? staminaView(st.cur) : null,
       });
     } catch (e) {
       db.exec('ROLLBACK');
@@ -630,6 +665,7 @@ export function createCombatService(db, staminaSvc) {
     db.exec('BEGIN');
     try {
       const led = ensureLedger(ctx.user.id, mirror, now);
+      applyBondTruth(mirror, led); // 本命法宝等级以账本为权威（喂战斗面板前注入）
       // 境界门槛：化神（FEATURE_GATES.trials 同口径）——按水位 max(realm, realmPeak) 判定，
       // 与客户端 featureOpen 一致；飞升轮回后境界归零但已解锁玩法不回锁（2026-11-01 口径），
       // 原只查 mirror.realm 会把飞升老玩家在服务端拒之门外（客户端放行、服务端 400）

@@ -13,8 +13,8 @@ import { sendJSON, SlidingWindow } from './http-util.js';
 // —— 商业建筑：cost=解锁（1 级）花费，growth=升级指数，max=等级上限，repNeed=商誉门槛 ——
 const BUILDINGS = {
   dan: { name: '丹房', icon: '丹', cost: 2e4, growth: 1.55, max: 50, repNeed: 0 },
-  qi:  { name: '器坊', icon: '器', cost: 8e4, growth: 1.55, max: 50, repNeed: 3000 },
-  fu:  { name: '符箓铺', icon: '符', cost: 3e5, growth: 1.55, max: 50, repNeed: 12000 },
+  qi:  { name: '器坊', icon: '器', cost: 8e4, growth: 1.55, max: 50, repNeed: 500 },
+  fu:  { name: '符箓铺', icon: '符', cost: 3e5, growth: 1.55, max: 50, repNeed: 3000 },
 };
 // 制作位：1/13/25/37/49 级 → 1~5 席；售价/商誉随建筑等级成长（50 级 ×3.45）
 const SLOTS_AT_LV = (lv) => 1 + Math.floor(Math.max(0, lv - 1) / 12);

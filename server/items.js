@@ -94,6 +94,18 @@ export const AFFIXES = [
 export const AFFIX_COUNT = [0, 0, 0, 1, 2, 3];
 export const AFFIX_QMULT = [0.5, 0.6, 0.75, 0.9, 1.1, 1.35];
 
+// 神纹（2026-11-04，game.js SIGIL_DEFS 同源）：仙品洗练 6% 刻出的隐藏战斗技能。
+// 放在 items.js（物品域）：装备上只存 { k }，参数取本表；saves.js validateItem
+// 用本表白名单校验，battle.js 导入后聚合成 player.skills
+export const SIGIL_DEFS = {
+  critdmg: { name: '破军', desc: '暴击伤害 +20%', skill: { id: 'critdmg', v: 0.2 } },
+  exec: { name: '斩杀', desc: '敌方生命低于 25% 时伤害 ×1.4', skill: { id: 'exec', frac: 0.25, mult: 1.4 } },
+  thorns: { name: '荆棘', desc: '反弹 8% 所受伤害', skill: { id: 'thorns', v: 0.08 } },
+  shield: { name: '玉璧', desc: '开场护盾 8% 最大生命', skill: { id: 'shield', v: 0.08 } },
+  regen: { name: '回春', desc: '每回合回复 0.8% 最大生命', skill: { id: 'regen', v: 0.008 } },
+  firstcrit: { name: '先声', desc: '首击必暴', skill: { id: 'firstcrit' } },
+};
+
 export const ELEMENTS = [
   { key: 'jin', name: '金' }, { key: 'mu', name: '木' }, { key: 'shui', name: '水' },
   { key: 'huo', name: '火' }, { key: 'tu', name: '土' },
@@ -113,6 +125,13 @@ export const SETS = {
       { need: 4, text: '生命 +15%', apply: (b) => { b.hp *= 1.15; } },
       { need: 6, text: '受到伤害 -7.5%', apply: (b) => { b.dr += 0.075; } },
     ],
+    // 套装战斗技能（2026-11-04 套装技能化，game.js SETS 同源）：凑件数触发确定性
+    // 战斗技能，与上方属性 bonuses 叠加；simulateBattle 消费 player.skills。
+    skills: [
+      { need: 2, name: '塔影庇护', text: '开场护盾 12% 最大生命', skill: { id: 'shield', v: 0.12 } },
+      { need: 4, name: '玄鳞反震', text: '反弹 10% 所受伤害', skill: { id: 'thorns', v: 0.10 } },
+      { need: 6, name: '观星回元', text: '每回合回复 1.5% 最大生命', skill: { id: 'regen', v: 0.015 } },
+    ],
   },
   stage: {
     name: '征伐', cls: 'set-stage',
@@ -125,6 +144,11 @@ export const SETS = {
       { need: 4, text: '暴击率 +4%', apply: (b) => { b.crit += 0.04; } },
       { need: 6, text: '攻击 +17.5%', apply: (b) => { b.atk *= 1.175; } },
     ],
+    skills: [
+      { need: 2, name: '破阵锐气', text: '前 3 回合伤害 +12%', skill: { id: 'opening', rounds: 3, mult: 1.12 } },
+      { need: 4, name: '将军先声', text: '首击必暴', skill: { id: 'firstcrit' } },
+      { need: 6, name: '百战不屈', text: '生命低于 30% 时攻击 ×1.2', skill: { id: 'laststand', frac: 0.3, mult: 1.2 } },
+    ],
   },
   wild: {
     name: '荒狩', cls: 'set-wild',
@@ -136,6 +160,11 @@ export const SETS = {
       { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },
       { need: 4, text: '攻击 +7.5%', apply: (b) => { b.atk *= 1.075; } },
       { need: 6, text: '攻击吸血 6%', apply: (b) => { b.lifesteal += 0.06; } },
+    ],
+    skills: [
+      { need: 2, name: '噬骨猎杀', text: '敌方生命低于 25% 时伤害 ×1.3', skill: { id: 'exec', frac: 0.25, mult: 1.3 } },
+      { need: 4, name: '狼顾暴裂', text: '暴击伤害 +15%', skill: { id: 'critdmg', v: 0.15 } },
+      { need: 6, name: '血契狂猎', text: '战斗内吸血 +4%', skill: { id: 'lsup', v: 0.04 } },
     ],
   },
 };

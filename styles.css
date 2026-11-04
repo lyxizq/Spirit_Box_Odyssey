@@ -1244,8 +1244,9 @@ body.theme-light .combat-tab.locked { color: #5b6472; }
 /* ---------- set bonus ---------- */
 
 .set-list {
+  /* 2026-11-04 用户指定：套装卡任何分辨率下通栏竖排（一行一卡、卡内条目内联流式） */
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 6px;
   margin-top: 10px;
 }
@@ -1275,11 +1276,52 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
 
 .set-name { color: var(--rc); font-weight: 600; }
 .set-count { color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
-.set-desc { margin: 4px 0 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
+.set-desc { margin: 4px 0 0; color: var(--muted); font-size: 8px; line-height: 1.9; }
 .set-row.on .set-desc { color: rgba(232, 230, 223, 0.75); }
+.set-desc .set-name { margin-right: 0; }
 
 .set-tower { --rc: var(--orange); }
 .set-stage { --rc: var(--blue); }
+
+/* —— 套装战斗技能 / 混搭共鸣 / 本命法宝 / 神纹（2026-11-04 装备扩玩批次）—— */
+.set-cross { --rc: var(--purple, #c084fc); opacity: 1; border-color: rgba(192, 132, 252, 0.28); }
+
+.set-skill {
+  /* 内联流式（2026-11-04 用户指定）：技能条目横排、条目内部不折行，窄屏在条目间隙换行 */
+  display: inline;
+  white-space: nowrap;
+  margin: 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.9;
+}
+.set-skill.on { color: var(--green); }
+
+.sigil-row { border-color: rgba(216, 179, 106, 0.3); }
+.sigil-row .affix-name { color: var(--orange); }
+
+.bond-slots { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.bond-chip.on {
+  color: var(--orange);
+  border-color: rgba(216, 179, 106, 0.45);
+  background: rgba(216, 179, 106, 0.1);
+}
+.bond-info { margin: 4px 0 2px; font-size: 9px; }
+.bond-info .muted { margin-left: 4px; }
+.bond-bar {
+  height: 5px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.bond-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--orange), #f87171);
+  transition: width 0.3s ease;
+}
 .set-wild { --rc: var(--green); }
 
 .bag-item.item-special,
@@ -5520,6 +5562,17 @@ section.panel.folded > :not(h2) { display: none !important; }
 }
 /* 背包为空/已满的提示行占满整行 */
 .pet-bag-list > .hint { grid-column: 1 / -1; margin: 0; }
+/* 出战阵容一行两个（2026-11-04 用户指定）：阵容卡片两列网格；卡片按钮仅留详情，
+   喂养/出战走详情弹层与背包；空位/解锁卡同网格排布 */
+.pet-lineup-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin: 8px 0 4px;
+}
+.pet-lineup-grid .pet-row { align-items: flex-start; }
+.pet-lineup-grid .pet-main { flex: 1; min-width: 0; }
+.pet-lineup-grid .pet-desc { white-space: normal; line-height: 1.5; }
+.pet-lineup-grid .pet-actions { margin-top: 4px; }
+.pet-lineup-grid .pet-actions .mini { padding: 7px 16px; }
 /* 背包行（2026-11-03 用户指定改版）：一行一只；属性完整显示可换行；
    出战/详情加大、靠右对齐，独占卡片下一行 */
 .pet-bag-list .pet-row { flex-wrap: wrap; }
@@ -5553,11 +5606,23 @@ section.panel.folded > :not(h2) { display: none !important; }
   background: var(--card-2); color: var(--text); font-size: 12px; cursor: pointer;
 }
 .fish-spot.on { border-color: var(--gold); color: var(--gold-2); background: rgba(216, 179, 106, 0.12); }
+/* 钓场信息行（2026-11-04 用户指定）：比 hint 缩一号 */
+.fish-spot-meta { font-size: 9.5px !important; }
+/* 饵尽直付（2026-11-04 用户指定）：耗灵石抛竿时，「抛竿」右侧小字标价——
+   内联不增按钮高度；金底上用深墨色，白字过亮看不清 */
+.fish-actions .btn-sub {
+  display: inline;
+  font-size: 9px;
+  margin-left: 4px;
+  color: rgba(62, 44, 10, 0.6);
+}
 .fish-spot.locked { opacity: 0.45; cursor: not-allowed; }
 .fish-spot i { font-style: normal; font-size: 10px; color: var(--muted); }
 .fish-list {
+  /* 2026-11-04 用户指定：鱼表不再内部滚动/截断——去掉 max-height 与 overflow，
+     20 行全量展开；弹窗整体超高时走 modal-card 自身的整层滚动 */
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
-  margin: 6px 0 10px; max-height: min(240px, 34vh); overflow-y: auto;
+  margin: 6px 0 10px;
 }
 .fish-row {
   display: flex; align-items: center; gap: 6px;
@@ -5666,3 +5731,182 @@ body.theme-light .farm-cell.fc-near { background: rgba(74, 222, 128, 0.22); colo
 /* 钓鱼结果固定槽位（2026-11-04 用户报按钮跳动修复）：无结果也占同等高度，横幅零位移 */
 .fish-result-slot { min-height: 54px; display: flex; margin-top: 10px; }
 .fish-result-slot .fish-result { flex: 1; margin: 0; }
+
+/* —— 红尘再启（2026-11-04）：同行助战 / 卷末抉择 / 红尘手札 / 隐藏关 —— */
+.story-text { white-space: pre-line; } /* 卷末抉择果报旁白与小结换行 */
+
+.story-aid {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.story-aid-label { font-size: 12px; color: var(--text-dim); }
+
+.story-choices { justify-content: center; gap: 10px; margin-top: 10px; }
+.story-choices .btn.wide { min-width: 140px; }
+.choice-good { border-color: rgba(126, 224, 163, 0.5); color: #7ee0a3; }
+.choice-evil { border-color: rgba(248, 113, 113, 0.5); color: #f87171; }
+body.theme-light .choice-good { color: #15803d; }
+body.theme-light .choice-evil { color: #b91c1c; }
+
+.story-hidden-row .ss-icon { color: var(--gold-2); }
+.story-hidden-row.done .ss-icon { color: #7ee0a3; }
+body.theme-light .story-hidden-row.done .ss-icon { color: #15803d; }
+
+.journal-btn { margin-top: 8px; width: 100%; }
+.journal-hint { margin: 8px 0 0; }
+
+.cast-favor-box {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--card-2); border: 1px solid var(--line);
+}
+.cast-favor-box .hint { margin: 4px 0 8px; }
+.cast-favor-head {
+  margin: 0; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--gold-2);
+}
+.favor-pips { display: inline-flex; gap: 4px; }
+.favor-pip {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--line);
+}
+.favor-pip.on {
+  background: var(--gold-2); border-color: var(--gold-2);
+  box-shadow: 0 0 4px rgba(216, 179, 106, 0.5);
+}
+.journal-text { font-size: 13px; line-height: 2.1; }
+
+/* —— 日常扩容二期（2026-11-04）：七日征程 / 洞府访客 / 每日鱼王 / 遛宠 / 仙盟共修 —— */
+.journey-track { display: flex; gap: 6px; margin: 8px 0 4px; }
+.journey-cell {
+  flex: 1; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.05); color: var(--dim, #9aa4b2); font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.journey-cell.lit {
+  background: rgba(240, 217, 168, 0.16); color: #f0d9a8; border-color: rgba(240, 217, 168, 0.35);
+}
+.fish-king {
+  display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px;
+  margin: 6px 0; background: rgba(240, 217, 168, 0.08); border: 1px solid rgba(240, 217, 168, 0.2);
+}
+.fish-king.on { border-color: rgba(240, 217, 168, 0.5); }
+.fish-king.got { opacity: 0.75; }
+.fish-king .fish-ic { font-size: 18px; }
+.fish-king .pet-desc { margin: 2px 0 0; font-size: 12px; color: var(--dim, #9aa4b2); }
+.fish-king .pet-name { color: #f0d9a8; font-weight: 600; }
+body.theme-light .journey-cell { background: rgba(43, 52, 64, 0.05); border-color: rgba(43, 52, 64, 0.12); color: #6b7280; }
+body.theme-light .journey-cell.lit { background: rgba(180, 140, 60, 0.15); color: #8a6a20; border-color: rgba(180, 140, 60, 0.4); }
+body.theme-light .fish-king { background: rgba(180, 140, 60, 0.08); border-color: rgba(180, 140, 60, 0.25); }
+body.theme-light .fish-king .pet-desc { color: #6b7280; }
+body.theme-light .fish-king .pet-name { color: #8a6a20; }
+
+/* —— 修炼扩容（2026-11-04）：闭关打坐 / 道童历练 / 五行道基 / 道悟星图 —— */
+.secl-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border-radius: 12px;
+  background: var(--card-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+.secl-card.run { border-color: rgba(240, 217, 168, 0.35); }
+.secl-card.done { border-color: rgba(126, 224, 163, 0.4); }
+.secl-run-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.secl-state { font-weight: 600; color: var(--gold-2, #f0d9a8); }
+.secl-timer { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--gold-2, #f0d9a8); }
+.secl-line { margin: 0; font-size: 13px; font-weight: 600; color: var(--dim, #9aa4b2); }
+.secl-card .btn.primary { align-self: flex-start; }
+
+.dispatch-apt {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--card-2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+.apt-pips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.apt-pip {
+  padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--dim, #9aa4b2); border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+}
+.apt-pip.lit {
+  color: var(--gold-2, #f0d9a8); border-color: rgba(240, 217, 168, 0.5);
+  background: rgba(240, 217, 168, 0.12);
+}
+.apt-lore { font-style: normal; color: var(--gold-2, #f0d9a8); }
+.apt-next { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.apt-next .hint { margin: 0; }
+
+.daoji-card {
+  padding: 12px; border-radius: 12px;
+  background: var(--card-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--el, var(--line, rgba(255, 255, 255, 0.1)));
+  display: flex; flex-direction: column; gap: 8px;
+}
+.daoji-head { display: flex; align-items: center; gap: 10px; }
+.daoji-head > div { flex: 1; }
+.daoji-el {
+  width: 40px; height: 40px; border-radius: 10px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; color: var(--el, #f0d9a8);
+  background: color-mix(in srgb, var(--el, #f0d9a8) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el, #f0d9a8) 45%, transparent);
+}
+.daoji-eff { font-style: normal; color: var(--dim, #9aa4b2); }
+.daoji-eff b { color: var(--gold-2, #f0d9a8); }
+.daoji-stock { color: var(--gold-2, #f0d9a8); }
+.daoji-pick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.daoji-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 10px; border-radius: 12px; cursor: pointer; text-align: center;
+  background: var(--card-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  color: inherit; font: inherit;
+}
+.daoji-pick:disabled { cursor: default; opacity: 0.72; }
+.daoji-pick.mine { border-color: var(--el); box-shadow: 0 0 8px color-mix(in srgb, var(--el) 40%, transparent); }
+.daoji-pick:hover:not(:disabled) { border-color: var(--el); }
+.daoji-pick-icon {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700; color: var(--el);
+  background: color-mix(in srgb, var(--el) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el) 50%, transparent);
+}
+.daoji-pick b { font-size: 14px; }
+.daoji-pick i { font-style: normal; font-size: 12px; color: var(--dim, #9aa4b2); }
+.daoji-pick em {
+  font-style: normal; font-size: 12px; font-weight: 600;
+  color: var(--el); opacity: 0.85;
+}
+
+.xingtu-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.xingtu-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.xingtu-nodes { display: flex; flex-direction: column; gap: 6px; }
+.xingtu-node {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-radius: 10px; cursor: pointer; text-align: left;
+  background: var(--card-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  color: inherit; font: inherit;
+}
+.xingtu-node:disabled { cursor: default; opacity: 0.55; }
+.xingtu-node b { font-size: 13px; }
+.xingtu-node i { font-style: normal; font-size: 12px; color: var(--dim, #9aa4b2); white-space: nowrap; }
+.xingtu-node.lit {
+  border-color: var(--st);
+  background: color-mix(in srgb, var(--st) 14%, transparent);
+}
+.xingtu-node.lit i { color: var(--st); }
+.xingtu-node.big b { color: var(--st); }
+.xingtu-node:hover:not(:disabled):not(.lit) { border-color: var(--st); }
+body.theme-light .secl-card,
+body.theme-light .dispatch-apt,
+body.theme-light .daoji-card,
+body.theme-light .daoji-pick,
+body.theme-light .xingtu-node {
+  background: rgba(43, 52, 64, 0.05);
+  border-color: rgba(43, 52, 64, 0.14);
+}
+body.theme-light .apt-pip.lit {
+  color: #8a6a20; border-color: rgba(180, 140, 60, 0.5); background: rgba(180, 140, 60, 0.14);
+}
+
+/* 陈列室两列（2026-11-04 用户指定「一行显示 2 个」）：12 部位展位行成两列网格 */
+#museumList { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+#museumList .pet-row { margin-top: 0; }

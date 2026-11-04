@@ -55,6 +55,29 @@ const BOUNTY_DUST_BASE = 6;
 const BOUNTY_DUST_PER_POWER = 1 / 1e6;
 const BOUNTY_DUST_CAP = 300;
 
+// —— 回忆之战（2026-11-04 红尘再启）：周常一名红尘录旧首领 ——
+// 名单按周键种子确定性轮换（全服同一场）；敌人以玩家自己的 PvP 快照为基底按
+// memoryEnemyOf 缩放（与 game.js 同源，改动须双侧同步）；每人每周一场、胜负都占场，
+// 战胜周赏服务端直发账本 + action_log 授权流水；users.memory_week 防重打。
+const MEMORY_BOSSES = [
+  { name: '独眼豹', title: '黑风旧主', desc: '二十年的凶名散了，独眼里那点不服气还没散。' },
+  { name: '血手修罗', title: '幽冥血使', desc: '三城的血债偿清了，血手在回忆里依旧发烫。' },
+  { name: '幽冥老祖', title: '冰下三百年', desc: '冰层压不住的执念：那只匣子，它说还是它的。' },
+  { name: '心魔·林小凡', title: '道心暗面', desc: '没有光的那个自己，每次回忆都要再战一遍。' },
+  { name: '天外邪神', title: '墟中残响', desc: '以香火为食的古神，在回忆里仍旧饿着。' },
+  { name: '天珩帝君', title: '执刀十万年', desc: '替一个死人的天执刀的人，刀还没入鞘。' },
+  { name: '归墟', title: '天幕之饿', desc: '无形之饿。回忆是它的下一口，你来让它噎着。' },
+  { name: '万神墓主', title: '残念之首', desc: '他还在问人间值不值得——答案由刀来答。' },
+  { name: '守梯石翁', title: '三万六千级', desc: '梯上那块歪砖还在。他想看看，你还记不记得疼。' },
+  { name: '旧天道', title: '一问千年', desc: '只留了一只匣子的问题。回忆里，它把问题又问了一遍。' },
+];
+const MEMORY_STONE_BASE = 5e4;        // 周赏基线
+const MEMORY_STONE_PER_POWER = 1 / 16; // 周赏随战力成长（power/16）
+const MEMORY_STONE_CAP = 8e6;         // 单周封顶（约悬赏全清的十倍量级）
+const MEMORY_DUST_BASE = 60;
+const MEMORY_DUST_PER_POWER = 1 / 2e6;
+const MEMORY_DUST_CAP = 2000;
+
 // —— 天梯日俸（2026-11-04 天下扩容）：按当前天梯分档位每日领俸 ——
 // 需职业生涯打过一场竞技场；数额服务端现算直发（账本 + 授权流水），client 不传数额
 const LADDER_PAY_TIERS = [
@@ -62,6 +85,46 @@ const LADDER_PAY_TIERS = [
   { min: 1100, name: '入阁', stones: 2.5e5 },
   { min: 900,  name: '立雪', stones: 1e5 },
   { min: 0,    name: '初阶', stones: 3e4 },
+];
+
+// —— 洞府访客（2026-11-04 日常扩容）：每日一位访客，三选一互动，选定即占当日 ——
+// 访客与台词按（日期 + uid）种子确定性推导；切磋服务端复算（敌方=自身快照缩放，
+// bountyEnemyOf 同款思路，倍率略高于悬赏 t1）；三路奖励全部服务端直发账本 + 授权流水。
+const VISITORS = [
+  { name: '苏挽月',   say: ['月下抚琴，闻道友洞府灵气清正，特来叨扰。', '玄天宗今日休沐，我带了些新谱的琴曲。', '路过贵府，闻得药香，想来讨盏灵茶。'] },
+  { name: '雷无涯',   say: ['宗门大比归来，手痒，找你过上两招。', '近日悟了记新刀法，不切磋一番实在难受。', '听闻你近来进境飞快，我来验验成色。'] },
+  { name: '玄玑子',   say: ['老道云游至此，见你洞府上有紫气，随缘一叙。', '今日卦象宜讲道，老道便厚着脸皮上门了。', '游兴未消，随脚一游，不想竟是你这里。'] },
+  { name: '药尘翁',   say: ['老夫炼了一炉九曲还魂丹，分你闻闻药香。', '药材收多了，来你府上换些灵石使。', '丹炉炸了三次，出来散心，顺路访友。'] },
+  { name: '琴娘阿阮', say: ['公子姐姐们都说你洞府雅致，特来瞧瞧。', '新制了一张焦尾琴，想寻个知音听听。', '坊市今日歇市，来你这儿躲躲闲话。'] },
+  { name: '游方散人', say: ['贫道步履天下，今日恰好行至此处。', '换了一双新草鞋，旧的就送你镇宅罢。', '讨口水喝，顺带说说外头的见闻。'] },
+  { name: '行脚商人', say: ['好货不贵，今日开张，先访熟客。', '新到一批星河深处的稀罕物，掌柜的看看？', '账上缺进项，来你这儿寻些生意。'] },
+  { name: '说书先生', say: ['新编了段《灵匣记》，先在你这儿试说一折。', '茶馆歇业，说书人没了场子，来你府上练练嘴。', '收集民间轶闻，闻你洞府故事多。'] },
+];
+// 切磋：敌方缩放与赏格（随战力成长、封顶）；战败无奖励（当日已占）
+const VISITOR_DUEL_ENEMY = { atk: 0.62, hp: 2.6, def: 0.85, pierce: 0.1 };
+const VISITOR_DUEL_STONE_BASE = 8e3;
+const VISITOR_DUEL_STONE_PER_POWER = 1 / 60;
+const VISITOR_DUEL_STONE_CAP = 1.2e5;
+const VISITOR_DUEL_DUST_BASE = 4;
+const VISITOR_DUEL_DUST_PER_POWER = 1 / 2.5e6;
+const VISITOR_DUEL_DUST_CAP = 120;
+// 赠礼：花 20 万灵石换人缘（碎屑 + 鱼饵），余额不足 400 不占当日
+const VISITOR_GIFT_COST = 2e5;
+const VISITOR_GIFT_REWARD = { dust: 80, bait: 2 };
+// 求教：免费听道，得灵石（随战力成长、封顶）
+const VISITOR_ASK_STONE_BASE = 2e5;
+const VISITOR_ASK_STONE_PER_POWER = 1 / 120;
+const VISITOR_ASK_STONE_CAP = 8e5;
+
+// —— 仙盟共修（2026-11-04 日常扩容）：盟员每日捐灵石入共修池（20 万/次、3 次/日），
+// 池子按日归零；达档全盟可领（每人每档一次），奖励服务端直发账本 + 授权流水；
+// 领取后当日「共修心得」小增益由客户端结算（同周增益链，+3% 灵石/碎屑）。
+const CULT_AMOUNT = 2e5;
+const CULT_DAILY_TIMES = 3;
+const CULT_TIERS = [
+  { name: '小成', need: 6e5, stones: 3e5, dust: 30 },
+  { name: '大成', need: 2e6, stones: 8e5, dust: 60 },
+  { name: '圆满', need: 5e6, stones: 2e6, dust: 100 },
 ];
 
 // 盟任务：进度全部由服务端从真实行为表聚合（捐献额 / 盟妖王伤害 / 盟员切磋场数）。
@@ -151,7 +214,7 @@ export function createSocialService(db) {
        ORDER BY u.power_score DESC LIMIT 50`),
     betterCount: db.prepare(
       "SELECT COUNT(*) AS n FROM users WHERE power_score > ? AND status = 'active'"),
-    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at, ladder_pay_day FROM users WHERE id = ?'),
+    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at, ladder_pay_day, memory_week FROM users WHERE id = ?'),
     // PvP（真人候选池不含假人；假人由 botCandidates 按战力就近补位）
     candidates: db.prepare(
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 0 AS bot
@@ -242,6 +305,7 @@ export function createSocialService(db) {
     redeemCountToday: db.prepare(
       `SELECT COUNT(*) AS n FROM redeem_log WHERE user_id = ? AND created_at > ?`),
     guildGet: db.prepare('SELECT id, name, notice, fund, leader_id FROM guilds WHERE id = ?'),
+    guildMemberCount: db.prepare('SELECT COUNT(*) AS n FROM guild_members WHERE guild_id = ?'),
     guildExists: db.prepare('SELECT id FROM guilds WHERE id = ?'),
     // 仙盟玩法：贡献 / 盟任务 / 盟妖王 / 商店
     addContribution: db.prepare(
@@ -330,6 +394,32 @@ export function createSocialService(db) {
     logAction: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     ladderPayDaySet: db.prepare('UPDATE users SET ladder_pay_day = ? WHERE id = ?'),
+    memoryWeekSet: db.prepare('UPDATE users SET memory_week = ? WHERE id = ?'),
+    // —— 2026-11-04 日常扩容：洞府访客 / 仙盟共修 ——
+    visitorGet: db.prepare(
+      'SELECT choice, win, stones, dust FROM visitor_acts WHERE day = ? AND user_id = ?'),
+    visitorIns: db.prepare(
+      `INSERT INTO visitor_acts (day, user_id, choice, win, stones, dust, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(day, user_id) DO NOTHING`),
+    cultGet: db.prepare('SELECT stones, members FROM guild_cult WHERE day = ? AND guild_id = ?'),
+    cultIns: db.prepare(
+      `INSERT INTO guild_cult (day, guild_id, stones, members, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(day, guild_id) DO UPDATE SET
+         stones = stones + excluded.stones, members = excluded.members`),
+    cultLogGet: db.prepare(
+      'SELECT times FROM guild_cult_log WHERE day = ? AND guild_id = ? AND user_id = ?'),
+    cultLogUp: db.prepare(
+      `INSERT INTO guild_cult_log (day, guild_id, user_id, times, stones, created_at)
+       VALUES (?, ?, ?, 1, ?, ?)
+       ON CONFLICT(day, guild_id, user_id) DO UPDATE SET
+         times = times + 1, stones = stones + excluded.stones`),
+    cultClaimGet: db.prepare(
+      'SELECT 1 FROM guild_cult_claims WHERE day = ? AND guild_id = ? AND user_id = ? AND tier = ?'),
+    cultClaimIns: db.prepare(
+      'INSERT INTO guild_cult_claims (day, guild_id, user_id, tier, created_at) VALUES (?, ?, ?, ?, ?)'),
+    cultMyTotal: db.prepare(
+      'SELECT COALESCE(SUM(stones), 0) AS n FROM guild_cult_log WHERE guild_id = ? AND user_id = ? AND day = ?'),
   };
 
   // 账本灵石原子扣款（2026-10-31 复审升级）：严格足额才扣成功——查而不扣时同一笔账本
@@ -737,12 +827,28 @@ export function createSocialService(db) {
     // 同门互助：我今日是否已传功/赠礼，及是否有待领的传功/赠礼
     const aidRow = stmts.aidMe.get(guildId, userId) || {};
     const aidToday = aidRow.aid_day === today;
+    // 仙盟共修（2026-11-04）：当日盟池 + 档位 + 我今日捐了几次/各档是否已领
+    const cultRow = stmts.cultGet.get(today, guildId);
+    const cultStones = cultRow ? cultRow.stones : 0;
+    const myCult = stmts.cultLogGet.get(today, guildId, userId);
+    const cult = {
+      day: today,
+      stones: cultStones,
+      myTimes: myCult ? myCult.times : 0,
+      amount: CULT_AMOUNT,
+      cap: CULT_DAILY_TIMES,
+      tiers: CULT_TIERS.map((t, i) => ({
+        tier: i + 1, name: t.name, need: t.need, stones: t.stones, dust: t.dust,
+        reached: cultStones >= t.need,
+        claimed: !!stmts.cultClaimGet.get(today, guildId, userId, i + 1),
+      })),
+    };
     return {
       id: g.id, name: g.name, notice: g.notice, fund: g.fund,
       level: guildLevel(g.fund), levelFund: GUILD_LEVEL_FUND, cap: GUILD_LEVEL_CAP,
       isLeader: g.leader_id === userId,
       myContribution: myContribRow ? myContribRow.contribution : 0,
-      tasks, shop,
+      tasks, shop, cult,
       aid: {
         skillGiven: aidToday && !!aidRow.aid_skill_to,
         giftGiven: aidToday && !!aidRow.aid_gift_to,
@@ -1150,6 +1256,242 @@ export function createSocialService(db) {
     return sendJSON(res, 200, { ok: true, win: !!win, stones: rw.stones, dust: rw.dust, done: true });
   }
 
+  // ---------------- 回忆之战（红尘再启） ----------------
+
+  // 周键与客户端 weekKey / saves.js 同口径（年内第 N 周，非严格 ISO，两端一致即可）
+  function memoryWeekKey(now = Date.now()) {
+    const d = new Date(now);
+    return d.getFullYear() + '-W' + Math.floor((d - new Date(d.getFullYear(), 0, 1)) / (7 * 86400000));
+  }
+
+  // 敌人以玩家自己的 PvP 快照为基底缩放（快照已含装备词条；服务端权威公式，
+  // game.js memoryEnemyOf 同源）。比悬赏同倍率更肉：回忆里的旧敌都硬得很。
+  function memoryEnemyOf(snap, mult) {
+    return {
+      atk: snap.atk * 0.6 * mult,
+      hp: snap.hp * 4.5 * mult,
+      def: snap.def * 0.9 * mult,
+      crit: 0.05, critMult: 2, lifesteal: 0, dr: 0,
+      pierce: Math.min(0.3, 0.06 * mult),
+    };
+  }
+
+  function memoryRewardOf(power, mult) {
+    const p = Math.max(0, power);
+    return {
+      stones: Math.round(Math.min(MEMORY_STONE_CAP, MEMORY_STONE_BASE + Math.floor(p * MEMORY_STONE_PER_POWER)) * mult),
+      dust: Math.round(Math.min(MEMORY_DUST_CAP, MEMORY_DUST_BASE + Math.floor(p * MEMORY_DUST_PER_POWER)) * mult),
+    };
+  }
+
+  function memoryState(req, res, ctx) {
+    const me = stmts.byId.get(ctx.user.id);
+    const power = me ? me.power_score : 0;
+    const week = memoryWeekKey();
+    const seed = [...week].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const boss = MEMORY_BOSSES[seed % MEMORY_BOSSES.length];
+    const mult = 1.6 + 0.2 * (seed % 4); // 1.6 / 1.8 / 2.0 / 2.2 周轮换
+    const done = !!me && me.memory_week === week;
+    return sendJSON(res, 200, {
+      week,
+      boss: { name: boss.name, title: boss.title, desc: boss.desc, mult },
+      reward: memoryRewardOf(power, mult),
+      done,
+      win: false, // 胜负在 fight 响应与账本里；state 只报「本周是否已出战」
+    });
+  }
+
+  function memoryFight(req, res, ctx) {
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
+    const week = memoryWeekKey();
+    if (me.memory_week === week) {
+      return sendJSON(res, 429, { error: '回忆之战本周已交过手，下周再来' });
+    }
+    // 胜负由服务端复算（同悬赏口径）：快照八项缺失走 409 且不占本周场次
+    let snap = null;
+    try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { /* 快照缺失 */ }
+    if (!snapOk(snap)) {
+      return sendJSON(res, 409, { error: '战斗快照未就绪，已触发重新同步，几秒后再战' });
+    }
+    if (!stmts.ledgerRow.get(me.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再战' });
+    const seed = [...week].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const boss = MEMORY_BOSSES[seed % MEMORY_BOSSES.length];
+    const mult = 1.6 + 0.2 * (seed % 4);
+    const sim = simulateBattle(snap, memoryEnemyOf(snap, mult));
+    const win = sim.win ? 1 : 0;
+    const rw = win ? memoryRewardOf(me.power_score, mult) : { stones: 0, dust: 0 };
+    db.exec('BEGIN');
+    try {
+      stmts.memoryWeekSet.run(week, me.id); // 胜负都占周（防重打）
+      if (win) {
+        stmts.ledgerAddStonesDust.run(rw.stones, rw.stones, rw.dust, me.id);
+        stmts.logAction.run(me.id, dayStr(), 'memory', rw.stones, rw.dust, 0, 0, Date.now());
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, win: !!win, stones: rw.stones, dust: rw.dust, done: true });
+  }
+
+  // ---------------- 洞府访客 ----------------
+
+  // 今日访客：名字与台词按（日期 + uid）种子确定性推导；服务端为文案与结果唯一权威
+  function visitorState(req, res, ctx) {
+    const me = stmts.byId.get(ctx.user.id);
+    const power = me ? me.power_score : 0;
+    const today = dayStr();
+    const seed = [...today].reduce((a, c) => a + c.charCodeAt(0), 0) + ctx.user.id * 7;
+    const v = VISITORS[seed % VISITORS.length];
+    const say = v.say[(seed >> 3) % v.say.length];
+    const rec = stmts.visitorGet.get(today, ctx.user.id);
+    return sendJSON(res, 200, {
+      day: today,
+      visitor: {
+        name: v.name, say,
+        choices: [
+          { id: 'duel', label: '切磋', desc: '与访客过上两招，胜得彩头', stones: visitorDuelReward(power).stones, dust: visitorDuelReward(power).dust },
+          { id: 'gift', label: '赠礼', desc: '奉上 ' + fmtStones(VISITOR_GIFT_COST) + ' 灵石修好', dust: VISITOR_GIFT_REWARD.dust, bait: VISITOR_GIFT_REWARD.bait },
+          { id: 'ask', label: '求教', desc: '听访客论道，得束脩', stones: visitorAskReward(power) },
+        ],
+      },
+      acted: rec ? rec.choice : '',
+      win: rec ? !!rec.win : false,
+      stones: rec ? rec.stones : 0,
+      dust: rec ? rec.dust : 0,
+    });
+  }
+
+  const fmtStones = (n) => n >= 1e4 ? Math.round(n / 1e4) + ' 万' : String(n);
+
+  function visitorDuelReward(power) {
+    const p = Math.max(0, power);
+    return {
+      stones: Math.round(Math.min(VISITOR_DUEL_STONE_CAP, VISITOR_DUEL_STONE_BASE + Math.floor(p * VISITOR_DUEL_STONE_PER_POWER))),
+      dust: Math.round(Math.min(VISITOR_DUEL_DUST_CAP, VISITOR_DUEL_DUST_BASE + Math.floor(p * VISITOR_DUEL_DUST_PER_POWER))),
+    };
+  }
+
+  const visitorAskReward = (power) => Math.round(Math.min(
+    VISITOR_ASK_STONE_CAP, VISITOR_ASK_STONE_BASE + Math.floor(Math.max(0, power) * VISITOR_ASK_STONE_PER_POWER)));
+
+  function visitorAct(req, res, ctx) {
+    const choice = typeof ctx.body?.choice === 'string' ? ctx.body.choice : '';
+    if (!['duel', 'gift', 'ask'].includes(choice)) return sendJSON(res, 400, { error: '参数无效' });
+    const me = stmts.byId.get(ctx.user.id);
+    if (!me) return sendJSON(res, 500, { error: '账号状态异常' });
+    const today = dayStr();
+    const rec = stmts.visitorGet.get(today, me.id);
+    if (rec) return sendJSON(res, 429, { error: '今日已接待过访客，明日再来' });
+    if (!stmts.ledgerRow.get(me.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再来' });
+
+    let out = { stones: 0, dust: 0 };
+    let win = 0;
+    if (choice === 'duel') {
+      // 胜负服务端复算（同悬赏口径）：快照八项缺失走 409 且不占当日场次
+      let snap = null;
+      try { snap = JSON.parse(me.pvp_snapshot); } catch (e) { /* 快照缺失 */ }
+      if (!snapOk(snap)) {
+        return sendJSON(res, 409, { error: '战斗快照未就绪，已触发重新同步，几秒后再试' });
+      }
+      const sim = simulateBattle(snap, {
+        atk: snap.atk * VISITOR_DUEL_ENEMY.atk,
+        hp: snap.hp * VISITOR_DUEL_ENEMY.hp,
+        def: snap.def * VISITOR_DUEL_ENEMY.def,
+        crit: 0.05, critMult: 2, lifesteal: 0, dr: 0,
+        pierce: VISITOR_DUEL_ENEMY.pierce,
+      });
+      win = sim.win ? 1 : 0;
+      if (win) out = visitorDuelReward(me.power_score);
+    } else if (choice === 'gift') {
+      // 余额校验 + 原子扣款（guildDonate 同口径）：扣款失败 400，不占当日
+      if (!spendLedger(me.id, VISITOR_GIFT_COST)) {
+        return sendJSON(res, 400, { error: '灵石余额不足' });
+      }
+      out = { stones: 0, dust: VISITOR_GIFT_REWARD.dust };
+    } else {
+      out = { stones: visitorAskReward(me.power_score), dust: 0 };
+    }
+    db.exec('BEGIN');
+    try {
+      stmts.visitorIns.run(today, me.id, choice, win, out.stones, out.dust, Date.now());
+      if (out.stones > 0 || out.dust > 0) {
+        stmts.ledgerAddStonesDust.run(out.stones, out.stones, out.dust, me.id);
+        stmts.logAction.run(me.id, today, 'visitor_' + choice, out.stones, out.dust, 0, 0, Date.now());
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, {
+      ok: true, choice, win: !!win, stones: out.stones, dust: out.dust,
+      bait: choice === 'gift' ? VISITOR_GIFT_REWARD.bait : 0,
+      spent: choice === 'gift' ? VISITOR_GIFT_COST : 0,
+    });
+  }
+
+  // ---------------- 仙盟共修 ----------------
+
+  // 捐灵石入盟池（固定数额，账本原子扣款）；池满档全盟领奖
+  function guildCultDonate(req, res, ctx) {
+    const row = stmts.myGuildRow.get(ctx.user.id);
+    if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
+    const today = dayStr();
+    const cur = stmts.cultLogGet.get(today, row.id, ctx.user.id);
+    const times = cur ? cur.times : 0;
+    if (times >= CULT_DAILY_TIMES) {
+      return sendJSON(res, 429, { error: '今日共修已到上限（' + CULT_DAILY_TIMES + ' 次）' });
+    }
+    if (!spendLedger(ctx.user.id, CULT_AMOUNT)) {
+      return sendJSON(res, 400, { error: '灵石余额不足' });
+    }
+    const memberCount = stmts.guildMemberCount.get(row.id);
+    db.exec('BEGIN');
+    try {
+      stmts.cultIns.run(today, row.id, CULT_AMOUNT, memberCount ? memberCount.n : 0, Date.now());
+      stmts.cultLogUp.run(today, row.id, ctx.user.id, CULT_AMOUNT, Date.now());
+      const after = stmts.cultGet.get(today, row.id);
+      db.exec('COMMIT');
+      return sendJSON(res, 200, {
+        ok: true, stones: after ? after.stones : 0, myTimes: times + 1, cap: CULT_DAILY_TIMES,
+      });
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  // 达档全盟领奖：达档即可领（无需自己捐过），每人每档一次/日；服务端直发账本 + 授权流水
+  function guildCultClaim(req, res, ctx) {
+    const tier = Math.floor(Number(ctx.body?.tier));
+    const def = CULT_TIERS[tier - 1];
+    const row = stmts.myGuildRow.get(ctx.user.id);
+    if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
+    if (!def) return sendJSON(res, 400, { error: '没有这个共修档位' });
+    const today = dayStr();
+    const cultRow = stmts.cultGet.get(today, row.id);
+    const stones = cultRow ? cultRow.stones : 0;
+    if (stones < def.need) return sendJSON(res, 400, { error: '共修尚未达到「' + def.name + '」' });
+    if (stmts.cultClaimGet.get(today, row.id, ctx.user.id, tier)) {
+      return sendJSON(res, 429, { error: '今日该档位已领取' });
+    }
+    if (!stmts.ledgerRow.get(ctx.user.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再领' });
+    db.exec('BEGIN');
+    try {
+      stmts.cultClaimIns.run(today, row.id, ctx.user.id, tier, Date.now());
+      stmts.ledgerAddStonesDust.run(def.stones, def.stones, def.dust, ctx.user.id);
+      stmts.logAction.run(ctx.user.id, today, 'guild_cult', def.stones, def.dust, 0, 0, Date.now());
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return sendJSON(res, 200, { ok: true, tier, stones: def.stones, dust: def.dust });
+  }
+
   // ---------------- 路由分发 ----------------
 
   // POST 统一走限流；GET 放行。返回 true 表示已处理。
@@ -1183,7 +1525,14 @@ export function createSocialService(db) {
       case '/api/guild/aid/collect': return write ? (guildAidCollect(req, res, ctx), true) : false;
       case '/api/bounty':      return bountyState(req, res, ctx), true;
       case '/api/bounty/fight': return write ? (bountyFight(req, res, ctx), true) : false;
+      case '/api/memory':      return memoryState(req, res, ctx), true;
+      case '/api/memory/fight': return write ? (memoryFight(req, res, ctx), true) : false;
       case '/api/ladder/pay':  return write ? (ladderPay(req, res, ctx), true) : false;
+      // 洞府访客 / 仙盟共修（2026-11-04 日常扩容）
+      case '/api/visitor':       return visitorState(req, res, ctx), true;
+      case '/api/visitor/act':   return write ? (visitorAct(req, res, ctx), true) : false;
+      case '/api/guild/cult':        return write ? (guildCultDonate(req, res, ctx), true) : false;
+      case '/api/guild/cult/claim':  return write ? (guildCultClaim(req, res, ctx), true) : false;
       case '/api/redeem':      return write ? (redeem(req, res, ctx), true) : false;
       default:                 return false;
     }

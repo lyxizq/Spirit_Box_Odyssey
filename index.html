@@ -135,6 +135,8 @@
       <p class="side-title">周常（周一刷新）</p>
       <div id="weeklyList"></div>
       <p class="hint">周常进度跨天累计，三项全领有额外奖励。</p>
+      <p class="side-title">七日征程（周一刷新）</p>
+      <div id="journeyList"></div>
 </section>
 <section class="panel daily-ext" aria-label="日常扩容">
       <h2>日活福利</h2>
@@ -339,6 +341,24 @@
         <div class="chip-row" id="stewardMarket"></div>
         <p class="hint">点亮后每日自动购买该商品。</p>
       </div>
+    </section>
+
+    <!-- 修炼扩容（2026-11-04）：闭关打坐 / 道童历练 / 五行道基 / 道悟星图（内容 JS 渲染） -->
+    <section class="panel seclusion panel-wide" aria-label="闭关打坐">
+      <h2>闭关打坐</h2>
+      <div id="seclBox"></div>
+    </section>
+    <section class="panel dispatch panel-wide" aria-label="道童历练">
+      <h2>道童历练</h2>
+      <div id="dispatchBox"></div>
+    </section>
+    <section class="panel daoji panel-wide" aria-label="五行道基">
+      <h2>五行道基</h2>
+      <div id="daojiBox"></div>
+    </section>
+    <section class="panel xingtu panel-wide" aria-label="道悟星图">
+      <h2>道悟星图</h2>
+      <div id="xingtuBox"></div>
     </section>
 
       <!-- 修行指南：修炼页最下方（仅修炼页显示，panel-wide 全宽） -->
@@ -569,7 +589,7 @@
       <p class="panel-meta">进度 <span class="count" id="storyProg">0 / 50 关</span></p>
       <p class="story-lead" id="storyLead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
       <div id="storyBox"></div>
-      <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。</p>
+      <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。卷末有关键抉择（改动果报）、卷后有隐藏关「尘缘未了」（本卷全通且同卷人物全结识后开放）、全卷通关解锁红尘手札；战斗关可邀结识角色同行助战（人物志赠礼提升好感加成）。</p>
     </section>
 <section class="panel panel-wide cast-panel" aria-label="人物志">
       <h2>人物志</h2>
@@ -614,8 +634,14 @@
 <section class="panel bounty" aria-label="悬赏妖踪">
       <h2>悬赏妖踪</h2>
       <p class="panel-meta">今日妖踪 <span class="count" id="bountyDay">—</span></p>
-      <div id="bountyList"><p class="hint">加载中……</p></div>
+      <div id="bountyEliteList"><p class="hint">加载中……</p></div>
       <p class="hint">每日三只妖将按你的实力现身，各可出战一场；战胜得赏，越强的亲卫赏越厚。胜负由服务端按天梯快照复算，战败不折损。</p>
+</section>
+<section class="panel bounty" aria-label="回忆之战">
+      <h2>回忆之战</h2>
+      <p class="panel-meta">本周回忆 <span class="count" id="memoryWeek">—</span></p>
+      <div id="memoryBody"><p class="hint">加载中……</p></div>
+      <p class="hint">每周一位红尘录旧首领自回忆中现身，按你的实力缩放；战胜得周赏，每人每周一战，胜负由服务端复算。</p>
 </section>
       </div>
       <div class="col col-b">
@@ -740,6 +766,7 @@
         <button class="btn tiny" id="petFuseBtn">合成</button>
         <span id="petBagInline" class="pet-bag-inline"></span>
       </div>
+      <div id="petWalkBox"></div>
       <div class="pet-list" id="petList"></div>
       <p class="hint">缚灵谷消耗招募券与体力捕捉个体；合成三合一提品质；洗髓重随词条。亲密度/信物/内丹为物种级熟练度。</p>
     </section>
@@ -781,6 +808,19 @@
       </div>
       <div class="cast-modal-art" id="castModalArt"></div>
       <p class="cast-modal-brief" id="castModalBrief"></p>
+      <div class="cast-favor-box hidden" id="castFavorBox"></div>
+    </div>
+  </div>
+  <div class="modal cast-modal" id="journalModal" role="dialog" aria-modal="true" aria-labelledby="journalTitle">
+    <div class="modal-card cast-card-modal">
+      <div class="cast-modal-head">
+        <div class="cast-modal-id">
+          <h2 id="journalTitle">红尘手札</h2>
+          <p class="cast-modal-sub">手札成册 · 随卷解锁</p>
+        </div>
+        <button class="mini" id="journalModalClose">✕</button>
+      </div>
+      <p class="cast-modal-brief journal-text" id="journalText"></p>
     </div>
   </div>
   <div class="modal" id="gambleModal" role="dialog" aria-modal="true" aria-labelledby="gambleModalTitle">
@@ -807,12 +847,33 @@
     </div>
   </div>
 
+  <div class="modal" id="daoBaseModal" role="dialog" aria-modal="true" aria-labelledby="daoBaseModalTitle">
+    <div class="modal-card">
+      <h3 id="daoBaseModalTitle">五行择道</h3>
+      <div id="daoBaseModalBody"></div>
+      <p class="hint" id="daoBaseModalHint"></p>
+      <div class="modal-actions">
+        <button class="btn" id="daoBaseModalClose">暂不择道</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="fishModal" role="dialog" aria-modal="true" aria-labelledby="fishModalTitle">
     <div class="modal-card fish-modal-card">
-      <h3 id="fishModalTitle">垂钓 · 五钓场</h3>
+      <h3 id="fishModalTitle">垂钓 · 十钓场</h3>
       <div id="fishModalBody"></div>
       <div class="modal-actions">
         <button class="btn" id="fishModalClose">收竿离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fishKingModal" role="dialog" aria-modal="true" aria-labelledby="fkTitle">
+    <div class="modal-card">
+      <h3 id="fkTitle">👑 鱼王到手</h3>
+      <p id="fkBody"></p>
+      <div class="modal-actions">
+        <button class="btn primary wide" id="fkCloseBtn">收进鱼护 ▸</button>
       </div>
     </div>
   </div>
@@ -961,6 +1022,8 @@
       <div id="forgeStars"></div>
       <div id="forgeRunes"></div>
       <div id="forgeInherit"></div>
+      <div id="forgeLvInherit"></div>
+      <div id="forgeBond"></div>
       <p class="forge-msg" id="forgeMsg"></p>
       <div class="forge-actions">
         <button class="btn wide" id="forgeClose">关闭工坊</button>
@@ -1116,6 +1179,7 @@
         <div class="story-slot story-slot-l" id="storySlotL"></div>
         <div class="story-slot story-slot-r" id="storySlotR"></div>
       </div>
+      <div class="story-aid hidden" id="storyAidRow"></div>
       <div class="story-dialog" id="storyDialog">
         <span class="story-name" id="storyName"></span>
         <p class="story-text" id="storyText"></p>
@@ -1123,6 +1187,10 @@
       <div class="story-actions">
         <button class="btn tiny" id="storyGiveup">暂退</button>
         <button class="btn primary" id="storyNext">继续 ▸</button>
+      </div>
+      <div class="story-actions story-choices hidden" id="storyChoices">
+        <button class="btn wide choice-good" id="storyChoiceGood">善择</button>
+        <button class="btn wide choice-evil" id="storyChoiceEvil">恶择</button>
       </div>
     </div>
   </div>
@@ -1146,7 +1214,7 @@
         <h3>核心循环</h3>
         <p>开灵匣得装备 / 灵石 / 修为 → 灵石淬炼提速提收益 → 修为突破境界 → 境界解锁新玩法 → 征战打更强的怪、拿更好的装备，滚雪球成长。</p>
         <h3>修炼 · 境界与飞升</h3>
-        <p>开箱产修为；修为够即突破境界（炼气→筑基→…→仙人）。仙人后攒 1000 亿灵石可飞升（轮回）：散尽灵石、重置境界与淬炼，换 1 点仙缘（灵石收益 +5%、修为 +50%，可叠加）；飞升前有四栏确认弹层交代归零 / 保留 / 新玩法 / 增益。挑战修行在飞升时达成即记功。</p>
+        <p>开箱产修为；修为够即突破境界（炼气→筑基→…→仙人）。仙人后攒 1000 亿灵石可飞升（轮回）：散尽灵石、重置境界与淬炼，换 1 点仙缘（灵石收益 +5%、修为 +50%，可叠加）；飞升前有四栏确认弹层交代归零 / 保留 / 新玩法 / 增益。挑战修行在飞升时达成即记功。<b>闭关打坐</b>（筑基）选时长入定，香火抬修为，出关结算大额修为（15% 顿悟翻倍、10% 走火入魔引心魔），入定期间开箱修为减半；<b>五行道基</b>（金丹）择五行凝道基逐阶永久乘区，升阶吞同五行装备，每世金丹可免费改道；<b>道童历练</b>（渡劫）派道童远行带回钱粮素材与见闻，见闻喂道童资质解锁自动续关 / 长差 / 星河渡口；<b>道悟星图</b>（元婴）开箱凝道韵点亮 30 星逐星加成，飞升布点归元返还。</p>
         <h3>征战 · 四大秘境</h3>
         <p><b>闯关</b>起点玩法，5 关一首领；<b>爬塔</b> 200 层产镇塔套；<b>野外</b>刷材料与荒狩套；<b>无尽</b>无限层带词缀，通塔 60 层开启。套装部件 0.8%/场随机掉落，另每胜 50 场保底 1 件（每玩法每日至多 2 件）；胜场还可能掉牧场种子与洗炼石。试炼区另有探幽 / 首领连战 / 条件试炼 / 悬赏令（白绿蓝紫四单，全清加奖）与<b>异象秘境</b>（每日双词缀 boss，按余血评 S/A/B 级，S 级 5% 掉仙品）。</p>
         <h3>装备</h3>
@@ -1156,9 +1224,9 @@
         <h3>经营 · 牧场与坊市</h3>
         <p><b>方格牧场</b>：12×12 格地四向开垦，七种种子 30 分钟～8 小时成熟，收获掉碎屑、洗炼石与随机种子；<b>云来坊市</b>（金丹解锁）：牧场 / 灵圃收获自动入仓，丹房 / 器坊 / 符箓铺制作成品，直售兜底或接订单（1.8 倍溢价 + 商誉），商誉解锁新建筑。</p>
         <h3>日常与闲趣</h3>
-        <p><b>签到</b>二选一：普通签到稳拿当日奖，或<b>赌狗签到</b>押上当日奖励掷倍率——49% 狂赚 ×2~5、10% 保本 ×1、20% 空手、21% 倒扣 1~3 倍（灵石可扣成负债，碎屑扣到 0 为止，量力而赌）；战绩面板记流水。月度朝贺按月记到勤，缺勤可补签。<b>日活福利</b>：灵潮双时段（12–14 / 20–22 点）产出 ×2、每日占卜一签定运势、在线每 60 分钟聚一格灵气、仙道问答每日十题。日常 / 周常领奖；黑市限购与赌石；垂钓（五钓场 54 种鱼，每场一条可化形赠宝的龙鱼；竿等逐场解封，钓到点亮渔获图鉴，渔获附带草籽 / 洗炼石）、灵圃采集、秘境图探雾、藏宝图挖宝、云游奇遇（60 种事件，善恶改果报，冷却到点页顶横幅提示）。</p>
+        <p><b>签到</b>二选一：普通签到稳拿当日奖，或<b>赌狗签到</b>押上当日奖励掷倍率——49% 狂赚 ×2~5、10% 保本 ×1、20% 空手、21% 倒扣 1~3 倍（灵石可扣成负债，碎屑扣到 0 为止，量力而赌）；战绩面板记流水。月度朝贺按月记到勤，缺勤可补签。<b>日活福利</b>：灵潮双时段（12–14 / 20–22 点）产出 ×2、每日占卜一签定运势、在线每 60 分钟聚一格灵气、仙道问答每日十题。日常 / 周常领奖；黑市限购与赌石；垂钓（十钓场 200 种鱼，每场一条可化形赠宝的龙鱼；竿等逐场解封，每日赠 50 枚鱼饵、饵尽 5000 灵石/竿，钓到点亮渔获图鉴，渔获附带草籽 / 洗炼石）、灵圃采集、秘境图探雾、藏宝图挖宝、云游奇遇（60 种事件，善恶改果报，冷却到点页顶横幅提示）。</p>
         <h3>天下 · 玩家玩法</h3>
-        <p><b>竞技场</b>每日 15 场可灵石加购，胜负动天梯分；<b>天梯日俸</b>按段位每日领俸（打过一场即解锁）；<b>悬赏妖踪</b>每日三只妖将按你的实力现身，各战一场、战胜得赏；<b>世界妖王</b>全服共血条；<b>仙盟</b>捐献 / 盟任务 / 盟妖王 / 贡献商店 / 同门互助（每日传功赠礼各一次，双方受益）。显示名、盟名、盟公告等一切输入文本均过屏蔽词校验，含屏蔽词会被拒绝。</p>
+        <p><b>竞技场</b>每日 15 场可灵石加购，胜负动天梯分；<b>天梯日俸</b>按段位每日领俸（打过一场即解锁）；<b>悬赏妖踪</b>每日三只妖将按你的实力现身，各战一场、战胜得赏；<b>回忆之战</b>每周一位红尘录旧首领，战胜得周赏；<b>世界妖王</b>全服共血条；<b>仙盟</b>捐献 / 盟任务 / 盟妖王 / 贡献商店 / 同门互助（每日传功赠礼各一次，双方受益）。显示名、盟名、盟公告等一切输入文本均过屏蔽词校验，含屏蔽词会被拒绝。</p>
         <h3>战斗规则</h3>
         <p>回合制自动对战：伤害 = 攻 − 防×(1−破甲)，暴击 ×1.75，吸血按伤害回血，120 回合未分胜负判超时。战败不损失进度。</p>
         <h3>存档</h3>
