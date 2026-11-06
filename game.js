@@ -2024,9 +2024,9 @@
   const HERB_ELIXIR_NEED = 10;   // 灵药合丹消耗
   const ORE_SOUL_NEED = 20;      // 矿石锻魂消耗
   const MELT_NEED = 5;           // 装备熔铸材料件数（天→仙 / 仙→仙升星；地→天档 ×10 走 meltNeed()）
-  // 熔铸成功率：每次在 30%~40% 均匀浮动（目标 35% 上下 5%，2026-11-03 用户指定）；失败材料与手续费不退
-  const MELT_RATE_MIN = 0.30;
-  const MELT_RATE_SPAN = 0.10;
+  // 熔铸成功率：每次在 60%~80% 均匀浮动（目标 70% 上下 10%，2026-11-06 用户指定调升）；失败材料与手续费不退
+  const MELT_RATE_MIN = 0.60;
+  const MELT_RATE_SPAN = 0.20;
   const meltRate = () => MELT_RATE_MIN + Math.random() * MELT_RATE_SPAN;
 
   // 天象：每日一换，与时辰同框架的全局微 buff
@@ -2598,6 +2598,8 @@
   let wsDisabled = false;  // 握手连续失败禁用（本会话不再尝试）
   let wsFails = 0;
   let wsEverOk = false;
+  let wsSaveFails = 0;     // 连续存档 ack 超时数（2026-11-06 半死态快速降级）
+  let wsHelloTimer = 0;    // 握手后应用层首帧（hello）超时闸
   let wsTimer = 0;
   let wsAckTimer = 0;
   let wsSaveText = null;   // 在途存档帧原文（ack 对账用）
@@ -2618,13 +2620,17 @@
     wsSock.onopen = () => {
       wsOn = true;
       wsFails = 0;
-      wsEverOk = true;
       hideCloudBanner();
+      // 握手 ≠ 应用层活着（2026-11-06 半死态修复）：反代半开 WS 时 onopen 照常、帧全黑洞——
+      // 5s 内没收到任何帧即判半死，主动断开走重连路径。此前 onopen 直接置 wsEverOk=true，
+      // 半死连接断开后走 60s 慢速重连，永远到不了「3 连败 15s 禁用」的自愈，拖累整会话
+      clearTimeout(wsHelloTimer);
+      wsHelloTimer = setTimeout(() => { try { if (wsSock) wsSock.close(); } catch (e) {} }, 5000);
     };
     wsSock.onclose = () => {
       wsOn = false;
       wsSock = null;
-      clearTimeout(wsAckTimer);
+      clearTimeout(wsAckTimer); clearTimeout(wsHelloTimer);
       if (wsSaveText) { cloudBusy = false; wsSaveText = null; } // 在途帧作废，回退 HTTP 重试
       if (authSignedOut || wsDisabled || !cloudOn) return;
       scheduleReconnect();
@@ -2634,6 +2640,7 @@
       let msg = null;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (!msg || !msg.t) return;
+      if (!wsEverOk) wsEverOk = true; // 应用层首帧才算「成功过」（半死态修复：onopen 不算数）
       if (msg.t === 'saveAck') return wsOnSaveAck(msg);
       // time 帧里服务端顺带捎了悬赏快照（60s tick 的 snap 面）：一并消费，胜场状态
       // 每分钟自动保鲜（跨设备打过 / 面板久开不重拉也不至于一钟头陈旧）
@@ -2664,7 +2671,11 @@
     wsAckTimer = setTimeout(() => { // 10s 无 ack：临时故障，回退 HTTP 重试
       cloudBusy = false;
       const t = wsSaveText; wsSaveText = null;
+      wsSaveFails++;
       showCloudBanner('长连接响应超时，回退直连重试同步');
+      // 连续 2 次 ack 超时：通道半死（帧黑洞），主动断开走重连/禁用自愈（hello 超时接力判定），
+      // 别让每竿存档都白等 10s（2026-11-06「系统明显变慢」修复）
+      if (wsSaveFails >= 2 && wsSock) { try { wsSock.close(); } catch (e) {} }
       if (t && cloudPending === t && !cloudTimer) {
         cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 2000);
       }
@@ -2678,6 +2689,7 @@
     const text = wsSaveText;
     wsSaveText = null;
     cloudBusy = false;
+    wsSaveFails = 0; // ack 正常到达：通道健康，重置连续超时计数
     if (ack.status === 200) {
       if (cloudPending === text) cloudPending = null;
       cloudLastPush = Date.now();
@@ -2740,7 +2752,7 @@
   // pageshow（含 bfcache 恢复）立即重连并补推 pending
   function wsSuspend() {
     wsOn = false;
-    clearTimeout(wsAckTimer); clearTimeout(wsTimer); wsTimer = 0;
+    clearTimeout(wsAckTimer); clearTimeout(wsHelloTimer); clearTimeout(wsTimer); wsTimer = 0;
     if (wsSock) { try { wsSock.close(); } catch (e) {} wsSock = null; }
     if (authSignedOut || wsDisabled || !cloudOn) return;
     wsTimer = setTimeout(() => { wsTimer = 0; wsConnect(); }, 1500);
@@ -2749,7 +2761,7 @@
   function wsShutdown() { // 登出/重置：断开并禁用本会话
     wsDisabled = true;
     wsOn = false;
-    clearTimeout(wsAckTimer); clearTimeout(wsTimer);
+    clearTimeout(wsAckTimer); clearTimeout(wsHelloTimer); clearTimeout(wsTimer);
     if (wsSock) { try { wsSock.close(); } catch (e) {} wsSock = null; }
   }
 
@@ -4480,7 +4492,7 @@
       desc: '分解专属件积攒器魂，定向打造指定部位的天品装备。' },
     { id: 'melt', name: '装备熔铸', where: '征战 · 装备', cond: '境界「金丹」',
       check: () => featureOpen('melt'),
-      desc: '十件地品熔天品、五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率统一 35%±5%，失败材料与手续费不退，部位随机。' },
+      desc: '十件地品熔天品、五件天品熔仙品、五件仙品熔升星（封顶 ★5），成功率统一 70%±10%，失败材料与手续费不退，部位随机。' },
     { id: 'trials', name: '条件试炼', where: '征战 · 试炼', cond: '境界「化神」',
       check: () => featureOpen('trials'),
       desc: '每日三项限制试炼（速杀 / 禁吸血 / 限承伤），全通额外 60 碎屑。' },
@@ -7768,7 +7780,8 @@
   }
 
   // —— 钓鱼（2026-11-03 弹窗改版）——
-  // 抛竿状态仅存内存：时机条光标随时间三角波游走，起竿越中越准；竿等给滚点加成。
+  // 抛竿状态仅存内存：时机条光标随时间三角波游走，起竿越中越准；妙手竿（acc≥0.85）常规
+  // 渔获 ×1.5（2026-11-06 掷骰重构，见 reelRod）。
   // 全部玩法交互在 #fishModal 弹窗内进行，闲趣面板只留摘要与入口按钮。
   let fishRod = null;
   let fishMsg = null; // 最近一次起竿/脱钩结果（仅内存，弹窗结果行展示）
@@ -7841,13 +7854,19 @@
       return;
     }
     const spot = fishSpotOf();
-    // 竿等加成：每级 +1.2 滚点把分布往稀有鱼推，时机准头仍是大头
-    let roll = Math.random() * 62 + acc * 38 + (state.fishing.rod - 1) * 1.2;
+    // 掷骰重构（2026-11-06 用户两连报：先「掉率最高的两种鱼一直钓不到」后「概率极低的
+    // 反而容易出」）：原 roll = rnd*62 + acc*38 + (rod-1)*1.2 的确定性偏置把 roll 下限抬到
+    // 38+，累积表前两条（小白鱼 19.75%/灵鳞鱼 18.5%）在时机半准+高竿等时数学上永不可达；
+    // 中间版「推送段 [60,100) 重掷」又让极低概率鱼按段内密度抽、实际超发 15%~30%。
+    // 定稿：roll 均匀 [0,100) 纯吃名义累积表——显示掉率=实际掉率，每条鱼严格按表掷，
+    // 不偏不倚；时机价值走妙手 ×1.5（acc≥0.85 常规渔获加成），竿等价值=解封钓场。
+    let roll = Math.random() * 100;
     let tier = spot.fish[spot.fish.length - 1];
     for (const f of spot.fish) {
       if (roll < f.p) { tier = f; break; }
       roll -= f.p;
     }
+    const lucky = acc >= 0.85; // 妙手竿（时机条停进中心 15% 窄带）：常规渔获 ×1.5
     state.fishing.casts++;
     if (tier.gi > state.fishing.bestT) state.fishing.bestT = tier.gi;
     state.fishing.dex[tier.id] = 1; // 图鉴点亮（2026-11-04 用户指定：钓到的鱼名字亮色）
@@ -7890,14 +7909,15 @@
       text = '钓得传说「' + tier.name + '」！+' + fmt(tier.stones) + ' 灵石';
       chime([659, 784, 1046, 1318]);
     } else if (tier.stones) {
-      addStones(Math.round(tier.stones * walkFishMult())); // 遛宠当日垂钓 +5%（2026-11-04）
+      addStones(Math.round(tier.stones * walkFishMult() * (lucky ? 1.5 : 1))); // 遛宠当日垂钓 +5%（2026-11-04）；妙手 ×1.5（2026-11-06）
       cls = tier.stones >= 50000 ? 'g-stone' : 'g-none';
-      text = tier.name + '，+' + fmt(tier.stones) + ' 灵石';
+      text = tier.name + '，+' + fmt(Math.round(tier.stones * walkFishMult() * (lucky ? 1.5 : 1))) + ' 灵石' + (lucky ? '（妙手 ×1.5）' : '');
       chime([523, 659]);
     } else {
-      addDust(tier.dust);
+      const dustGot = Math.round(tier.dust * (lucky ? 1.5 : 1));
+      addDust(dustGot);
       cls = 'g-dust';
-      text = tier.name + '，+' + tier.dust + ' 碎屑';
+      text = tier.name + '，+' + dustGot + ' 碎屑' + (lucky ? '（妙手 ×1.5）' : '');
       chime([523, 659]);
     }
     // 渔获附赠素材（2026-11-04 用户指定）：概率附带草籽/洗炼石（与征战胜场掉落同池）
@@ -7933,12 +7953,12 @@
       cls = 'g-item'; // 鱼王战报金色横幅
     }
     fishMsg = { text, cls, ic: fishIcon(tier) };
-    pushLog('钓得' + text + (acc > 0.85 ? '（妙手！）' : ''), 'special');
+    pushLog('钓得' + text + (lucky ? '（妙手！）' : ''), 'special');
     render();
     save();
   }
 
-  // 鱼竿升级（2026-11-03 弹窗改版）：竿等即钓场解封线，滚点随竿等加成
+  // 鱼竿升级（2026-11-03 弹窗改版）：竿等即钓场解封线（2026-11-06 起不再推概率分布）
   function rodUp() {
     const lv = state.fishing.rod;
     if (lv >= FISH_ROD_MAX) return;
@@ -8327,7 +8347,7 @@
     $('meltResultBody').innerHTML =
       '<p class="hint">消耗背包最弱 <b>' + need + '</b> 件「' + RARITIES[r].name + '」装备' +
         '（现有 ' + stock + ' 件），另缴手续费 ' + fmt(fee) + resIcon('stones') + '。</p>' +
-      '<p class="hint">' + outLabel + '；成功率 <b>35%±5%</b>（每次在 30%~40% 间浮动）。</p>' +
+      '<p class="hint">' + outLabel + '；成功率 <b>70%±10%</b>（每次在 60%~80% 间浮动）。</p>' +
       '<p class="hint">失败材料与手续费不退，确定动手？</p>';
     $('meltResultOk').textContent = '确认熔铸';
     $('meltResultCancel').classList.remove('hidden');
@@ -10303,6 +10323,22 @@
         '<span>' + (e.d.length === 10 ? e.d.slice(5) : e.d) + ' · ' + (e.m === 'g' ? '赌狗' : '普通') + mult + '</span>' +
         '<b>' + (parts.length ? parts.join(' · ') : '空手而归') + '</b></div>';
     }).join('');
+  }
+
+  // 当日签到结果行（2026-11-06 用户指定）：签到后把单日结果显示在签到框内、当天常驻。
+  // 数据取 signLog 首条流水（持久化，刷新/重登不丢）；未签/跨天不显示。倒扣行标红。
+  function signTodayHtml() {
+    if (state.lastSignIn !== todayStr()) return '';
+    const e = state.signLog[0];
+    if (!e || (e.d.length === 10 ? e.d : todayStr().slice(0, 4) + '-' + e.d) !== todayStr()) return '';
+    const parts = [];
+    if (e.s) parts.push((e.s > 0 ? '+' : '-') + fmt(Math.abs(e.s)) + ' 灵石');
+    if (e.u) parts.push((e.u > 0 ? '+' : '-') + fmt(Math.abs(e.u)) + ' 碎屑');
+    const mult = e.m === 'g' ? ' ×' + e.x.toFixed(1) : '';
+    return '<p class="hint signin-today' + (e.s < 0 ? ' signin-today-bust' : '') + '">今日' +
+      (e.m === 'g' ? '赌狗签到' + mult : '签到') + '：' +
+      (parts.length ? parts.join(' · ') : '空手而归') +
+      (e.s < 0 ? ' · 负债 ' + fmt(-state.stones) : '') + '</p>';
   }
 
   // 签到战绩·流水弹层（2026-11-03 用户指定）：面板收起为入口按钮，全量流水进弹层
@@ -18103,6 +18139,7 @@
             '<button class="mini" id="signLogBtn">战绩 · 流水</button>' +
           '</span>' +
         '</div>' +
+        signTodayHtml() +
         (signed ? '' :
           '<p class="hint signin-odds">赌狗 · 49% ×2~5 倍 · 10% ×1 · 20% 空手 · ' +
           '21% 倒扣 1~3 倍（灵石可负债）</p>');

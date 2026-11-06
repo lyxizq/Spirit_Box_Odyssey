@@ -5993,3 +5993,57 @@ body.theme-light .apt-pip.lit {
 @media (max-width: 430px) {
   .ss-state { white-space: normal; min-width: 0; }
 }
+
+/* 当日签到结果行（2026-11-06 用户指定）：签到后单日结果常驻签到框内，
+   左侧金边引用样式与流水行呼应；倒扣行转红（同 .signlog-debt 口径） */
+.signin-today {
+  margin: 7px 0 0;
+  padding: 6px 10px;
+  border-left: 2px solid rgba(216, 179, 106, 0.5);
+  color: var(--gold-2);
+  font-size: 11.5px;
+}
+.signin-today-bust { border-left-color: rgba(248, 113, 113, 0.55); color: var(--red); }
+body.theme-light .signin-today { color: #8a6a20; }
+body.theme-light .signin-today-bust { color: #b91c1c; }
+
+/* 天梯榜真机档（2026-11-06 同事反馈「跟昨天成就列表一样」）：同 #achvList 的
+   iOS WebKit 内滚 + body zoom 排版叠压问题，≤480px 拆内滚随页滚动（天下页本身可滚），
+   桌面/验收视口保留原 409px 内滚 */
+@media (max-width: 480px) {
+  #ladderList { max-height: none; overflow: visible; }
+}
+
+/* ---------- 内滚容器真机档统一收口（2026-11-06 同事反馈天梯榜后全站排查） ----------
+   iOS WebKit 在 body zoom（字号 85%~125%）下对「max-height + overflow-y」内嵌滚动容器
+   排版压花（成就列表 / 天梯榜两例实锤）。页面流内的内滚容器是纯叠加约束——页面本身
+   可滚，真机档（≤480px，全真机宽度上限 440）统一拆掉；桌面 / 500×900 验收视口保留原样。
+   不拆的两类：
+   ① 弹层内滚（signlog-list / gamble-modal-list / pet-bag-list / battle-log / battle-report /
+      set-scroll / 各 modal 壳 max-height:100%）——fixed 弹层靠内滚约束高度，拆掉内容溢出
+      屏幕、确认按钮不可见，破坏大于叠压；弹层叠压由全局 text-size-adjust:100% 兜底。
+   ② .pet-dex-scroll（物种图鉴「露 5 行」）——2026-11-04 用户指定视口预算，保留。 */
+@media (max-width: 480px) {
+  .bestiary-list,
+  .log-list,
+  .bag-list,
+  #guideList {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    overscroll-behavior: auto;
+  }
+}
+
+/* 行高锁真机档解除（2026-11-06 统一处理补丁）：原锁定是为「内滚容器精确露 N 行」
+   服务的——内滚拆掉后锁定失去意义，反成 body zoom 下 iOS WebKit 文字溢框叠压的
+   帮凶（框高锁死、字随 zoom 放大）。行高回归字体自然值，框随文字走。 */
+@media (max-width: 480px) {
+  #ladderList .rank-row,
+  .guide-row,
+  .signlog-row,
+  .achv-row,
+  .story-stage-row {
+    line-height: inherit;
+  }
+}
