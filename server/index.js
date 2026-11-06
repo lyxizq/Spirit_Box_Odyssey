@@ -9,12 +9,13 @@ import { openDb } from './db.js';
 import { createAuthService } from './auth.js';
 import { createSaveService } from './saves.js';
 import { createSocialService } from './social.js';
-import { createStaminaService } from './stamina.js';
+import { createStaminaService, computeStamina, staminaView } from './stamina.js';
 import { createCombatService } from './combat.js';
 import { createPetsService } from './pets.js';
 import { createShopService } from './shop.js';
 import { createCultivationService } from './cultivation.js';
 import { sendJSON, readBody, getIp, isSecure, sameOrigin, acceptsGzip, gzipBody, GZIP_MIN_SIZE } from './http-util.js';
+import { createWsService } from './ws.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 8080);
@@ -33,6 +34,7 @@ const pets = createPetsService(db, stamina);
 const shop = createShopService(db);
 const cultivation = createCultivationService(db);
 
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const SESSION_COOKIE = 'lx_session';
 const AUTH_BODY_LIMIT = 32 * 1024;    // 登录 / 注册请求体上限
 const SAVE_BODY_LIMIT = 512 * 1024;   // 存档请求体上限（与服务端校验一致）
@@ -419,6 +421,26 @@ async function handleApi(req, res, pathname) {
   return sendJSON(res, 404, { error: 'not found' });
 }
 
+// WebSocket 长连接（2026-11-04 用户指定）：/api/ws 承载存档帧 + 时间/体力/悬赏推送，
+// 零依赖 RFC6455 实现（server/ws.js）；动作类请求照旧走 HTTP，WS 断线客户端自动回退轮询
+const computeStaminaSafe = (row) => {
+  try { return computeStamina(row, Date.now()); } catch (e) { return null; }
+};
+
+const wsSvc = createWsService({
+  auth,
+  version: VERSION,
+  applyStore: (userId, rawBody, user) => saves.applyStore(userId, rawBody, user),
+  snapshotOf: (userId) => {
+    const st = stamina.core.rowById(userId);
+    const cur = st ? computeStaminaSafe(st) : null;
+    return {
+      stamina: cur ? staminaView(cur) : null,
+      bounty: social.bountyDataOf(userId),
+    };
+  },
+});
+
 const server = http.createServer(async (req, res) => {
   let pathname;
   try {
@@ -460,6 +482,13 @@ const cleanupTimer = setInterval(() => {
   try { auth.cleanup(); } catch (e) { console.error('[cleanup]', e); }
 }, 3600 * 1000);
 cleanupTimer.unref();
+
+// WS 升级握手挂点（HTTP/1.1 Upgrade）：非 /api/ws 的升级请求由 ws.js 返回 false 后销毁
+server.on('upgrade', (req, socket, head) => {
+  if (!wsSvc.handleUpgrade(req, socket, head)) socket.destroy();
+});
+// 60s 心跳 tick：协议级 ping 保活 + 时间/体力帧 + 跨天重推悬赏快照
+setInterval(() => wsSvc.tick(Date.now()), 60 * 1000);
 
 server.listen(PORT, () => {
   console.log(`灵匣纪元服务端已启动: http://127.0.0.1:${PORT}  (数据库: ${DB_PATH})`);

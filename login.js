@@ -79,16 +79,24 @@
         // 禁 Cookie 等）时直接跳「/」会被 302 弹回登录页——无声循环极难自查。
         // 先复核会话确已建立再跳转，失败给出可行动的提示
         var me = null;
+        var meStatus = 0;
         try {
           var meRes = await fetch('/api/auth/me', { credentials: 'same-origin' });
-          me = meRes.ok ? await meRes.json() : null;
+          meStatus = meRes.status;
+          try { me = await meRes.json(); } catch (err2) { me = null; }
         } catch (err) { me = null; }
         // /api/auth/me 成功响应形如 {username, displayName, ...}（无 ok 字段）
         if (me && me.username) {
           location.replace('/');
           return;
         }
-        setError('登录态未能建立：请检查浏览器是否允许本站 Cookie（含隐身/无痕与浏览器拦截设置）');
+        // 5xx 是服务端异常，与会话 Cookie 无关：如实透传，避免把用户引去查浏览器设置
+        // （2026-11-05 排查实录：陈旧进程 me 全量 500，Cookie 提示误导排查方向）
+        if (meStatus >= 500) {
+          setError('服务端异常（' + meStatus + (me && me.error ? '：' + me.error : '') + '），请稍后再试');
+        } else {
+          setError('登录态未能建立：请检查浏览器是否允许本站 Cookie（含隐身/无痕与浏览器拦截设置）');
+        }
         submitBtn.disabled = false;
         submitBtn.textContent = mode === 'register' ? '开宗立派' : '进入修行';
         return;

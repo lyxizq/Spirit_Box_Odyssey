@@ -54,6 +54,10 @@ export function createSaveService(db) {
          sweep_day = '', sweep_used = '{}', sweep_bought = '{}',
          trial_day = '', trial_done = '[]', offline_at = 0, set_pity = NULL,
          pet_hunt = NULL, pet_walk = NULL,
+         /* 本命法宝/修炼扩容（2026-11-05 补洞）：器灵等级账本真值与闭关/历练进行中
+            会话此前不在归零清单——重置号继承旧 lv9 器灵攻防乘区（combat.js
+            applyBondTruth 注入），或在重置后 finish 旧闭关/历练白领收益 */
+         bond_lv = 0, bond_exp = 0, seclusion_json = '', dispatch_json = '',
          cli_sync = NULL,
          /* claim_days 保留（2026-11-03）：天道录无 gate 梯子只靠 claim_days 做「终身一次」，
             清空会让 reset×tide 变成可重复领取（3 次/时）；重置清进度但不清领取史 */
@@ -323,7 +327,69 @@ export function createSaveService(db) {
     // 升级等级（2026-11-03 补校验）：gainLv 喂 baseGainOf 离线结算（0.9/级灵石）、
     // speedLv 喂开箱 interval——客户端 UPGRADES.gain.max=60 / speed.max=50，越界即改档
     if (data.gainLv !== undefined && !isInt(data.gainLv, 0, 60)) bad('gainLv 越界');
+    // 淬炼「修为收益」（2026-11-04 新增，可选键模式）：喂 expectedOf 离线修为期望，
+    // 上界同 UPGRADES.exp.max=60——非整真值经 ||0 透传 NaN 会把离线结算打挂
+    if (data.expLv !== undefined && !isInt(data.expLv, 0, 60)) bad('expLv 越界');
     if (data.speedLv !== undefined && !isInt(data.speedLv, 0, 50)) bad('speedLv 越界');
+    // —— 信物/图鉴镜像（2026-11-05 改档修复，可选键模式）——：petTokens 喂战斗天赋
+    // 与离线收益（0.005/级，客户端 TOKEN_MAX=200）；bestiary 键数喂攻血乘区
+    // （1+0.005×floor(n/5)，真实物种上限约 320）。此前两项均无校验：伪造
+    // petTokens:1e12 → 乘区 ×5e9、塞数万图鉴垃圾键 → ×60+，服务端复算与离线结算
+    // 双打穿且入 action_log 被包络放行。消费点另有钳制兜底（battle.js 同日修复）
+    if (data.petTokens !== undefined) {
+      if (!data.petTokens || typeof data.petTokens !== 'object' || Array.isArray(data.petTokens)) {
+        bad('灵宠信物表非法');
+      } else {
+        const keys = Object.keys(data.petTokens);
+        if (keys.length > 12) bad('灵宠信物物种数越界');
+        for (const k of keys) {
+          if (typeof k !== 'string' || k.length > 16 || !isInt(data.petTokens[k], 0, 200)) {
+            bad('灵宠信物等级越界'); break;
+          }
+        }
+      }
+    }
+    if (data.bestiary !== undefined) {
+      if (!data.bestiary || typeof data.bestiary !== 'object' || Array.isArray(data.bestiary)) {
+        bad('怪物图鉴非法');
+      } else {
+        const keys = Object.keys(data.bestiary);
+        if (keys.length > 500) bad('怪物图鉴物种数越界');
+        for (const k of keys) {
+          if (typeof k !== 'string' || k.length > 24 || !isInt(data.bestiary[k], 0, 1e9)) {
+            bad('怪物图鉴计数越界'); break;
+          }
+        }
+      }
+    }
+    // —— 增益镜像（2026-11-05，可选键模式）：elixir/ordealDone/title 此前未校验，
+    // 可白嫖永久丹药乘区/苦修加成/称号加成。均为小额有界增益，按结构+界内钳制
+    if (data.elixir !== undefined) {
+      const e = data.elixir;
+      if (!e || typeof e !== 'object' || Array.isArray(e)) bad('丹药镜像非法');
+      else {
+        // '' 是客户端默认态（未嗑丹）——与道基 el !== '' 同口径，必须放行，否则
+        // 所有未嗑丹玩家的每次推送都被「丹药镜像类型非法」拒收（2026-11-04 线上 user25 砖）
+        if (e.id !== undefined && e.id !== '' && !['atk', 'def', 'gain'].includes(e.id)) bad('丹药镜像类型非法');
+        // 直服丹最长 8 小时：until 放行余量 3 天（读档往返/时区抖动），超界视为伪造永久
+        if (e.until !== undefined && !isInt(e.until, 0, Date.now() + 3 * 86400000)) bad('丹药镜像时限越界');
+        if (e.owned !== undefined) {
+          if (!e.owned || typeof e.owned !== 'object' || Array.isArray(e.owned)) bad('囤丹表非法');
+          else for (const k of Object.keys(e.owned)) {
+            if (!isInt(e.owned[k], 0, 1e6)) { bad('囤丹数量越界'); break; }
+          }
+        }
+      }
+    }
+    if (data.ordealDone !== undefined) {
+      if (!Array.isArray(data.ordealDone) || data.ordealDone.length > 12 ||
+          !data.ordealDone.every((x) => typeof x === 'string' && x.length <= 16)) {
+        bad('苦修行程非法');
+      }
+    }
+    if (data.title !== undefined && (typeof data.title !== 'string' || data.title.length > 40)) {
+      bad('称号非法');
+    }
     // 本命法宝（2026-11-04，可选键模式）：结构钳制——部位白名单、经验/等级界内、
     // 等级 ≤ 轮回解锁上限（3+2×min(轮回,3)）；账本真值对账在 store()（更高一层防线）
     if (data.bond !== undefined) {
@@ -757,23 +823,25 @@ export function createSaveService(db) {
     return deepErrs.length ? deepErrs[0] : null;
   }
 
-  function store(req, res, ctx) {
-    if (!saveWindow.hit(ctx.user.id)) {
-      return sendJSON(res, 429, { error: '保存过于频繁，请稍后再试' }, { 'Retry-After': '30' });
+  // applyStore（2026-11-04 WS 长连接）：store 的管线本体——HTTP 与 /api/ws 存档帧共用
+  // 同一校验/账本/包络链路，返回 { status, body, headers? } 由调用方选择回包方式
+  function applyStore(userId, rawBody, user) {
+    if (!saveWindow.hit(userId)) {
+      return { status: 429, body: { error: '保存过于频繁，请稍后再试' }, headers: { 'Retry-After': '30' } };
     }
-    const data = validateSave(ctx.rawBody);
+    const data = validateSave(rawBody);
     if (!data) {
-      return sendJSON(res, 400, { error: '存档校验失败' });
+      return { status: 400, body: { error: '存档校验失败' } };
     }
     const deepFail = validateDeep(data);
     if (deepFail) {
-      console.error('[saves] 深度校验拒收 user=' + ctx.user.id + '：' + deepFail);
-      return sendJSON(res, 400, { error: '存档校验失败' });
+      console.error('[saves] 深度校验拒收 user=' + userId + '：' + deepFail);
+      return { status: 400, body: { error: '存档校验失败' } };
     }
     const now = Date.now();
     const led = ledgerOf(data, now);
     // —— 增速账本校验：无账本行以当档种入基线；有则做单调性 + 增速校验 ——
-    const prevRow = stmts.getLedger.get(ctx.user.id);
+    const prevRow = stmts.getLedger.get(userId);
     if (prevRow) {
       // 单调性基线取「客户端已确认值」（cli_sync，2026-11-01 防砖修复）：combat/social
       // 服务端结算只加主计数列而不改存档体，客户端若没吸收（结算后刷新/多开/断线），
@@ -801,7 +869,7 @@ export function createSaveService(db) {
         grants: prevRow.grants,
       };
       const fail = checkVelocity(prev, data, now - prevRow.updated_at,
-        sanctionedSince(ctx.user.id, prevRow.updated_at), {
+        sanctionedSince(userId, prevRow.updated_at), {
           // 窗口内「已入主列、尚未被 cli_sync 吸收」的服务端发放（2026-11-02 离线砖修复）：
           // combat/offline 等结算把灵石/开箱直接加进主列，客户端几秒后推档时 elapsed
           // 只有几秒，包络的离线额度套不住——主列只由服务端结算增加、推送成功即与
@@ -810,10 +878,10 @@ export function createSaveService(db) {
           opens: Math.floor(prevRow.opens) - prev.opens,
         });
       if (fail) {
-        console.error('[saves] 增速校验拒收 user=' + ctx.user.id + '：' + fail);
-        return sendJSON(res, 400, { error: '存档增速异常，已保留上次云端进度' });
+        console.error('[saves] 增速校验拒收 user=' + userId + '：' + fail);
+        return { status: 400, body: { error: '存档增速异常，已保留上次云端进度' } };
       }
-    } else if (ctx.user.createdAt && ctx.user.createdAt >= SEED_CHECK_SINCE) {
+    } else if ((user ? user.createdAt : 0) && (user ? user.createdAt : 0) >= SEED_CHECK_SINCE) {
       // —— 新号首推种子校验（2026-11-01 三修：阈值时长感知）——
       // 账本上线（2026-10-31）后注册的账号，无账本行首推一律过种子校验（堵「等窗口
       // 过后零校验种满档」的洞）。但阈值不能按「全新号」拍死：上线初期注册的玩家
@@ -823,7 +891,7 @@ export function createSaveService(db) {
       // 达成，硬指标保留）。作弊面评估：等 N 天再注入 = 基线仍被钳在
       // totalStones ≤ 5e7 + N×5e9、装备战力 ≤ 2e5×(1+N)——战力天花板被
       // 自报战力一致性校验（装备分×2500）与 immortal=0 双重锁死，远小于原洞。
-      const ageDays = Math.max(0, (now - ctx.user.createdAt) / 86400000);
+      const ageDays = Math.max(0, (now - (user ? user.createdAt : 0)) / 86400000);
       const capTotalStones = 5e7 + ageDays * 5e9;
       const capOpens = 2e5 + ageDays * 2e5;
       const capDust = 2e6 + ageDays * 5e6;
@@ -837,9 +905,34 @@ export function createSaveService(db) {
       if (Number(data.immortal) > 0 || Number(data.ascensions) > 0) seedFails.push('仙位/轮回超新号上限');
       if (equipPowerOf(data) > capEquipPower) seedFails.push('装备战力超新号上限');
       if (seedFails.length) {
-        console.error('[saves] 新号种子校验拒收 user=' + ctx.user.id + '（账龄 ' +
+        console.error('[saves] 新号种子校验拒收 user=' + userId + '（账龄 ' +
           ageDays.toFixed(2) + ' 天）：' + seedFails[0]);
-        return sendJSON(res, 400, { error: '新账号存档异常，请从零开始修行' });
+        return { status: 400, body: { error: '新账号存档异常，请从零开始修行' } };
+      }
+    } else {
+      // —— 存量休眠号宽松种子上限（2026-11-05 补洞）——
+      // 账本上线（2026-10-31）前注册、此后从未成功推档的账号，此前走「无账本行
+      // 零校验」直通（db.js 存量迁移豁免的副作用）：休眠号今日一次性注入
+      // 1e18 灵石 / 9e15 套装战力即可种满账本、统治天梯且豁免永久有效。按新号
+      // 同款账龄线性放宽 ×10 收口：老号有真实历史进度（×10 覆盖 1000 亿飞升档），
+      // 但仙位/轮回不硬锁 0（老号合法可达）。真玩家被误拒时进度留客户端本地，
+      // 可联系管理按流水人工放行——比零校验敞口可控。
+      const ageDays = Math.max(1, (now - ((user ? user.createdAt : 0) || SEED_CHECK_SINCE)) / 86400000);
+      const capTotalStones = 1e9 + ageDays * 1e11;
+      const capOpens = 2e6 + ageDays * 2e6;
+      const capDust = 2e7 + ageDays * 5e7;
+      const capTickets = 1e4 + ageDays * 5e3;
+      const capEquipPower = 2e6 * (1 + ageDays);
+      const seedFails = [];
+      if (Number(data.totalStones) > capTotalStones) seedFails.push('累计灵石超存量上限');
+      if (Number(data.opens) > capOpens) seedFails.push('开箱次数超存量上限');
+      if (Number(data.dustTotal) > capDust) seedFails.push('累计碎屑超存量上限');
+      if (Number(data.petTickets) > capTickets) seedFails.push('招募券超存量上限');
+      if (equipPowerOf(data) > capEquipPower) seedFails.push('装备战力超存量上限');
+      if (seedFails.length) {
+        console.error('[saves] 存量种子校验拒收 user=' + userId + '（账龄 ' +
+          ageDays.toFixed(2) + ' 天）：' + seedFails[0]);
+        return { status: 400, body: { error: '存档进度异常，已保留上次云端进度' } };
       }
     }
     // —— 灵宠 uid 水位（2026-11-03 伪面收窄）：个体 uid 一律由服务端发放（pets.js
@@ -855,7 +948,7 @@ export function createSaveService(db) {
         if (wm === null || wm === undefined) {
           wm = 0;
           try {
-            const old = JSON.parse(stmts.getSave.get(ctx.user.id).data);
+            const old = JSON.parse(stmts.getSave.get(userId).data);
             if (old && Array.isArray(old.petInsts)) {
               for (const p of old.petInsts) {
                 const u = Math.floor(Number(p && p.uid) || 0);
@@ -875,9 +968,9 @@ export function createSaveService(db) {
       }
       const forged = data.petInsts.find((p) => p && Math.floor(Number(p.uid) || 0) > wm);
       if (forged) {
-        console.error('[saves] 灵宠 uid 超发放水位拒收 user=' + ctx.user.id +
+        console.error('[saves] 灵宠 uid 超发放水位拒收 user=' + userId +
           '：uid=' + forged.uid + ' > pet_seq=' + wm);
-        return sendJSON(res, 400, { error: '存档校验失败' });
+        return { status: 400, body: { error: '存档校验失败' } };
       }
     }
     // —— 本命法宝账本对账（2026-11-04）：器灵等级/经验由战斗结算记账
@@ -891,9 +984,9 @@ export function createSaveService(db) {
       const pLv = Math.max(0, Math.floor(Number(data.bond.lv) || 0));
       const pExp = Math.max(0, Math.floor(Number(data.bond.exp) || 0));
       if (pLv > lLv || (pLv === lLv && pExp > lExp)) {
-        console.error('[saves] 本命法宝超账本真值拒收 user=' + ctx.user.id +
+        console.error('[saves] 本命法宝超账本真值拒收 user=' + userId +
           '：push lv/exp=' + pLv + '/' + pExp + ' > ledger ' + lLv + '/' + lExp);
-        return sendJSON(res, 400, { error: '存档校验失败' });
+        return { status: 400, body: { error: '存档校验失败' } };
       }
     }
     // —— 连点器判定（服务端裁定）：30s 滑窗累计手动点击增量 ——
@@ -901,26 +994,26 @@ export function createSaveService(db) {
     // clicks 不做 |0：32 位截断下每次恰好 +2^32（validateDeep 上限 1e12 内合法）会让
     // 增量恒为 0，连点判定永不触发；clampInt 已保证整数
     const dClicks = Math.max(0, Math.floor(led.clicks) - (prevRow ? Math.floor(prevRow.clicks || 0) : 0));
-    const clickArr = clickWindows.get(ctx.user.id) || [];
+    const clickArr = clickWindows.get(userId) || [];
     const clickCutoff = now - CLICK_WINDOW_MS;
     while (clickArr.length && clickArr[0].t <= clickCutoff) clickArr.shift();
     clickArr.push({ t: now, n: dClicks });
     // 过期即清：非活跃账号的空窗残留及时出表，防长寿命进程下 Map 随历史用户无界增长
-    if (clickArr.length === 1 && dClicks === 0) clickWindows.delete(ctx.user.id);
-    else clickWindows.set(ctx.user.id, clickArr);
+    if (clickArr.length === 1 && dClicks === 0) clickWindows.delete(userId);
+    else clickWindows.set(userId, clickArr);
     const windowClicks = clickArr.reduce((a, x) => a + x.n, 0);
     if (windowClicks >= CLICK_BURST_MAX && now >= clickBanUntil) {
       clickBanUntil = now + CLICK_BAN_MS;
-      console.error('[saves] 连点器判定 user=' + ctx.user.id + '：30s 内手动点击 ' +
+      console.error('[saves] 连点器判定 user=' + userId + '：30s 内手动点击 ' +
         windowClicks + ' 次，封点击 5 分钟');
     }
 
     db.exec('BEGIN');
     try {
-      stmts.upsert.run(ctx.user.id, ctx.rawBody, Buffer.byteLength(ctx.rawBody), now);
-      syncPowerScore(ctx.user.id, data);
+      stmts.upsert.run(userId, rawBody, Buffer.byteLength(rawBody), now);
+      syncPowerScore(userId, data);
       stmts.upsertLedger.run(
-        ctx.user.id, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
+        userId, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
         led.petTickets, led.ascensions, led.immortal, led.power,
         led.towerCleared, led.stageCleared, led.endlessBest, led.wildMax,
         prevRow ? 0 : 1, led.clicks, clickBanUntil,
@@ -931,13 +1024,24 @@ export function createSaveService(db) {
           stageCleared: led.stageCleared, endlessBest: led.endlessBest, wildMax: led.wildMax,
         }), now);   // 校验通过即清离线豁免；种基线发 1 次
       // 在线心跳：推送成功即证明玩家此刻在线，推进离线结算起点（见 stmts.setOfflineAt 注）
-      stmts.setOfflineAt.run(now, ctx.user.id);
+      stmts.setOfflineAt.run(now, userId);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
       throw e;
     }
-    return sendJSON(res, 200, { ok: true, updatedAt: now, clickBanUntil });
+    return { status: 200, body: { ok: true, updatedAt: now, clickBanUntil } };
+  }
+
+  // HTTP 入口薄包装（原 store）：管线本体已抽为 applyStore 供 /api/ws 复用
+  function store(req, res, ctx) {
+    const r = applyStore(ctx.user.id, ctx.rawBody, ctx.user);
+    if (r.status >= 400 && !/增速|进度异常|深度|新号种子|水位|本命法宝|灵宠|连点器/.test(r.body && r.body.error || '')) {
+      // 静默 400 补日志（2026-11-04 beacon 400 排障）：validateSave 形状类拒收此前不打日志，
+      // 线上只见浏览器 400 看不到原因；其余类别已有专属 console.error，此正则防双份
+      console.error('[saves] 存档拒收 user=' + ctx.user.id + '：' + ((r.body && r.body.error) || '未知'));
+    }
+    return sendJSON(res, r.status, r.body, r.headers);
   }
 
   // 存档同步顺带落战力档案：power / realm / PvP 快照（客户端 persist 时打包）。
@@ -1047,7 +1151,7 @@ export function createSaveService(db) {
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
-  // 周键与客户端 weekKey 同口径（game.js 周常以 ISO 周重置）
+  // 周键与客户端 weekKey 同口径（年首锚定的 7 天桶，非周一锚定——面向玩家文案统一写「每七日刷新」）
   const weekKey = () => {
     const d = new Date();
     return d.getFullYear() + '-W' + Math.floor((d - new Date(d.getFullYear(), 0, 1)) / (7 * 86400000));
@@ -1204,5 +1308,5 @@ export function createSaveService(db) {
     }
   }
 
-  return { get, store, reset, claim };
+  return { get, store, reset, claim, applyStore };
 }

@@ -334,6 +334,9 @@ export function createCombatService(db, staminaSvc) {
         : Math.floor(num(modeMapOf(led.sweep_used)[mode]));
       let sweepBoughtPost = sameDayJson(led.sweep_day, today, led.sweep_bought) === '{}' ? 0
         : Math.floor(num(modeMapOf(led.sweep_bought)[mode]));
+      // 扫荡败局不扣口径（2026-11-05 用户指定）：留一份消耗前的计数快照，败局回滚后回传
+      const sweepUsedPre = sweepUsedPost;
+      const sweepBoughtPre = sweepBoughtPost;
 
       if (sweepLevel !== null) {
         level = sweepLevel;
@@ -406,6 +409,32 @@ export function createCombatService(db, staminaSvc) {
       const elb = elementBonusOf(mirror, enemy.el);
       player.atk *= elb.mult;
       const result = simulateBattle(player, enemy);
+
+      // 扫荡战败全额不扣（2026-11-05 用户指定，对齐「战败不损失进度」口径）：
+      // 体力 / 扫荡次数 / 加购费全部随事务 ROLLBACK，响应回传未消耗的体力与计数镜像
+      // （sweepFreeLoss 标记供客户端提示）；胜局照旧消耗。败局不发任何奖励。
+      if (sweepLevel !== null && !result.win) {
+        db.exec('ROLLBACK');
+        const st = staminaState(ctx.user.id, now);
+        return sendJSON(res, 200, {
+          ok: true, mode, level, win: false, first: false, replay: false,
+          sweep: true, sweepFreeLoss: true,
+          result,
+          enemy: {
+            name: enemy.name, base: enemy.base, icon: enemy.icon, kicker: enemy.kicker,
+            el: enemy.el, affix: enemy.affix, boss: enemy.boss, req: enemy.req,
+            hp: enemy.hp, atk: enemy.atk, def: enemy.def,
+          },
+          element: elb,
+          stoneGain: 0, expGain: 0, trophy: 0, trophyField: TROPHY_FIELDS[mode],
+          frag: 0, special: null, pitySpecial: null, matDrops: null, bond: null,
+          progress: null,
+          stamina: st ? staminaView(st.cur) : null,
+          counters: {
+            sweepUsed: sweepUsedPre, sweepBought: sweepBoughtPre, wildRepeatUsed,
+          },
+        });
+      }
 
       // —— 奖励 / 进度 / 掉落（仅胜场）——
       let stoneGain = 0;

@@ -527,11 +527,20 @@ export function createSocialService(db) {
     if (buys >= PVP_BUY_MAX) {
       return sendJSON(res, 429, { error: '今日加购已达上限（' + PVP_BUY_MAX + ' 次）' });
     }
-    // 余额校验 + 原子扣款（2026-10-31）：账本灵石不足直接拒绝，堵改档白嫖场次
-    if (!spendLedger(ctx.user.id, PVP_BUY_COST)) {
-      return sendJSON(res, 400, { error: '灵石不足，无法加购' });
+    // 余额校验 + 原子扣款（2026-10-31）：账本灵石不足直接拒绝，堵改档白嫖场次；
+    // 扣款与计数入同一事务（2026-11-05 非原子修复，同 guildDonate 口径）
+    db.exec('BEGIN');
+    try {
+      if (!spendLedger(ctx.user.id, PVP_BUY_COST)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '灵石不足，无法加购' });
+      }
+      stmts.pvpBuy.run(today, buys + 1, me.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
     }
-    stmts.pvpBuy.run(today, buys + 1, me.id);
     return sendJSON(res, 200, {
       ok: true, buys: buys + 1, buyMax: PVP_BUY_MAX,
       cap: PVP_DAILY_CAP + buys + 1, cost: PVP_BUY_COST,
@@ -903,26 +912,33 @@ export function createSocialService(db) {
     if (!me || Number(me.realm) < GUILD_CREATE_REALM) {
       return sendJSON(res, 400, { error: '立盟需境界「化神」' });
     }
-    // 立盟双币消耗（2026-11-01）：1000 万灵石 + 2 万修为，均走账本原子扣款防重复消费；
-    // 灵石不足时退还已扣修为，保证两币种要么都扣要么都不扣
-    if (!spendLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST)) {
-      return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_EXP_COST + ' 修为' });
-    }
-    if (!spendLedger(ctx.user.id, GUILD_CREATE_COST)) {
-      refundLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST);
-      return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_COST + ' 灵石' });
-    }
+    // 立盟双币消耗（2026-11-01）：1000 万灵石 + 2 万修为，均走账本原子扣款防重复消费。
+    // 整段入事务（2026-11-05 非原子修复）：原先扣款/建盟/入盟四语句靠手工退款兜底、
+    // joinGuild 在 try 外——中途异常会留下「扣了钱建了盟但盟主未入盟」的半截状态；
+    // 事务化后任何一步失败全量回滚，两币种要么都扣要么都不扣，无需手工退回
     const now = Date.now();
     let guildId;
+    db.exec('BEGIN');
     try {
+      if (!spendLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_EXP_COST + ' 修为' });
+      }
+      if (!spendLedger(ctx.user.id, GUILD_CREATE_COST)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '立盟需 ' + GUILD_CREATE_COST + ' 灵石' });
+      }
       guildId = Number(stmts.insertGuild.run(name, name.toLowerCase(), ctx.user.id, now).lastInsertRowid);
+      stmts.joinGuild.run(guildId, ctx.user.id, 'leader', now);
+      db.exec('COMMIT');
     } catch (e) {
-      // 盟名冲突回滚双币扣款（非事务多语句，失败路径手工退回）
-      refundLedgerExp(ctx.user.id, GUILD_CREATE_EXP_COST);
-      stmts.ledgerRefund.run(GUILD_CREATE_COST, ctx.user.id);
-      return sendJSON(res, 409, { error: '此盟名已被占用' });
+      db.exec('ROLLBACK');
+      // 盟名唯一约束冲突 → 409（原手工退款路径语义），其余异常照抛
+      if (String(e && e.message || '').includes('UNIQUE')) {
+        return sendJSON(res, 409, { error: '此盟名已被占用' });
+      }
+      throw e;
     }
-    stmts.joinGuild.run(guildId, ctx.user.id, 'leader', now);
     return sendJSON(res, 200, { ok: true, guild: guildPayload(guildId, ctx.user.id) });
   }
 
@@ -999,14 +1015,24 @@ export function createSocialService(db) {
       return sendJSON(res, 429, { error: '今日捐献已到上限（10 万灵石）' });
     }
     const accepted = Math.min(amount, DONATE_DAILY_CAP - given);
-    if (!spendLedger(ctx.user.id, accepted)) {
-      return sendJSON(res, 400, { error: '灵石余额不足' });
+    db.exec('BEGIN');
+    try {
+      // 扣款入事务（2026-11-05 非原子修复，同 visitor/cult 口径）：捐献三连写原先
+      // 无事务包，中途异常会扣了灵石但基金/贡献/日限额三处有落有未落
+      if (!spendLedger(ctx.user.id, accepted)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '灵石余额不足' });
+      }
+      stmts.donateUpsert.run(row.id, ctx.user.id, today, accepted);
+      stmts.addFund.run(accepted, row.id);
+      // 捐献产出贡献：每 2000 灵石 +1
+      const contrib = Math.floor(accepted / DONATE_CONTRIB_PER);
+      if (contrib > 0) stmts.addContribution.run(contrib, row.id, ctx.user.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
     }
-    stmts.donateUpsert.run(row.id, ctx.user.id, today, accepted);
-    stmts.addFund.run(accepted, row.id);
-    // 捐献产出贡献：每 2000 灵石 +1
-    const contrib = Math.floor(accepted / DONATE_CONTRIB_PER);
-    if (contrib > 0) stmts.addContribution.run(contrib, row.id, ctx.user.id);
     const after = stmts.myContribution.get(row.id, ctx.user.id);
     return sendJSON(res, 200, {
       ok: true, accepted, fund: row.fund + accepted, level: guildLevel(row.fund + accepted),
@@ -1028,8 +1054,23 @@ export function createSocialService(db) {
     if (stmts.taskClaimed.get(row.id, ctx.user.id, today, task.id)) {
       return sendJSON(res, 409, { error: '今日该任务已领取' });
     }
-    stmts.taskClaim.run(row.id, ctx.user.id, today, task.id);
-    stmts.addContribution.run(TASK_CLAIM_REWARD.contribution, row.id, ctx.user.id);
+    // 无账本行先拒（ladderPay 同口径）：直发 UPDATE 匹配 0 行会把任务标已领却发不出赏
+    if (!stmts.ledgerRow.get(ctx.user.id)) return sendJSON(res, 409, { error: '存档同步中，稍后再领' });
+    db.exec('BEGIN');
+    try {
+      stmts.taskClaim.run(row.id, ctx.user.id, today, task.id);
+      stmts.addContribution.run(TASK_CLAIM_REWARD.contribution, row.id, ctx.user.id);
+      // 盟任务赏格直发账本（2026-11-05 对账补口）：原实现只在响应里下发、由客户端
+      // addStones 入账（还吃周加成/时辰等客户端乘区，比服务端口径发得多），不入主列
+      // 不记 action_log——与其余领取路径（ladder_pay/bounty/visitor/cult）口径不一致。
+      // 改服务端直发后，客户端平加响应实额（不再过 addStones 乘区）
+      stmts.ledgerAddStones.run(TASK_CLAIM_REWARD.stones, TASK_CLAIM_REWARD.stones, ctx.user.id);
+      stmts.logAction.run(ctx.user.id, today, 'guild_task', TASK_CLAIM_REWARD.stones, 0, 0, 0, Date.now());
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     const after = stmts.myContribution.get(row.id, ctx.user.id);
     return sendJSON(res, 200, {
       ok: true, taskId: task.id, stones: TASK_CLAIM_REWARD.stones,
@@ -1199,13 +1240,14 @@ export function createSocialService(db) {
     return { stones, dust };
   }
 
-  function bountyState(req, res, ctx) {
-    const me = stmts.byId.get(ctx.user.id);
+  // bountyDataOf（2026-11-04 WS 长连接二期）：悬赏妖踪快照构建，HTTP 入口与 WS 推送共用
+  function bountyDataOf(userId) {
+    const me = stmts.byId.get(userId);
     const power = me ? me.power_score : 0;
     const today = dayStr();
     const seed = [...today].reduce((a, c) => a + c.charCodeAt(0), 0);
     const elites = BOUNTY_TIERS.map((t, slot) => {
-      const rec = stmts.bountyGet.get(today, ctx.user.id, slot);
+      const rec = stmts.bountyGet.get(today, userId, slot);
       return {
         slot,
         name: ELITE_NAMES[(seed + slot * 3) % ELITE_NAMES.length],
@@ -1218,7 +1260,11 @@ export function createSocialService(db) {
         dust: rec && rec.win ? rec.dust : 0,
       };
     });
-    return sendJSON(res, 200, { day: today, elites });
+    return { day: today, elites };
+  }
+
+  function bountyState(req, res, ctx) {
+    return sendJSON(res, 200, bountyDataOf(ctx.user.id));
   }
 
   function bountyFight(req, res, ctx) {
@@ -1406,16 +1452,18 @@ export function createSocialService(db) {
       win = sim.win ? 1 : 0;
       if (win) out = visitorDuelReward(me.power_score);
     } else if (choice === 'gift') {
-      // 余额校验 + 原子扣款（guildDonate 同口径）：扣款失败 400，不占当日
-      if (!spendLedger(me.id, VISITOR_GIFT_COST)) {
-        return sendJSON(res, 400, { error: '灵石余额不足' });
-      }
       out = { stones: 0, dust: VISITOR_GIFT_REWARD.dust };
     } else {
       out = { stones: visitorAskReward(me.power_score), dust: 0 };
     }
     db.exec('BEGIN');
     try {
+      // gift 扣款入事务（2026-11-05 非原子修复）：原先 BEGIN 外预扣，事务体抛错时
+      // 灵石已扣、访客记录未落（丢钱）；扣款失败 400 回滚、不占当日
+      if (choice === 'gift' && !spendLedger(me.id, VISITOR_GIFT_COST)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '灵石余额不足' });
+      }
       stmts.visitorIns.run(today, me.id, choice, win, out.stones, out.dust, Date.now());
       if (out.stones > 0 || out.dust > 0) {
         stmts.ledgerAddStonesDust.run(out.stones, out.stones, out.dust, me.id);
@@ -1445,12 +1493,15 @@ export function createSocialService(db) {
     if (times >= CULT_DAILY_TIMES) {
       return sendJSON(res, 429, { error: '今日共修已到上限（' + CULT_DAILY_TIMES + ' 次）' });
     }
-    if (!spendLedger(ctx.user.id, CULT_AMOUNT)) {
-      return sendJSON(res, 400, { error: '灵石余额不足' });
-    }
     const memberCount = stmts.guildMemberCount.get(row.id);
     db.exec('BEGIN');
     try {
+      // 扣款入事务（2026-11-05 非原子修复）：原先 BEGIN 外预扣，事务体抛错时 20 万
+      // 灵石已扣、共修记录未落（丢钱）；扣款失败 400 回滚、不占当日次数
+      if (!spendLedger(ctx.user.id, CULT_AMOUNT)) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '灵石余额不足' });
+      }
       stmts.cultIns.run(today, row.id, CULT_AMOUNT, memberCount ? memberCount.n : 0, Date.now());
       stmts.cultLogUp.run(today, row.id, ctx.user.id, CULT_AMOUNT, Date.now());
       const after = stmts.cultGet.get(today, row.id);
@@ -1538,5 +1589,5 @@ export function createSocialService(db) {
     }
   }
 
-  return { handle };
+  return { handle, bountyDataOf };
 }

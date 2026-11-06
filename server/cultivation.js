@@ -195,7 +195,9 @@ export function createCultivationService(db) {
       const total = SECL_DUR_MS[Math.max(0, Math.min(SECL_DUR_MS.length - 1, Math.floor(num(secl.dur))))];
       if (now < Math.floor(num(secl.start)) + total) {
         db.exec('ROLLBACK');
-        return sendJSON(res, 400, { error: '闭关尚未结束' });
+        // 回带服务端 until 真值：客户端钟差/脏 start 时按此重排本地闹钟（防 400 空转循环）
+        return sendJSON(res, 400, { error: '闭关尚未结束',
+          until: Math.floor(num(secl.start)) + total });
       }
       // 修为复算：秒数 × 效率 × 境界/轮回/藏经阁/功法·hui/香火（客户端 expMult 同源链）
       const expMult = (1 + 0.10 * num(mirror.cave && mirror.cave.library)) *
@@ -313,7 +315,9 @@ export function createCultivationService(db) {
       const hours = Math.max(1, Math.min(DISPATCH_HOURS[DISPATCH_HOURS.length - 1], Math.floor(num(dsp.h))));
       if (now < Math.floor(num(dsp.start)) + hours * 3600000) {
         db.exec('ROLLBACK');
-        return sendJSON(res, 400, { error: '历练尚未结束' });
+        // 回带服务端 until 真值（同闭关出关口径）
+        return sendJSON(res, 400, { error: '历练尚未结束',
+          until: Math.floor(num(dsp.start)) + hours * 3600000 });
       }
       const apt = aptOf(mirror);
       const aptMult = 1 + DISPATCH_APT_MULT * apt;

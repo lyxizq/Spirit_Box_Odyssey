@@ -728,7 +728,7 @@
     { id: 'bone', prefix: '兽骨', cur: (s) => s.beastBones || 0, label: (n) => '兽骨累计 ' + fmtAchvNum(n) + ' 根',
       tiers: [500, 5000, 5e4, 5e5], base: 3e5, ratio: 3, names: ['兽骨成堆', '兽骨成山'] },
     { id: 'gongfa', prefix: '功法', cur: (s) => (s.gongfa ? s.gongfa.atk + s.gongfa.hp + s.gongfa.hui : 0), label: (n) => '功法总层数达到 ' + n + ' 层',
-      tiers: [10, 15], base: 3e5, ratio: 2, names: ['三诀同修', '功法圆满'] },
+      tiers: [10, 15], base: 3e5, ratio: 2, names: ['三诀同修', '功法小成'] },
     { id: 'hunt', prefix: '巡猎', cur: (s) => Object.values(s.wildKills || {}).reduce((a, b) => a + b, 0), label: (n) => '野外累计斩杀 ' + fmtAchvNum(n) + ' 只妖兽',
       tiers: [1e3, 1e4, 1e5, 1e6], base: 2e5, ratio: 2.8, names: ['猎妖新手', '猎妖老手', '妖兽克星'] },
     { id: 'elixir', prefix: '丹心', cur: (s) => Object.values((s.elixir && s.elixir.owned) || {}).reduce((a, b) => a + b, 0), label: (n) => '囤丹 ' + n + ' 枚',
@@ -872,8 +872,10 @@
     { q: '「入仙界」需要消耗灵石并获得什么？', a: ['仙位', '仙器', '仙丹', '仙缘'], idx: 0 },
     { q: '周常任务「探幽累计通过 12 层」奖励是？', a: ['灵石 + 碎屑', '招募券', '器魂', '洗练券'], idx: 0 },
     { q: '黑市货单每日几点刷新？', a: ['0 点', '6 点', '12 点', '18 点'], idx: 0 },
-    { q: '工坊洗练花费的货币是？', a: ['灵石', '碎屑', '器魂', '贡献'], idx: 1 },
-    { q: '分解装备主要获得什么？', a: ['灵石', '碎屑', '器魂', '修为'], idx: 1 },
+    // 两题答案对齐实装（2026-11-05 文案核校）：洗练扣灵石（另耗六型洗炼石，不扣碎屑）；
+    // 分解主入账是灵石（salvageValue），碎屑只是附带——原答案「碎屑」均为旧实装残留
+    { q: '工坊洗练花费的货币是？', a: ['灵石', '碎屑', '器魂', '贡献'], idx: 0 },
+    { q: '分解装备主要获得什么？', a: ['灵石', '碎屑', '器魂', '修为'], idx: 0 },
     { q: '器魂「炼器」定向打造哪个品质的装备？', a: ['地品', '天品', '仙品', '玄品'], idx: 1 },
     // 题目对齐实际机制：孔数 = 2 + 仙位（slotSocketCount，封顶 6），与品质/境界/强化/战力均无关
     { q: '宝石镶嵌的部位数量随什么变化？', a: ['装备品质', '仙位（飞升）', '装备强化等级', '战力'], idx: 1 },
@@ -1408,7 +1410,7 @@
     { id: 'oldbridge', title: '桥头卖浆', text: '荒桥头一位阿婆卖浆，碗沿缺口却擦得干净。',
       choices: [
         { t: '买浆解渴（500 灵石）', k: 1, cost: 500, fx: { exp: [600, 1200] }, msg: '浆水解乏，阿婆多送你一颗蜜枣。' },
-        { t: '帮阿婆修桥', k: 2, cost: 2000, fx: { mat: { ore: 4, herb: 3 } }, msg: '桥修好了，阿婆从桥洞摸出攒下的山货。' },
+        { t: '帮阿婆修桥（2000 灵石）', k: 2, cost: 2000, fx: { mat: { ore: 4, herb: 3 } }, msg: '桥修好了，阿婆从桥洞摸出攒下的山货。' },
         { t: '催阿婆让路', k: -2, fx: {}, msg: '阿婆让开桥头，浆摊收得比你来时还快。' },
       ] },
   ];
@@ -1433,7 +1435,7 @@
   // 钓鱼（2026-11-03 弹窗改版，2026-11-04 十场扩容）：十钓场 × 各 20 种鱼 = 200 种；鱼竿逐级升级，
   // 竿等即钓场解封线。每日赠 50 枚鱼饵（2026-11-04 用户指定，原 5 枚）；用完再钓直接扣 5000 灵石/竿（不再手动购饵），
   // 抛竿后时机条左右游走，停得越正鱼获越好。
-  // FISH_ALL 全局下标 = bestT（0..53）；旧五鱼保持 0..4 原位（老档 bestT 迁移兼容）。
+  // FISH_ALL 全局下标 = bestT（0..199，十场扩容后 200 鱼）；旧五鱼保持 0..4 原位（老档 bestT 迁移兼容）。
   // 旧 FISH_TABLE 五鱼概率改写入竹涧十鱼表，灵龙鱼化形赠宝口径不变（60% 物品 / 40% 3 万灵石）。
   // 碎屑只留在竹涧/镜湖（价值低防碎屑包络），瀑潭起纯灵石；各场鱼表 p 和恒为 100。
   // 加鱼铁律：新鱼只准追加到对应钓场鱼表**末尾**——中途插入会整体后移后续鱼的全局
@@ -2222,6 +2224,9 @@
     speed: { label: '开箱速度', base: 100, growth: Math.pow(5e11, 1 / 49), max: 50 },
     gain: { label: '灵石收益', base: 40, growth: 1.7, max: 60 },
     luck: { label: '气运', base: 150, growth: 1.8, max: 60 },
+    // 修为收益（2026-11-04 用户指定）：每级开箱修为期望 ×+5%，60 级封顶 ×4；
+    // base/growth 介于灵石收益与气运之间，消费端在 expected()（离线结算走服务端 expectedOf 同源）
+    exp: { label: '修为收益', base: 120, growth: 1.75, max: 60 },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -2246,6 +2251,7 @@
     speedLv: 0,
     gainLv: 0,
     luckLv: 0,
+    expLv: 0,
     counts: [0, 0, 0, 0, 0, 0],
     best: -1,
     buffUntil: 0,
@@ -2517,6 +2523,7 @@
       if (!res.ok) throw new Error('bad status ' + res.status);
       const me = await res.json();
       cloudOn = true;
+      wsConnect(); // WS 长连接（断线自动回退 HTTP 轮询，见 wsConnect 注释）
       cloudUser = me.displayName || me.username;
       return true;
     } catch (e) {
@@ -2580,11 +2587,178 @@
     }
   }
 
+  // —— WebSocket 长连接（2026-11-04 用户指定「开始 2、3，使用 HTTP/1.1 的 WebSocket」）——
+  // 通道：wss://<host>/api/ws（HTTP/1.1 Upgrade，会话 Cookie 鉴权，零依赖服务端 ws.js）。
+  // 存档帧 { t:'save', body } 走服务端 applyStore 同一管线，回 { t:'saveAck', status }；
+  // 服务端下行 time（版本/时间/体力，60s）与 bounty（悬赏快照，连接时+跨天）。
+  // 断线自动回退既有 5s HTTP 轮询（防砖逻辑零改动）；连续 3 次握手失败禁用 WS 本会话
+  // （EdgeOne 免费版需在控制台规则引擎开启 WebSocket，未开启则恒走 HTTP 回退，零回归）。
+  let wsSock = null;
+  let wsOn = false;        // 连接就绪且未禁用
+  let wsDisabled = false;  // 握手连续失败禁用（本会话不再尝试）
+  let wsFails = 0;
+  let wsEverOk = false;
+  let wsTimer = 0;
+  let wsAckTimer = 0;
+  let wsSaveText = null;   // 在途存档帧原文（ack 对账用）
+  let wsBountyFeed = null; // 悬赏快照消费点（renderBountyElites 所在闭包后置注册）
+  let wsTimeFeed = null;   // 时间帧消费点（页脚心跳 IIFE 后置注册：喂 offset/tzOff，秒针持续走针）
+  const WS_RETRY_OK = 60000;   // 曾成功过：断开后 60s 重连
+  const WS_RETRY_FAIL = 15000; // 未成功过：15s 重试，3 次失败禁用本会话
+
+  function wsSend(obj) {
+    if (wsOn && wsSock && wsSock.readyState === 1) { wsSock.send(JSON.stringify(obj)); return true; }
+    return false;
+  }
+
+  function wsConnect() {
+    if (authSignedOut || !cloudOn || wsDisabled || wsSock) return;
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    try { wsSock = new WebSocket(proto + location.host + '/api/ws'); } catch (e) { return; }
+    wsSock.onopen = () => {
+      wsOn = true;
+      wsFails = 0;
+      wsEverOk = true;
+      hideCloudBanner();
+    };
+    wsSock.onclose = () => {
+      wsOn = false;
+      wsSock = null;
+      clearTimeout(wsAckTimer);
+      if (wsSaveText) { cloudBusy = false; wsSaveText = null; } // 在途帧作废，回退 HTTP 重试
+      if (authSignedOut || wsDisabled || !cloudOn) return;
+      scheduleReconnect();
+    };
+    wsSock.onerror = () => { try { wsSock.close(); } catch (e) {} };
+    wsSock.onmessage = (ev) => {
+      let msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || !msg.t) return;
+      if (msg.t === 'saveAck') return wsOnSaveAck(msg);
+      // time 帧里服务端顺带捎了悬赏快照（60s tick 的 snap 面）：一并消费，胜场状态
+      // 每分钟自动保鲜（跨设备打过 / 面板久开不重拉也不至于一钟头陈旧）
+      if (msg.t === 'time') { wsOnTime(msg); if (msg.bounty) wsOnBounty(msg.bounty); return; }
+      if (msg.t === 'bounty') return wsOnBounty(msg);
+      // hello 帧的悬赏快照嵌在 msg.bounty（time/stamina 是顶层展开）——专帧 t:'bounty'
+      // 才是顶层 day/elites，此处按嵌套取（2026-11-06 修复：原样透传 msg 恒被
+      // wsOnBounty 的顶层判空挡掉，hello 里的快照白推）
+      if (msg.t === 'hello') { wsOnTime(msg); wsOnBounty(msg.bounty || msg); }
+    };
+  }
+
+  function scheduleReconnect() {
+    if (wsTimer || authSignedOut || wsDisabled || !cloudOn) return;
+    const delay = wsEverOk ? WS_RETRY_OK : (wsFails >= 3 ? 0 : WS_RETRY_FAIL);
+    if (!delay) { wsDisabled = true; return; } // 3 连败禁用本会话，恒走 HTTP
+    wsFails++;
+    wsTimer = setTimeout(() => { wsTimer = 0; wsConnect(); }, delay);
+  }
+
+  // 存档帧发送：返回 false = WS 不可用，调用方回退 HTTP 轮询
+  function wsSendSave(text) {
+    if (!wsOn || !wsSock || wsSock.readyState !== 1) return false;
+    cloudBusy = true;
+    wsSaveText = text;
+    wsSend({ t: 'save', body: text });
+    clearTimeout(wsAckTimer);
+    wsAckTimer = setTimeout(() => { // 10s 无 ack：临时故障，回退 HTTP 重试
+      cloudBusy = false;
+      const t = wsSaveText; wsSaveText = null;
+      showCloudBanner('长连接响应超时，回退直连重试同步');
+      if (t && cloudPending === t && !cloudTimer) {
+        cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 2000);
+      }
+    }, 10000);
+    return true;
+  }
+
+  // ack 帧 = HTTP POST /api/save 响应的同语义（200 吸收 / 400 拒收弃帧 / 429 5xx 保留重试）
+  function wsOnSaveAck(ack) {
+    clearTimeout(wsAckTimer);
+    const text = wsSaveText;
+    wsSaveText = null;
+    cloudBusy = false;
+    if (ack.status === 200) {
+      if (cloudPending === text) cloudPending = null;
+      cloudLastPush = Date.now();
+      hideCloudBanner();
+      applyClickBan(ack.clickBanUntil);
+    } else if (ack.status === 400 || ack.status === 422) {
+      if (cloudPending === text) cloudPending = null;
+      const tip = ack.error || '存档校验未通过';
+      showCloudBanner('云端进度保存被拒：' + tip + '（游戏可继续，恢复同步后横幅自动消失）');
+      if (Date.now() - cloudWarnAt > 600000) {
+        cloudWarnAt = Date.now();
+        floatText('云端同步：' + tip, '#f87171');
+        pushLog('云端存档被拒：' + tip + '（换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
+      }
+    } else {
+      showCloudBanner('云端暂不可用（' + ack.status + '），进度将自动重试同步');
+    }
+    if (cloudPending && !cloudTimer) {
+      cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 5000);
+    }
+  }
+
+  // 时间帧：版本章 + 体力快照（服务端 60s 推；WS 在线时 HTTP 心跳停跑）。时间本身交给
+  // 页脚心跳 IIFE 的走针状态（wsTimeFeed：offset/tzOff 与 /api/version 同口径，秒针
+  // 照常每秒走、时区按服务器真值）——此前此处按 tz=0 直写 UTC 时间（CST 差 8 小时），
+  // 且每 60s 一帧与 IIFE 的每秒走针互相覆写打架（2026-11-06 修复）
+  function wsOnTime(msg) {
+    const verEl = document.getElementById('gameVersion');
+    if (typeof msg.time === 'number') {
+      if (verEl && msg.version) verEl.textContent = '版本 v' + msg.version;
+      if (wsTimeFeed && typeof msg.tzOffset === 'number') {
+        wsTimeFeed(msg); // 完整帧：喂走针状态（旧服务端无 tzOffset 的过渡帧直接跳过，走针保持旧值不错写）
+      } else if (!wsTimeFeed) {
+        // IIFE 未注册的极早期：一次性直写兜底（无 tzOffset 只能按 UTC，秒级闪回由走针接管）
+        const timeEl = document.getElementById('serverTime');
+        const p2 = (n) => String(n).padStart(2, '0');
+        const tz = typeof msg.tzOffset === 'number' ? msg.tzOffset : 0;
+        const d = new Date(msg.time - tz * 60000);
+        if (timeEl) timeEl.textContent = '服务器时间 ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ':' + p2(d.getUTCSeconds());
+      }
+    }
+    if (msg.stamina && msg.stamina.stamina != null) {
+      STAMINA.v = msg.stamina.stamina;
+      STAMINA.cap = msg.stamina.cap;
+      STAMINA.nextAt = msg.stamina.nextAt;
+      STAMINA.syncedAt = Date.now();
+      updateStaminaChip();
+    }
+  }
+
+  // 悬赏快照帧：连上/跨天即有，打开悬赏面板无需再拉
+  function wsOnBounty(msg) {
+    if (!msg.day || !Array.isArray(msg.elites)) return;
+    WORLD.bounty = { day: msg.day, elites: msg.elites };
+    if (wsBountyFeed) wsBountyFeed();
+  }
+
+  // bfcache（2026-11-04 线上报「Page entered Back-Forward Cache」）：pagehide 冻结时浏览器
+  // 会掐断 WS 报 failed——pagehide 先优雅关连接（不禁用、不清在途帧，beacon 兜底），
+  // pageshow（含 bfcache 恢复）立即重连并补推 pending
+  function wsSuspend() {
+    wsOn = false;
+    clearTimeout(wsAckTimer); clearTimeout(wsTimer); wsTimer = 0;
+    if (wsSock) { try { wsSock.close(); } catch (e) {} wsSock = null; }
+    if (authSignedOut || wsDisabled || !cloudOn) return;
+    wsTimer = setTimeout(() => { wsTimer = 0; wsConnect(); }, 1500);
+  }
+
+  function wsShutdown() { // 登出/重置：断开并禁用本会话
+    wsDisabled = true;
+    wsOn = false;
+    clearTimeout(wsAckTimer); clearTimeout(wsTimer);
+    if (wsSock) { try { wsSock.close(); } catch (e) {} wsSock = null; }
+  }
+
   async function flushCloud() {
     if (authSignedOut) return; // 登出/重置后不再推已作废的会话档（5 秒重试定时器也走这里）
     if (offlineInFlight) return; // 结算在途不推（重试定时器会在窗口内推出结算前旧帧，压掉主列发放）
     if (!cloudOn || !cloudPending || cloudBusy) return;
     const text = cloudPending;
+    if (wsSendSave(text)) return; // WS 在线：存档走长连接帧（ack 回 wsOnSaveAck 同语义），离线自动回退下方 HTTP 轮询
     cloudBusy = true;
     try {
       const res = await api('/api/save', { method: 'POST', body: text });
@@ -2670,6 +2844,7 @@
         '，竞技场 / 妖王等每日重置以服务器日期为准；签到 / 日常 / 商店等以设备本地日期为准';
     }
     async function sync() {
+      if (wsOn) return; // WS 在线：时间/体力由服务器 60s 推帧，HTTP 心跳停跑（省 1440 次/天）
       try {
         const res = await fetch('/api/version', { credentials: 'same-origin' });
         if (!res.ok) throw new Error('bad status ' + res.status);
@@ -2687,7 +2862,16 @@
     sync();
     setInterval(paint, 1000);
     setInterval(sync, 60000);
+    // WS 时间帧消费点（注册进闭包：offset/tzOff/paint 均为本 IIFE 私有）：WS 在线时
+    // sync() 停跑、时间帧是唯一校时来源，喂进来后续秒针照常每秒走（wsOnTime 调用）
+    wsTimeFeed = (msg) => {
+      offset = msg.time - Date.now();
+      tzOff = typeof msg.tzOffset === 'number' ? msg.tzOffset : 0;
+      paint();
+    };
   })();
+  // WS 悬赏快照的消费点：快照到达时若悬赏面板可见就重绘（WORLD.bounty 赋值在 wsOnBounty）
+  wsBountyFeed = () => { if (WORLD.bounty) renderBountyElites(); };
 
   function paintUserChip() {
     try {
@@ -2859,6 +3043,7 @@
       state.speedLv = fixInt(state.speedLv, 0, UPGRADES.speed.max);
       state.clickCount = fixInt(state.clickCount, 0, 1e12);
       state.gainLv = fixInt(state.gainLv, 0, UPGRADES.gain.max);
+      state.expLv = fixInt(state.expLv, 0, UPGRADES.exp.max);
       state.luckLv = fixInt(state.luckLv, 0, UPGRADES.luck.max);
       state.dust = fixInt(state.dust, 0, 1e12);
       state.battleSpeed = [1, 2, 4].includes(state.battleSpeed) ? state.battleSpeed : 1;
@@ -3084,7 +3269,11 @@
         bestT: fixInt(state.fishing.bestT, -1, FISH_ALL.length - 1),
         rod: fixInt(state.fishing.rod, 1, FISH_ROD_MAX) || 1,      // 2026-11-03 弹窗改版：竿等即钓场解封线
         spot: fixInt(state.fishing.spot, 1, FISH_SPOTS.length) || 1,
-        dex: {}, // 图鉴点亮表（2026-11-04）：鱼 id → 1，钓到才亮
+        // 图鉴点亮表（2026-11-04）：鱼 id → 1，钓到才亮。字面量重建必须**带入原对象**——
+        // 写成 `dex: {}` 会让下方 sanitize 读到刚清空的空对象，每次读档图鉴全灭
+        // （2026-11-04 用户报「激活状态刷新即丢」，与鱼王三件套同类坑）
+        dex: (state.fishing.dex && typeof state.fishing.dex === 'object' && !Array.isArray(state.fishing.dex))
+          ? state.fishing.dex : {},
         // 鱼王三件套（2026-11-04 用户报砖修复）：字面量重建必须携带，否则每次读档
         // kings/kingDex/kingCasts 全被清空——「已擒」状态过一次刷新就丢、当天可重复
         // 刷鱼王、图鉴永远不亮；下方 sanitize 再逐项钳制
@@ -3954,6 +4143,13 @@
     return 0;
   }
 
+  // 修为/秒（2026-11-04 用户指定）：期望修为按开箱实际入账乘区（境界/轮回/书阁慧心/
+  // 闭关减半）折算，不吃暴击/增益/日产出（灵石专用）；淬炼「修为收益」卡展示用
+  function expPerSecOf() {
+    return expected().exp * (1 + 0.8 * state.realm) * (1 + 0.5 * state.ascensions) *
+      expMult() * (seclActive() ? 0.5 : 1) / interval();
+  }
+
   function expected() {
     const w = weights();
     let total = 0;
@@ -3962,8 +4158,10 @@
       total += w[i];
       exp += w[i] * (1 + RARITIES[i].exp);
     }
-    // 修为期望按开箱掉装备概率折算：未掉落只有基础 1 份
-    return { stone: baseGain(), exp: (1 - EQUIP_CHANCE_MEAN) + EQUIP_CHANCE_MEAN * exp / total };
+    // 修为期望按开箱掉装备概率折算：未掉落只有基础 1 份；淬炼「修为收益」每级 ×+5%
+    // （server/battle.js expectedOf 同源，离线结算同口径）
+    return { stone: baseGain(),
+      exp: ((1 - EQUIP_CHANCE_MEAN) + EQUIP_CHANCE_MEAN * exp / total) * (1 + 0.05 * state.expLv) };
   }
 
   const upgradeCost = (key) => Math.floor(UPGRADES[key].base * Math.pow(UPGRADES[key].growth, state[key + 'Lv']));
@@ -4249,7 +4447,7 @@
       desc: '消耗修为点亮攻 / 血 / 修为三系被动，永久生效，修为花在刀刃上。' },
     { id: 'daoji', name: '五行道基', where: '修炼', cond: '境界「金丹」',
       check: () => featureOpen('daoji'),
-      desc: '金丹突破时五行择一凝为道基（金攻/木收益/水防/火暴击/土血），升阶吞同五行装备，每阶 +2%~4%；每世金丹可免费改道，轮回 build 随心换。' },
+      desc: '金丹突破时五行择一凝为道基（金攻/木收益/水防/火暴击/土血），升阶吞同五行装备，每阶 +1.5%~4%（金 2/木 4/水 3/火 1.5/土 3%）；每世金丹可免费改道，轮回 build 随心换。' },
     { id: 'wander', name: '云游奇遇', where: '闲趣', cond: '境界「金丹」',
       check: () => featureOpen('wander'),
       desc: '行走江湖偶遇事件，善恶抉择改变果报；果报微调赌石与洗练的运气。' },
@@ -4270,10 +4468,10 @@
       desc: '每日三件限购商品 + 20 万灵石开璞玉（单日 500 次），是灵石的重要消化口。' },
     { id: 'xingtu', name: '道悟星图', where: '修炼', cond: '境界「元婴」',
       check: () => featureOpen('xingtu'),
-      desc: '开箱每 100 次凝 1 缕道韵（突破/闭关顿悟另有），点亮攻/守/奇三支共 30 星：攻击/生命/收益逐星 +1%，末星 +5%~10%；飞升布点归元、道韵全额返还。' },
+      desc: '开箱每 100 次凝 1 缕道韵（突破/闭关顿悟另有），点亮攻/守/奇三支共 30 星：攻击/生命/收益逐星 +1%，末星额外 +5%~10%（守支末星是防御 +10%）；飞升布点归元、道韵全额返还。' },
     { id: 'fish', name: '垂钓', where: '闲趣', cond: '境界「元婴」',
       check: () => featureOpen('fish'),
-      desc: '十钓场 200 种鱼（每场一条 7% 化形龙鱼），竿等升级逐场解封（上限 20）；每日赠 50 枚鱼饵，用完再钓 5000 灵石/竿，时机条停得越正鱼获越肥，钓到点亮渔获图鉴。' },
+      desc: '十钓场 200 种鱼（每场一条 6.5%~7% 化形龙鱼），竿等升级逐场解封（上限 20）；每日赠 50 枚鱼饵，用完再钓 5000 灵石/竿，时机条停得越正鱼获越肥，钓到点亮渔获图鉴。' },
     { id: 'bossrush', name: '首领连战', where: '征战 · 试炼', cond: '境界「元婴」',
       check: () => featureOpen('bossrush'),
       desc: '连打闯关首领，按总回合评级发奖，每日一次。' },
@@ -4300,7 +4498,7 @@
       desc: '征战胜利拾残片，五片合成藏宝图；宝点落在秘境图上，挖之得厚礼。' },
     { id: 'cave', name: '洞府 · 炼丹房', where: '闲趣', cond: '境界「炼虚」',
       check: () => featureOpen('cave'),
-      desc: '聚灵阵 / 药园 / 藏经阁三建筑全局加成；炼丹房耗时炼丹，产限时强化。' },
+      desc: '聚灵阵 / 药园 / 藏经阁 / 云坊四建筑全局加成（云坊加战力）；炼丹房耗时炼丹，产限时强化。' },
     { id: 'gather', name: '灵圃采集', where: '闲趣 · 洞府', cond: '境界「炼虚」',
       check: () => featureOpen('gather'),
       desc: '矿脉采矿石、药圃采灵药：灵药折价合丹，矿石锻器魂，扩建提升产量。' },
@@ -4378,9 +4576,19 @@
     { sel: '.panel.fishing', id: 'fish' },
   ];
 
+  // 元素引用一次性缓存 + 解锁签名门控（2026-11-05 性能）：锁定态只随境界/水位变化，
+  // 原先每次 renderNow 都 24 次 document.querySelector + class/attr 裸写；签名
+  // （24 位开关向量）不变则整段跳过
+  let lockEls = null;
+  let lockSig = '';
   function applyLocks() {
-    for (const t of LOCK_TARGETS) {
-      const el = document.querySelector(t.sel);
+    const openVec = LOCK_TARGETS.map((t) => (featureOpen(t.id) ? 1 : 0)).join('');
+    if (openVec === lockSig && lockEls) return;
+    lockSig = openVec;
+    if (!lockEls) {
+      lockEls = LOCK_TARGETS.map((t) => ({ t, el: document.querySelector(t.sel) }));
+    }
+    for (const { t, el } of lockEls) {
       if (!el) continue;
       const open = featureOpen(t.id);
       el.classList.toggle('locked', !open);
@@ -4480,7 +4688,9 @@
     pierce += coreBonus('pierce') * GROWTH_SCALE;
     def *= elixirOn('def') ? 1.2 : 1;
     atk *= elixirOn('atk') ? 1.15 : 1;
-    const species = Object.keys(state.bestiary).length;
+    // 图鉴物种数钳 500（server/battle.js 同源同界，2026-11-05）：博物成就最高档 320，
+    // 钳后乘区封顶 ×1.5，双端同口径防镜像键数打穿
+    const species = Math.min(500, Object.keys(state.bestiary).length);
     if (species >= 5) {
       const beastMult = 1 + 0.005 * Math.floor(species / 5);
       atk *= beastMult;
@@ -4598,11 +4808,19 @@
   // playerCombatStats 的攻击放大同源）——顶栏、角色状态、榜单上报统一按此口径；
   // 灵石收益等战力比例公式维持装备分（totalPower）不变。9e15 与服务端 safeCap 同界，
   // 防 JSON 里出现超 MAX_SAFE_INTEGER 的数把账号读取打挂
+  // realPower 短窗记忆化（2026-11-05 性能）：renderNow/renderStatus/paintResources/
+  // renderBountyElites 同一 50ms tick 内重复算 3-5 次 playerCombatStats（含逐槽共鸣/
+  // 符文组词两轮扫描）；45ms 内复用，下一 tick 自然取新值（显示级延迟无感知）
+  const rpMemo = { t: -1e9, v: 0 };
   function realPower() {
+    const now = performance.now();
+    if (now - rpMemo.t < 45) return rpMemo.v;
     const cs = playerCombatStats();
     const base = 16 + cs.power * 0.9;
     const mult = base > 1 ? cs.atk / base : 1;
-    return Math.min(9e15, Math.round(cs.power * mult));
+    rpMemo.t = now;
+    rpMemo.v = Math.min(9e15, Math.round(cs.power * mult));
+    return rpMemo.v;
   }
 
   const recommendedPower = (mode, level) =>
@@ -4764,10 +4982,13 @@
   }
 
   function floatText(text, color) {
-    // 修炼页开匣区可见时飘在匣上；否则（设置/天下等隐藏页）用全局悬浮提示，
-    // 避免改显示名等操作的成败反馈渲染进隐藏标签页、用户完全看不到
+    // 修炼页开匣区可见且无弹层时飘在匣上；否则（设置/天下等隐藏页、或弹窗打开）用全局
+    // 悬浮提示——匣上飘字 z-index 6 会被 z≥50 的弹窗整层盖住（红尘录/天道录领奖失败
+    // 429 提示用户完全看不到，2026-11-05 生产反馈「没有任何提示」即此因）
+    const blocked = Array.from(document.querySelectorAll('.modal'))
+      .some((m) => m.classList.contains('show'));
     const wrap = document.querySelector('.box-wrap');
-    const onStage = wrap && wrap.getClientRects().length > 0;
+    const onStage = wrap && wrap.getClientRects().length > 0 && !blocked;
     const el = document.createElement('div');
     el.className = 'float-text' + (onStage ? '' : ' global-toast');
     el.textContent = text;
@@ -5325,7 +5546,10 @@
       pushLog('连开 ' + n + ' 次，共得 ' + fmt(total) + ' 灵石', 'sys');
     }
     render();
-    paintBag(true);
+    // 开箱掉装备时 openBox 内部已置 bagDirty（addItem）——这里不再强制绕过 800ms
+    // 节流整表重建（2026-11-05 性能：手动连点每秒多次全量 innerHTML，75% 概率没
+    // 掉装备属白重建）；没掉东西时节流窗口内旧列表照显，掉落走 bagDirty 路径
+    paintBag(false);
     save();
     if (n === 1) maybeAdventure();
   }
@@ -5383,7 +5607,7 @@
       sec('归零', 'bad', [
         '灵石 <b>' + fmt(state.stones) + '</b>（含本次门槛 ' + fmt(ascendStonesOf()) + '，一并散尽）',
         '修为与境界（从炼气期重新突破）',
-        '淬炼：速度 Lv.' + state.speedLv + ' / 收益 Lv.' + state.gainLv + ' / 幸运 Lv.' + state.luckLv,
+        '淬炼：速度 Lv.' + state.speedLv + ' / 收益 Lv.' + state.gainLv + ' / 幸运 Lv.' + state.luckLv + ' / 修为 Lv.' + state.expLv,
         '时辰增益与心魔',
         '进行中的闭关（无结算作废）与道悟星图布点（道韵全额返还）',
       ]) +
@@ -5435,6 +5659,7 @@
     state.speedLv = 0;
     state.gainLv = 0;
     state.luckLv = 0;
+    state.expLv = 0;
     state.buffUntil = 0;
     // 修炼扩容（2026-11-04）：闭关即刻作废（服务端 cancel，无奖励）；星图布点归元、
     // 道韵全额返还待重布；道基与阶数保留、picked 重置——下世金丹可再免费改道；道童历练派遣照跑不误
@@ -5486,8 +5711,10 @@
     { id: 'cangming', name: '沧溟', realm: 9, mult: 1.3, lore: 4, icon: '沧', desc: '海畔渔村带回鱼饵干货' },
     { id: 'xinghe', name: '星河渡口', realm: 9, apt: 3, mult: 1.6, lore: 5, icon: '星', desc: '资质圆满方可托付的远行' },
   ];
+  // 时长名按小时直书（2026-11-05 文案核校）：旧名「一个时辰」会被读成 2 小时，
+  // 修行指南同口径写 1/4/8 小时
   const DISPATCH_HOURS = [
-    { h: 1, apt: 0, name: '一个时辰' }, { h: 4, apt: 0, name: '四个时辰' }, { h: 8, apt: 2, name: '一整日' },
+    { h: 1, apt: 0, name: '一小时' }, { h: 4, apt: 0, name: '四小时' }, { h: 8, apt: 2, name: '八小时' },
   ];
   const DISPATCH_APT_COST = [30, 120, 400]; // 资质升阶耗见闻
   // 派遣截止时刻（2026-11-04 NaN 修复）：镜像 until 可能缺（旧迁移裁字段/坏值），
@@ -5595,6 +5822,13 @@
         state.seclusion = { until: 0, dur: 0, incense: 0 }; // 他端已结算：镜像自愈
         render();
         save();
+      } else if (/尚未结束/.test(e.message || '') && e.body && e.body.until > 0) {
+        // 服务端真值矫正（2026-11-04 线上 400 循环修复）：设备钟差/中间版本脏 start
+        // 会让本地 until 早已到点而服务端尚未结束——按服务端 until 重排本地闹钟，
+        // 5s 巡检不再空转重试
+        state.seclusion.until = e.body.until;
+        render();
+        save();
       } else {
         floatText(e.message || '出关失败，稍后再试', '#f87171');
       }
@@ -5678,8 +5912,13 @@
       render();
       save();
     } catch (e) {
-      if (/没有进行中的历练/.test(e.message || '')) {
-        state.steward.dispatch = null; // 他端已收取：镜像自愈
+      if (/没有进行中的历练/.test(e.message || '') || /记录异常，已重置/.test(e.message || '')) {
+        state.steward.dispatch = null; // 他端已收取/已重置：镜像自愈
+        render();
+        save();
+      } else if (/尚未结束/.test(e.message || '') && e.body && e.body.until > 0) {
+        // 服务端真值矫正：本地 until 与服务端脱节（钟差/脏 start）时按服务端 until 重排
+        state.steward.dispatch.until = e.body.until;
         render();
         save();
       } else {
@@ -6604,6 +6843,7 @@
       lastBattles[mode] = {
         mode, level, win: false, result, enemy, player,
         trophy: 0, first, replay,
+        sweepFreeLoss: !!out.sweepFreeLoss, // 扫荡败局全额不扣口径（2026-11-05）：服务端未扣体力/次数/加购
       };
       pushLog('挑战「' + enemy.name + '」失败，未损失进度', 'sys');
       beep(220, 0.12);
@@ -6669,9 +6909,10 @@
     }
     const res = await doBattle(mode, { auto: true, sweepLevel: level, buy: needBuy });
     if (res) {
-      // 扫荡是一场真实战斗：体力/次数/加购费用在服务端事务内即扣（胜负皆耗），
-      // 次数镜像已由 doBattle 按 counters 对齐；本地只需补记加购灵石消耗
-      if (needBuy) {
+      // 扫荡败局全额不扣（2026-11-05 用户指定）：胜局才扣体力/次数/加购费（服务端事务
+      // 内先战后扣，败局整体回滚），次数镜像已由 doBattle 按服务端 counters 对齐；
+      // 败局时服务端未收加购费，本地灵石不扣
+      if (needBuy && !res.sweepFreeLoss) {
         state.stones -= SWEEP_BUY_COST;
         pushLog('扫荡加购：-' + fmt(SWEEP_BUY_COST) + ' 灵石（今日 ' +
           (state.daily.sweepBought[mode] || 0) + '/' + SWEEP_BUY_MAX + ' 次）', 'sys');
@@ -6679,7 +6920,7 @@
       if (res.win) {
         floatText('扫荡成功：+' + fmt(res.stoneGain) + ' 灵石 · +' + fmt(res.expGain) + ' 修为', '#f0d9a8');
       } else {
-        floatText('扫荡战败（体力与扫荡次数照常消耗）', '#f87171');
+        floatText('扫荡战败（本次未消耗体力与次数）', '#f87171');
       }
     }
     combatDirty = true;
@@ -7627,7 +7868,7 @@
     let text = '';
     let cls = 'g-none';
     if (tier.big && tier.itemDrop) {
-      // 化形龙鱼（2026-11-04 起五场各一条）：60% 物品（10% 仙品）/ 40% 腹中藏宝
+      // 化形龙鱼（2026-11-04 起十场各一条）：60% 物品（10% 仙品）/ 40% 腹中藏宝
       cls = 'g-item';
       const gift = Math.random();
       if (gift < 0.6) {
@@ -7742,7 +7983,9 @@
       render();
       return;
     }
-    cur.style.left = (fishCursorPos() * 100).toFixed(1) + '%';
+    // transform 替代 left（2026-11-05 性能）：left 逐帧触发布局，translateX 走合成；
+    // .fish-cursor 是全宽承载层（width:100%），translateX(%) 按轨道宽解析，标记由 ::before 绘制
+    cur.style.transform = 'translateX(' + (fishCursorPos() * 100).toFixed(1) + '%)';
   }
 
   // 弹窗主体：钓场页签 + 本场鱼表 + 时机条 + 抛竿/补饵/升竿
@@ -7791,7 +8034,7 @@
       '<div class="fish-spots">' + tabs + '</div>' +
       kingBannerHtml() +
       '<p class="hint fish-spot-meta">' + spot.sub + ' · 鱼竿 Lv.' + rod + ' · 鱼饵 ' + state.fishing.bait +
-        ' 枚（每日 0 点补 50）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best +
+        ' 枚（每日 0 点补足至 50）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best +
         '<br>渔获附赠：30% 草籽 1~2 · 20% 洗炼石×1</p>' +
       '<div class="fish-list">' + rows + '</div>' +
       '<div class="fish-track"><span class="fish-zone"></span>' +
@@ -7842,7 +8085,7 @@
       : '—';
     box.innerHTML =
       '<p class="hint">鱼竿 Lv.' + state.fishing.rod + ' · 鱼饵 ' + state.fishing.bait +
-        ' 枚（每日 0 点补 50）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best + '</p>' +
+        ' 枚（每日 0 点补足至 50）· 已钓 ' + state.fishing.casts + ' 竿 · 最旺 ' + best + '</p>' +
       '<button class="btn primary wide" id="fishOpenBtn">进入钓场（' +
         FISH_SPOTS[state.fishing.spot - 1].name + '）</button>';
     $('fishOpenBtn').addEventListener('click', openFishModal);
@@ -8819,7 +9062,7 @@
         if (!bar || left <= 0) return; // 出炉瞬间结构签名已翻转，交给重建分支
         const ms = Number(bar.dataset.ms) || 1;
         const pct = Math.max(0, Math.min(100, (1 - left * 1000 / ms) * 100));
-        bar.querySelector('.shop-progress-fill').style.width = pct.toFixed(1) + '%';
+        bar.querySelector('.shop-progress-fill').style.transform = 'scaleX(' + (pct / 100).toFixed(3) + ')';
         bar.querySelector('.shop-progress-text').textContent = '制作中 · 剩余 ' + fmtDuration(left);
       });
       const rf = box.querySelector('.shop-refresh');
@@ -8935,11 +9178,11 @@
     }
     html += '</div></div>';
     box.innerHTML = html;
-    // CSP style-src 'self' 拦 innerHTML 里的 style 属性：进度条首帧宽度改 data-w 承载，
+    // CSP style-src 'self' 拦 innerHTML 里的 style 属性：进度条首帧比例改 data-w 承载，
     // 注入后走 CSSOM 补上（style 属性赋值不受 style-src 限制）；后续走针由上方 500ms
-    // 原位更新分支直接 .style.width 接管
+    // 原位更新分支直接 .style.transform（scaleX 口径，2026-11-05）接管
     box.querySelectorAll('.shop-progress-fill[data-w]').forEach((el) => {
-      el.style.width = el.dataset.w + '%';
+      el.style.transform = 'scaleX(' + (Number(el.dataset.w) / 100).toFixed(3) + ')';
     });
   }
 
@@ -10161,7 +10404,17 @@
     if (lad && Number.isInteger(tier) && lad.tiers.includes(tier)) {
       extra = { ladder: ladId, tier };
       const gate = await claimGate('tide', paid, extra);
-      if (!gate.ok) return;
+      if (!gate.ok) {
+        // 服务端终身桶（claim_days.tide）已记该档位 = 本地成就标记丢失/未同步：
+        // 补标记收口，防重复点击每次 429（与尘缘未了首通赏同漂移族，2026-11-05）
+        if (gate.error && gate.error.indexOf('已领取') >= 0) {
+          state.achievements[id] = true;
+          pushLog('成就「' + a.name + '」此前已领取，不再重复发放', 'sys');
+          render();
+          save();
+        }
+        return;
+      }
       paid = gate.stones || 0;
     }
     state.achievements[id] = true;
@@ -10216,10 +10469,18 @@
 
   // —— 灵宠立绘：AI 生图优先（assets/pet-<sp>.jpg，生图提示词见 assets/生图提示词.md），
   // 加载失败回退内置剪影 SVG（结构同 storyPortrait，守卫复用 armStoryArtGuard）——
+  // 懒加载（2026-11-05 性能）：12 张 jpg 合计约 1.1MB，启动首渲发生在隐藏的闲趣页，
+  // display:none 不阻止 img 下载——首次切入闲趣页前只出剪影占位（.story-art svg 同规格），
+  // setTopTab('xian') 首次到达时置 seen 并作废 pets 签名换真图
+  let petArtSeen = false;
   function petArtHtml(sp, cls) {
     const def = petSpDef(sp);
-    const fallback = petSilhouetteSvg(sp, 0);
     if (!def) return '';
+    if (!petArtSeen) {
+      return '<div class="story-art pet-art' + (cls ? ' ' + cls : '') + '">' +
+        petSilhouetteSvg(sp, 0) + '</div>';
+    }
+    const fallback = petSilhouetteSvg(sp, 0);
     return '<div class="story-art pet-art' + (cls ? ' ' + cls : '') + '">' +
       '<img src="assets/pet-' + sp + '.jpg" alt="" draggable="false">' +
       '<template class="art-fallback">' + fallback + '</template></div>';
@@ -11849,8 +12110,9 @@
     const maxE = b.result.enemyHp || b.enemy.hp || 1;
     const pp = Math.max(0, Math.min(100, (php / maxP) * 100));
     const ep = Math.max(0, Math.min(100, (ehp / maxE) * 100));
-    $('battlePlayerHp').style.width = pp.toFixed(1) + '%';
-    $('battleEnemyHp').style.width = ep.toFixed(1) + '%';
+    // scaleX 口径（2026-11-05 性能，.hp-fill 同批）：战斗条高频写 width 布局 → 合成
+    $('battlePlayerHp').style.transform = 'scaleX(' + (pp / 100).toFixed(3) + ')';
+    $('battleEnemyHp').style.transform = 'scaleX(' + (ep / 100).toFixed(3) + ')';
     $('battlePlayerHpText').textContent = fmt(Math.max(0, php)) + ' / ' + fmt(maxP);
     $('battleEnemyHpText').textContent = fmt(Math.max(0, ehp)) + ' / ' + fmt(maxE);
   }
@@ -16016,6 +16278,17 @@
     const req = storyHiddenReq(f.v);
     const gate = await claimGate('story_hidden', Math.round(req * 40), { sv: f.v });
     if (!gate.ok) {
+      // 服务端终身桶（claim_days.shid）已有该卷 = 此前领取成功但本地标记丢失/未同步：
+      // 补齐标记收口，防「重打→429（浮字被弹窗盖住看不见）→再重打」死循环；
+      // 其他失败（战力门等）保持可重打重领
+      if (gate.error && gate.error.indexOf('已领取') >= 0) {
+        state.story.hidden[f.v] = 1;
+        f.reward = { stones: 0, dust: 0, exp: 0, volDone: false };
+        pushLog('红尘录 · 尘缘未了「' + f.st.name + '」首通赏此前已入账，不再重复发放', 'sys');
+        save();
+        storyShowLine(); // 刷新按钮文案（reward 已就位 → 「收下奖励」）
+        return;
+      }
       f.rewarded = false; // 允许重打重领
       return;
     }
@@ -16065,6 +16338,10 @@
         (r.volDone ? '。' + f.vol.title + ' · 全卷功成，另有大赏！' : '。');
     }
     box.classList.add('sys');
+    // 抉择路径收尾清理（死锁修复）：choice 阶段把 storyNext 置了 disabled、
+    // #storyChoices 已显示，storyFinish 必须复位，否则抉择按钮空响应 + 合上书页点不动
+    $('storyChoices').classList.add('hidden');
+    $('storyNext').disabled = false;
     $('storyNext').textContent = '合上书页 ▸';
     $('storySkip').classList.add('hidden');
     $('storyGiveup').classList.add('hidden');
@@ -16177,47 +16454,52 @@
           const cls = stState === 'cleared' ? 'done' : stState === 'open' ? 'open' : 'locked';
           const typeTag = st.type === 'battle' ? (st.boss ? '首领' : '战斗') : '剧情';
           let stateText = '';
+          let lockReason = '';
           if (stState === 'cleared') stateText = '<span class="ss-state ok">已通关</span><button class="mini" data-story="' + idx + '" data-review="1">回顾</button>';
           else if (stState === 'open') stateText = '<span class="ss-state">建议战力 ' + fmt(req) + '</span><button class="mini primary" data-story="' + idx + '">推进</button>';
           else {
-            let reason;
-            if (state.realm < vol.realm) reason = '需境界 ' + REALMS[vol.realm];
-            else if (li === 0 && vi > 0) reason = '通关上一卷全部关卡';
-            else reason = '先通过上一关';
-            stateText = '<span class="ss-state">🔒 ' + reason + ' · 建议战力 ' + fmt(req) + '</span>';
+            if (state.realm < vol.realm) lockReason = '需境界 ' + REALMS[vol.realm];
+            else if (li === 0 && vi > 0) lockReason = '通关上一卷全部关卡';
+            else lockReason = '先通过上一关';
+            // 右侧只留短「建议战力」（2026-11-06 手机竖屏修复）：锁定原因原与建议战力
+            // 拼成一行 nowrap，隐藏关的「通关本卷 + 结识 …」能把整行撑爆屏幕
+            stateText = '<span class="ss-state">建议战力 ' + fmt(req) + '</span>';
           }
           rows += '<div class="story-stage-row ' + cls + '">' +
             '<span class="ss-icon">' + (st.type === 'battle' ? SS_ICONS.battle : SS_ICONS.story) + '</span>' +
             '<div class="ss-info"><b>' + (li + 1) + '. ' + esc(st.name) + '</b>' +
-            '<span class="ss-note">' + typeTag + (st.foe ? ' · 敌 ' + esc(withPlayerName(st.foe.name)) : '') + '</span></div>' +
+            '<span class="ss-note">' + typeTag + (st.foe ? ' · 敌 ' + esc(withPlayerName(st.foe.name)) : '') + '</span>' +
+            (lockReason ? '<span class="ss-note">🔒 ' + esc(lockReason) + '</span>' : '') + '</div>' +
             stateText + '</div>';
         });
         // 隐藏关「尘缘未了」（2026-11-04）：本卷全通 + 本卷登场角色全结识后开放
-        const hSt = STORY_HIDDEN[vi];
-        let hiddenRow = '';
-        if (hSt) {
-          const hs = storyHiddenState(vi);
-          const hcls = hs === 'cleared' ? 'done' : hs === 'open' ? 'open' : 'locked';
-          let hText;
-          if (hs === 'cleared') {
-            hText = '<span class="ss-state ok">已通关</span><button class="mini" data-shidden="' + vi + '" data-review="1">回顾</button>';
-          } else if (hs === 'open') {
-            hText = '<span class="ss-state">建议战力 ' + fmt(storyHiddenReq(vi)) + '</span><button class="mini primary" data-shidden="' + vi + '">推进</button>';
-          } else {
-            const miss = STORY_VOL_CAST[vi]
-              .filter((id) => state.story.met.indexOf(id) < 0)
-              .map((id) => withPlayerName(STORY_CAST[id].name));
-            const reasons = [];
-            if (done < vol.stages.length) reasons.push('通关本卷');
-            if (miss.length) reasons.push('结识 ' + miss.join('、'));
-            hText = '<span class="ss-state">🔒 ' + (reasons.join(' + ') || '条件未明') +
-              ' · 建议战力 ' + fmt(storyHiddenReq(vi)) + '</span>';
+          const hSt = STORY_HIDDEN[vi];
+          let hiddenRow = '';
+          if (hSt) {
+            const hs = storyHiddenState(vi);
+            const hcls = hs === 'cleared' ? 'done' : hs === 'open' ? 'open' : 'locked';
+            let hText = '';
+            let hLock = '';
+            if (hs === 'cleared') {
+              hText = '<span class="ss-state ok">已通关</span><button class="mini" data-shidden="' + vi + '" data-review="1">回顾</button>';
+            } else if (hs === 'open') {
+              hText = '<span class="ss-state">建议战力 ' + fmt(storyHiddenReq(vi)) + '</span><button class="mini primary" data-shidden="' + vi + '">推进</button>';
+            } else {
+              const miss = STORY_VOL_CAST[vi]
+                .filter((id) => state.story.met.indexOf(id) < 0)
+                .map((id) => withPlayerName(STORY_CAST[id].name));
+              const reasons = [];
+              if (done < vol.stages.length) reasons.push('通关本卷');
+              if (miss.length) reasons.push('结识 ' + miss.join('、'));
+              hLock = reasons.join(' + ') || '条件未明';
+              hText = '<span class="ss-state">建议战力 ' + fmt(storyHiddenReq(vi)) + '</span>';
+            }
+            hiddenRow = '<div class="story-stage-row story-hidden-row ' + hcls + '">' +
+              '<span class="ss-icon">❓</span>' +
+              '<div class="ss-info"><b>尘缘未了 · ' + esc(hSt.name) + '</b>' +
+              '<span class="ss-note">隐藏关 · 首通大赏（服务端复核）</span>' +
+              (hLock ? '<span class="ss-note">🔒 ' + esc(hLock) + '</span>' : '') + '</div>' + hText + '</div>';
           }
-          hiddenRow = '<div class="story-stage-row story-hidden-row ' + hcls + '">' +
-            '<span class="ss-icon">❓</span>' +
-            '<div class="ss-info"><b>尘缘未了 · ' + esc(hSt.name) + '</b>' +
-            '<span class="ss-note">隐藏关 · 首通大赏（服务端复核）</span></div>' + hText + '</div>';
-        }
         // 红尘手札：残页随关集齐（残页数=已通关数），全卷成册可阅读
         const journalHtml = done === vol.stages.length
           ? '<button class="mini journal-btn" data-journal="' + vi + '">📖 手札成册 · 「' + esc(vol.title) + '」 · 点击阅读</button>'
@@ -16226,11 +16508,24 @@
           '<div class="story-stage-list">' + rows + hiddenRow + '</div>' + journalHtml;
       }
       gi += vol.stages.length;
+      // 卷头尘缘提示（2026-11-05 用户指定）：隐藏关未完成就在卷行标记，防止折叠态下
+      // 玩家不知道还有尘缘未了。已开放=金色醒目；条件未齐=灰金弱化；已通关不标；
+      // 境界未达的卷不标（卷本身还锁着，标了也是噪音）
+      let yuanBadge = '';
+      if (STORY_HIDDEN[vi] && realmOk) {
+        const hs0 = storyHiddenState(vi);
+        if (hs0 === 'open') {
+          yuanBadge = '<span class="story-vol-yuan" title="隐藏关「尘缘未了 · ' +
+            esc(STORY_HIDDEN[vi].name) + '」已开放 · 首通有大赏">❓ 尘缘未了</span>';
+        } else if (hs0 === 'locked') {
+          yuanBadge = '<span class="story-vol-yuan dim" title="本卷藏有隐藏关：全通本卷并结识登场角色后开放">❓ 尘缘</span>';
+        }
+      }
       return '<div class="story-vol ' + (realmOk ? (done === vol.stages.length ? 'vol-done' : 'vol-active') : 'vol-locked') + '">' +
         '<button class="story-vol-head" data-vol="' + vi + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
         '<span class="story-vol-chev">' + (open ? '▾' : '▸') + '</span>' +
         '<span class="story-vol-name">' + esc(vol.title) + '</span>' +
-        '<span class="story-vol-place">' + esc(vol.place) + '</span>' +
+        '<span class="story-vol-place">' + esc(vol.place) + '</span>' + yuanBadge +
         '<span class="count">' + done + ' / ' + vol.stages.length + '</span></button>' +
         body + '</div>';
     }).join('');
@@ -16672,21 +16967,28 @@
     combatDirty = false;
   }
 
+  // 淬炼卡补丁（2026-11-05 性能）：四条线每 100ms 重渲染，innerHTML/文案值不变不写
+  // ——「升级 N 灵石」按钮每帧重 parse HTML 是纯浪费，常态只有 disabled 在变
+  const upSig = {};
   function renderUpgrade(key, lvId, descId, btnId, descFn) {
     const cfg = UPGRADES[key];
     const lv = state[key + 'Lv'];
-    $(lvId).textContent = 'Lv.' + lv;
-    $(descId).textContent = descFn(lv);
+    const sig = (upSig[key] = upSig[key] || {});
+    const lvTxt = 'Lv.' + lv;
+    if (sig.lv !== lvTxt) { sig.lv = lvTxt; $(lvId).textContent = lvTxt; }
+    const desc = descFn(lv);
+    if (sig.desc !== desc) { sig.desc = desc; $(descId).textContent = desc; }
 
     const btn = $(btnId);
     if (lv >= cfg.max) {
-      btn.textContent = '已满级';
-      btn.disabled = true;
+      if (sig.html !== 'max') { sig.html = 'max'; btn.textContent = '已满级'; btn.disabled = true; }
       return;
     }
     const cost = upgradeCost(key);
-    btn.innerHTML = '升级 ' + fmt(cost) + resIcon('stones');
-    btn.disabled = state.stones < cost;
+    const html = '升级 ' + fmt(cost) + resIcon('stones');
+    if (sig.html !== html) { sig.html = html; btn.innerHTML = html; }
+    const dis = state.stones < cost;
+    if (sig.dis !== dis) { sig.dis = dis; btn.disabled = dis; }
   }
 
   function renderEquip() {
@@ -16907,6 +17209,7 @@
 
     const e = expected();
     const perSec = e.stone * (1 + critChance() * (CRIT_MULT - 1)) * buffMult() / interval();
+    // 修为/秒抽成 expPerSecOf()（淬炼卡与展示共用，2026-11-04 用户指定挪到修为收益行）
     $('perSec').textContent = fmtRate(perSec);
     const power = totalPower();
     // 总战力统一实战口径 realPower（2026-10-31）：与顶栏徽章 / 战力榜上报一致；
@@ -16922,8 +17225,11 @@
       () => '每 ' + interval().toFixed(2) + ' 秒自动开一次');
     renderUpgrade('gain', 'gainLv', 'gainDesc', 'buyGain',
       (lv) => '灵石收益 +' + lv * 30 + '%');
+    renderUpgrade('exp', 'expLv', 'expDesc', 'buyExp',
+      (lv) => '开箱修为 +' + (5 * lv) + '% · 修为 ' + fmtRate(expPerSecOf()) + '/秒');
     renderUpgrade('luck', 'luckLv', 'luckDesc', 'buyLuck',
-      (lv) => '高品质权重 +' + lv * 10 + '% / 阶');
+      // 气运实为 0.02/级（weights 系数，2026-11-01 压参后文案同步，原 0.1 时代写 +10%）
+      (lv) => '高品质权重 +' + lv * 2 + '% / 阶');
 
     const maxRealm = state.realm >= REALMS.length - 1;
     $('realmNow').textContent = REALMS[state.realm];
@@ -16931,7 +17237,7 @@
     renderStatus();
 
     if (maxRealm) {
-      $('expFill').style.width = '100%';
+      $('expFill').style.transform = 'scaleX(1)';
       // 仙人也要亮修为数（2026-11-04 用户指定）：功法参悟等仍耗修为，只写「圆满」看不见存量
       $('expText').innerHTML = '修为圆满 · 现有 ' + fmt(state.exp) + resIcon('exp');
       $('breakBtn').textContent = '已至仙人';
@@ -16939,7 +17245,8 @@
     } else {
       const cost = realmCostOf(state.realm + 1);
       const enough = state.exp >= cost;
-      $('expFill').style.width = (Math.min(1, state.exp / cost) * 100).toFixed(1) + '%';
+      // scaleX 口径（2026-11-05 性能，.bar-fill 同批）：定宽 100% + transform 走合成
+      $('expFill').style.transform = 'scaleX(' + Math.min(1, state.exp / cost).toFixed(3) + ')';
       $('expText').innerHTML = enough
         ? '修为充足（' + fmt(state.exp) + '）· 可突破至 ' + REALMS[state.realm + 1]
         : fmt(state.exp) + ' / ' + fmt(cost) + resIcon('exp');
@@ -17081,6 +17388,9 @@
   let statusGuildRetryAt = 0; // 失败退避：renderStatus 随渲染循环 ~10Hz 调用，接口持续
   // 失败时不退避会变成每秒约 10 次的无限重试风暴（每个请求还各挂 15s AbortController）
   let achvEls = new Map();   // 成就 id → { prog, btn, row }，壳重建时重建，补丁循环免查全文档
+  let achvChips = null;      // 筛选 chips 引用（壳重建时重建）；补丁帧值不变不写 DOM（2026-11-05 性能）
+  let achvTitleOn = false;   // titleBadge 显隐/文案缓存（同上）
+  let achvTitleTxt = '';
   function renderStatus() {
     const el = $('statusGrid');
     if (!el) return;
@@ -17447,8 +17757,9 @@
 
   /* ---------------- 日常扩容二期（七日征程 / 洞府访客 / 每日鱼王 / 遛宠 / 仙盟共修） ---------------- */
 
-  // —— 七日征程（2026-11-04）：当日任一日活领取点亮一格，与周常共用周一刷新的周键；
-  // 7 格全亮领周大奖（/api/claim journey 槽周锁，服务端 cap 5e7）。进度纯客户端记账。
+  // —— 七日征程（2026-11-04）：当日任一日活领取点亮一格，与周常共用每七日刷新的周键
+  // （weekKey 为年首锚定 7 天桶，非周一锚定）；7 格全亮领周大奖（/api/claim journey
+  // 槽周锁，服务端 cap 5e7）。进度纯客户端记账。
   const JOURNEY_REWARD = { stones: 2e7, dust: 400 };
   function ensureJourney() {
     if (state.journey.week !== weekKey()) {
@@ -17702,15 +18013,18 @@
         '</div></div>';
     }
   }
+  // 文本每分钟才变一次，值不变不写 DOM（updateStaminaChip 同款，2026-11-05 性能）
+  let walkCdTxt = '';
   function walkTick() {
     const el = document.getElementById('petWalkCd');
     if (!el) return;
     const w = state.petWalk;
     if (!w.start || w.done) return;
     const left = PET_WALK_MS - (Date.now() - w.start);
-    el.textContent = left > 0
+    const txt = left > 0
       ? '遛弯中 · ' + walkSpotName(w.spot) + ' · 剩 ' + Math.ceil(left / 60000) + ' 分钟'
       : '玩尽兴了，接它回家吧';
+    if (walkCdTxt !== txt) { walkCdTxt = txt; el.textContent = txt; }
   }
 
   // —— 仙盟共修（2026-11-04）：盟员每日捐 20 万 ×3 次充盈盟池（账本原子扣款），
@@ -17909,25 +18223,44 @@
           row: rowEl,
         });
       });
+      achvChips = new Map();
+      $('achvFilterRow').querySelectorAll('[data-count]').forEach((chip) => {
+        achvChips.set(chip.dataset.count, chip);
+      });
     }
-    // 动态补丁：计数、每行进度、按钮状态
+    // 动态补丁：计数、每行进度、按钮状态（2026-11-05 性能：值不变不写 DOM——
+    // 自动开箱 10Hz 渲染下 200 项 ×4 次裸写全是无效脏标记；chips 用壳缓存引用，
+    // 不再每帧全文档 querySelectorAll）
     const countMap = { all: claimedN + '/' + states.length, ready, done: claimedN, todo: nTodo };
-    document.querySelectorAll('#achvFilterRow [data-count]').forEach((chip) => {
-      chip.textContent = String(countMap[chip.dataset.count]);
-    });
-    $('titleBadge').classList.toggle('hidden', !state.title);
-    $('titleBadge').textContent = '「' + state.title + '」';
+    if (achvChips) {
+      for (const [key, chip] of achvChips) {
+        const txt = String(countMap[key]);
+        if (chip.textContent !== txt) chip.textContent = txt;
+      }
+    }
+    if (achvTitleOn !== !!state.title) {
+      achvTitleOn = !!state.title;
+      $('titleBadge').classList.toggle('hidden', !state.title);
+    }
+    if (state.title) {
+      const tt = '「' + state.title + '」';
+      if (achvTitleTxt !== tt) { achvTitleTxt = tt; $('titleBadge').textContent = tt; }
+    }
     for (const { a, cur, claimed, isReady } of states) {
       const els = achvEls.get(a.id);
       if (!els) continue;
-      if (els.prog) els.prog.textContent = fmt(cur) + ' / ' + fmt(a.target);
+      const prog = fmt(cur) + ' / ' + fmt(a.target);
+      if (els.prog && els.lastProg !== prog) { els.lastProg = prog; els.prog.textContent = prog; }
       if (els.btn) {
-        els.btn.textContent = claimed ? '已达成' : '领 ' + fmt(a.stones) + ' 灵石';
-        els.btn.disabled = !isReady;
+        const bt = claimed ? '已达成' : '领 ' + fmt(a.stones) + ' 灵石';
+        if (els.lastBtn !== bt) { els.lastBtn = bt; els.btn.textContent = bt; }
+        const dis = !isReady;
+        if (els.lastDis !== dis) { els.lastDis = dis; els.btn.disabled = dis; }
       }
       if (els.row) {
-        els.row.classList.toggle('claimed', claimed);
-        els.row.classList.toggle('ready', isReady && !claimed);
+        if (els.lastClaimed !== claimed) { els.lastClaimed = claimed; els.row.classList.toggle('claimed', claimed); }
+        const rd = isReady && !claimed;
+        if (els.lastReady !== rd) { els.lastReady = rd; els.row.classList.toggle('ready', rd); }
       }
     }
   }
@@ -18183,7 +18516,9 @@
   }
 
   function renderBestiary() {
-    const species = Object.keys(state.bestiary).length;
+    // 图鉴物种数钳 500（server/battle.js 同源同界，2026-11-05）：博物成就最高档 320，
+    // 钳后乘区封顶 ×1.5，双端同口径防镜像键数打穿
+    const species = Math.min(500, Object.keys(state.bestiary).length);
     const sig = JSON.stringify(state.bestiary);
     if (panelSigs.bestiary === sig) return;
     panelSigs.bestiary = sig;
@@ -18571,7 +18906,7 @@
       const nextWin = open ? '进行中' : (h < w.s ? '今日 ' + w.s + ':00 开启' : '已结束');
       return (
         '<div class="pet-row' + (claimed ? ' claimed' : '') + '">' +
-          '<div class="pet-main"><span class="pet-name">仙豆 · ' + w.s + ':00 – ' + w.e + ':00</span>' +
+          '<div class="pet-main"><span class="pet-name">灵潮 · ' + w.s + ':00 – ' + w.e + ':00</span>' +
           '<p class="pet-desc">' + nextWin + ' · 领符 +' + fmt(TIDE_CLAIM) + ' 灵石 · 窗口内产出 ×' + TIDE_MULT + '</p></div>' +
           '<button class="mini" data-tide="' + i + '"' +
             (!open || claimed ? ' disabled' : '') + '>' + (claimed ? '已领' : '领符') + '</button>' +
@@ -18727,11 +19062,12 @@
   function updateTimer() {
     const p = Math.min(1, acc / interval());
     // 变化才写（2026-11-01 手机降载）：主循环 20Hz 调用，宽度每 1% 才落一次样式，
-    // 省掉无变化的强制样式失效（配合触屏端停常驻动画，压低手机端主线程占用）
+    // 省掉无变化的强制样式失效（配合触屏端停常驻动画，压低手机端主线程占用）；
+    // scaleX 口径（2026-11-05 性能）：width 逐级布局 → transform 走合成
     const step = Math.round(p * 100);
     if (step === updateTimer.last) return;
     updateTimer.last = step;
-    $('timerFill').style.width = (step) + '%';
+    $('timerFill').style.transform = 'scaleX(' + (step / 100) + ')';
   }
 
   /* ---------------- 主循环 ---------------- */
@@ -18866,6 +19202,7 @@
     if (!res.ok) {
       const err = new Error((body && body.error) || ('请求失败 ' + res.status));
       err.status = res.status; // 调用方按状态码分流（如 409 快照未就绪 → 立即补推快照）
+      err.body = body;         // 400 矫正面（如 cult 尚未结束的 until）随错误下发
       throw err;
     }
     return body;
@@ -19140,7 +19477,7 @@
     if (!b) return;
     $('bossName').textContent = b.name;
     const pct = b.maxHp > 0 ? Math.max(0, Math.min(100, (b.hp / b.maxHp) * 100)) : 0;
-    $('bossBarFill').style.width = pct.toFixed(1) + '%';
+    $('bossBarFill').style.transform = 'scaleX(' + (pct / 100).toFixed(3) + ')';
     $('bossHpText').textContent = b.defeated
       ? '今日妖王已被讨平！明日再战。'
       : '剩余气血 ' + fmt(b.hp) + ' / ' + fmt(b.maxHp) + '（' + pct.toFixed(1) + '%）';
@@ -19342,8 +19679,8 @@
         '</div>').join('') +
       '<button class="btn wide ghost" data-act="guildLeave">退盟' +
       (leader ? '（盟位转交最早入盟者，贡献清零）' : '（贡献清零）') + '</button>';
-    // 妖王血条与状态（JS 设宽，CSP 不许内联样式）
-    $('guildBossBarFill').style.width = pct.toFixed(1) + '%';
+    // 妖王血条与状态（JS 设 scaleX，CSP 不许内联样式；2026-11-05 与 .bar-fill 同批改合成）
+    $('guildBossBarFill').style.transform = 'scaleX(' + (pct / 100).toFixed(3) + ')';
     $('guildBossText').textContent = boss.defeated
       ? '今日妖王已被同门讨平！明日再战。'
       : '剩余气血 ' + fmt(boss.hp) + ' / ' + fmt(boss.maxHp) + '（' + pct.toFixed(1) + '%）· 每日 ' + boss.cap + ' 场';
@@ -19558,7 +19895,10 @@
       const out = await worldFetch('/api/guild/task/claim', {
         method: 'POST', body: JSON.stringify({ taskId }),
       });
-      addStones(out.stones);
+      // 服务端直发账本（2026-11-05）：客户端平加响应实额（ladderPay 同口径），
+      // 不走 addStones——乘区会把客户端余额加得比账本多、对账漂移
+      state.stones += out.stones;
+      state.totalStones += out.stones;
       if (g) {
         g.myContribution = out.contribution;
         if (task) task.claimed = true;
@@ -19913,22 +20253,29 @@
     chime([784, 988, 1318]);
   }
 
-  // 顶部物资条（战力 / 灵石 / 飞升，realm-badge 同款样式）：随渲染节流刷新
-  let resStonesSig = '';
+  // 顶部物资条（战力 / 灵石 / 飞升，realm-badge 同款样式）：全字段值不变不写 DOM
+  // （2026-11-05 性能——本函数挂在 50ms loop 上，比渲染节流快一倍，裸写全是无效脏标记）
+  const resSig = { power: '', stones: '', dust: '', souls: '', tickets: '', reroll: '', asc: null };
   function paintResources() {
-    $('resPower').textContent = fmt(realPower());
-    if (state.stones !== resStonesSig) {
-      resStonesSig = state.stones;
-      $('resStones').textContent = fmt(state.stones);
-    }
-    // 顶栏资源行：碎屑 / 器魂 / 招募券 / 洗练券（随渲染节流刷新）
-    $('resDust').textContent = fmt(state.dust);
-    $('resSouls').textContent = fmt(state.souls);
-    $('resTickets').textContent = fmt(state.petTickets);
-    $('resReroll').textContent = fmt(state.rerollCoupon);
+    const power = fmt(realPower());
+    if (resSig.power !== power) { resSig.power = power; $('resPower').textContent = power; }
+    const stones = fmt(state.stones);
+    if (resSig.stones !== stones) { resSig.stones = stones; $('resStones').textContent = stones; }
+    // 顶栏资源行：碎屑 / 器魂 / 招募券 / 洗练券
+    const dust = fmt(state.dust);
+    if (resSig.dust !== dust) { resSig.dust = dust; $('resDust').textContent = dust; }
+    const souls = fmt(state.souls);
+    if (resSig.souls !== souls) { resSig.souls = souls; $('resSouls').textContent = souls; }
+    const tickets = fmt(state.petTickets);
+    if (resSig.tickets !== tickets) { resSig.tickets = tickets; $('resTickets').textContent = tickets; }
+    const reroll = fmt(state.rerollCoupon);
+    if (resSig.reroll !== reroll) { resSig.reroll = reroll; $('resReroll').textContent = reroll; }
     const asc = Math.max(0, state.ascensions | 0);
-    $('ascBadge').classList.toggle('hidden', asc <= 0);
-    if (asc > 0) $('resAsc').textContent = '+' + asc;
+    if (resSig.asc !== asc) {
+      resSig.asc = asc;
+      $('ascBadge').classList.toggle('hidden', asc <= 0);
+      if (asc > 0) $('resAsc').textContent = '+' + asc;
+    }
   }
 
   // ---- 设置：字号（body zoom，85%–125%）与主题（明/暗） ----
@@ -20016,6 +20363,11 @@
   // 顶部功能标签：修炼 / 征战 / 闲趣
   // dir = 'next' | 'prev'：给新激活页加方向平移淡入（滑动与点标签共用）；缺省不动画（首屏）
   function setTopTab(name, dir) {
+    // 首次进闲趣页才放行灵宠立绘真图（petArtHtml 懒加载口径，2026-11-05 性能）
+    if (name === 'xian' && !petArtSeen) {
+      petArtSeen = true;
+      panelSigs.pets = null; // 作废签名，下一帧 renderPets 重渲换 jpg
+    }
     document.querySelectorAll('#topTabs .top-tab').forEach((btn) =>
       btn.classList.toggle('active', btn.dataset.tab === name));
     document.querySelectorAll('.tab-page').forEach((page) => {
@@ -20207,6 +20559,7 @@
     $('buySpeed').addEventListener('click', () => buy('speed'));
     $('buyGain').addEventListener('click', () => buy('gain'));
     $('buyLuck').addEventListener('click', () => buy('luck'));
+    $('buyExp').addEventListener('click', () => buy('exp'));
 
     $('breakBtn').addEventListener('click', breakthrough);
     $('ascendBtn').addEventListener('click', ascend);
@@ -20851,6 +21204,7 @@
       authSignedOut = true; // 停 persist / 关页兜底 / flushCloud：reload 前不得把重置前的内存档推回云端
       cloudPending = null;
       if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = 0; }
+      wsShutdown();
       location.reload();  // 云端已清空，重新启动按全新档开局
     });
 
@@ -20895,6 +21249,8 @@
       floatText(document.querySelector('.top-tab.active').textContent.trim(), '#f0d9a8');
     }, { passive: true });
 
+    window.addEventListener('pagehide', () => wsSuspend());
+    window.addEventListener('pageshow', () => { if (cloudOn && !wsOn) { wsConnect(); flushCloud(); } });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         state.lastSeen = Date.now();
@@ -20926,6 +21282,7 @@
       authSignedOut = true; // 停 persist / flushCloud，防登出瞬间在途推送把旧档推回新会话
       cloudPending = null;
       if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = 0; }
+      wsShutdown();
       // 清推送锁与会话标记再走：本地不再落盘（云端唯一存档），换账号登录自然从云端恢复
       try {
         localStorage.removeItem(TAB_LOCK_KEY);

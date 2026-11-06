@@ -132,10 +132,10 @@
       <div class="signin-box" id="signInBox"></div>
       <div id="dailyList"></div>
       <p class="hint">每日 0 点刷新；三项全部领取有额外奖励。</p>
-      <p class="side-title">周常（周一刷新）</p>
+      <p class="side-title">周常（每七日刷新）</p>
       <div id="weeklyList"></div>
       <p class="hint">周常进度跨天累计，三项全领有额外奖励。</p>
-      <p class="side-title">七日征程（周一刷新）</p>
+      <p class="side-title">七日征程（每七日一轮）</p>
       <div id="journeyList"></div>
 </section>
 <section class="panel daily-ext" aria-label="日常扩容">
@@ -150,7 +150,7 @@
       <div id="marketList"></div>
       <p class="hint">每日 0 点换货，每件限购一次。</p>
       <p class="side-title">赌石</p>
-      <p class="hint">2000 灵石开一块璞玉：多为石屑，也可能开出碎屑、灵石，甚至天品装备。</p>
+      <p class="hint">20 万灵石开一块璞玉（单日至多 500 次）：多为石屑，也可能开出碎屑、灵石，甚至天品装备。</p>
       <div class="btn-row">
         <button class="btn" id="gambleBtn">开璞玉（20 万灵石）</button>
         <button class="btn" id="gamble10Btn">连开 10 次（200 万灵石）</button>
@@ -264,8 +264,8 @@
       <div class="cave-row">
         <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>
         <div class="cave-main"><span class="cave-name">开箱速度 <em id="speedLv">Lv.0</em></span>
-          <p class="cave-desc" id="speedDesc">每 2.00 秒自动开一次</p></div>
-        <button class="mini" id="buySpeed">升级 50</button>
+          <p class="cave-desc" id="speedDesc">每 2.50 秒自动开一次</p></div>
+        <button class="mini" id="buySpeed">升级 100</button>
       </div>
 
       <div class="cave-row">
@@ -280,6 +280,13 @@
         <div class="cave-main"><span class="cave-name">气运 <em id="luckLv">Lv.0</em></span>
           <p class="cave-desc" id="luckDesc">高品质权重 +0% / 阶</p></div>
         <button class="mini" id="buyLuck">升级 150</button>
+      </div>
+
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M5 3h11a3 3 0 0 1 3 3v13a1 1 0 0 1-1.45.9L14 18l-3.55 1.9A1 1 0 0 1 9 19V6a3 3 0 0 0-3-3h-.5A.5.5 0 0 1 5 2.5V3Zm3 3v12.6l3-1.6 3 1.6V6H8Zm12.5-.5a.5.5 0 0 1 .5.5v13a1 1 0 0 1-1 1H16v-2h4V6a.5.5 0 0 1 .5-.5Z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">修为收益 <em id="expLv">Lv.0</em></span>
+          <p class="cave-desc" id="expDesc">开箱修为 +0%</p></div>
+        <button class="mini" id="buyExp">升级 120</button>
       </div>
     </section>
       </div>
@@ -586,7 +593,7 @@
     <div class="tab-page" data-page="gushi">
 <section class="panel panel-wide story-panel" aria-label="红尘录">
       <h2>红尘录</h2>
-      <p class="panel-meta">进度 <span class="count" id="storyProg">0 / 50 关</span></p>
+      <p class="panel-meta">进度 <span class="count" id="storyProg">0 / 150 关</span></p>
       <p class="story-lead" id="storyLead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
       <div id="storyBox"></div>
       <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。卷末有关键抉择（改动果报）、卷后有隐藏关「尘缘未了」（本卷全通且同卷人物全结识后开放）、全卷通关解锁红尘手札；战斗关可邀结识角色同行助战（人物志赠礼提升好感加成）。</p>
@@ -1218,7 +1225,7 @@
         <h3>征战 · 四大秘境</h3>
         <p><b>闯关</b>起点玩法，5 关一首领；<b>爬塔</b> 200 层产镇塔套；<b>野外</b>刷材料与荒狩套；<b>无尽</b>无限层带词缀，通塔 60 层开启。套装部件 0.8%/场随机掉落，另每胜 50 场保底 1 件（每玩法每日至多 2 件）；胜场还可能掉牧场种子与洗炼石。试炼区另有探幽 / 首领连战 / 条件试炼 / 悬赏令（白绿蓝紫四单，全清加奖）与<b>异象秘境</b>（每日双词缀 boss，按余血评 S/A/B 级，S 级 5% 掉仙品）。</p>
         <h3>装备</h3>
-        <p>十二部位（武器/衣袍/冠冕/云靴/护腿/护腕/手镯/戒指/法宝/灵符/发箍/翅膀），品质白→绿→蓝→紫→金→仙。装备带等级：掉落瞬间随境界定级，飞升归 0 重爬。部位强化（+200，绑槽位换装不丢）与升星加成；词条与宝石在工坊洗练镶嵌（洗练另耗六型洗炼石）；符文组词按宝石顺序触发；套装凑件数有额外效果。炼器用器魂定向打造天品；熔铸十件地品熔天品、五件天品熔仙品（35%±5%）。</p>
+        <p>十二部位（武器/衣袍/冠冕/云靴/护腿/护腕/手镯/戒指/法宝/灵符/发箍/翅膀），品质凡品→灵品→玄品→地品→天品→仙品六档。装备带等级：掉落瞬间随境界定级，飞升归 0 重爬。部位强化（+200，绑槽位换装不丢）与升星加成；词条与宝石在工坊洗练镶嵌（洗练另耗六型洗炼石）；符文组词按宝石顺序触发；套装凑件数有额外效果。炼器用器魂定向打造天品；熔铸十件地品熔天品、五件天品熔仙品（35%±5%）。</p>
         <h3>养成系统</h3>
         <p><b>战技</b>（塔印/战功/兽骨升级）、<b>功法</b>（修为参悟）、<b>灵宠</b>（缚灵谷捕捉个体出战，天赋+词条加成）、<b>道侣</b>（好感永久加成）、<b>丹药 / 洞府（含云坊）/ 淬炼</b>——这些点击升级是战力主通道。</p>
         <h3>经营 · 牧场与坊市</h3>

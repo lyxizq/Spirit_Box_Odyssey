@@ -446,10 +446,13 @@ function activePetInsts(data) {
 function petAggOf(data) {
   const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  // 信物等级钳制（2026-11-05 改档修复，TOKEN_MAX=200 同界，gainLv 同手法）：petTokens
+  // 镜像此前不过 validateDeep，伪造 1e12 级会把天赋乘区打到 ×5e9 打穿服务端复算
+  const tokenLv = (sp) => Math.max(0, Math.min(200, Math.floor(num(data.petTokens && data.petTokens[sp]))));
   for (const inst of activePetInsts(data)) {
     const def = PET_SP_MAP[inst.sp];
     const intimacy = (data.pets && data.pets[inst.sp] !== undefined) ? num(data.pets[inst.sp]) : 0;
-    const talent = def.per * intimacy + 0.005 * num(data.petTokens && data.petTokens[inst.sp]);
+    const talent = def.per * intimacy + 0.005 * tokenLv(inst.sp);
     if (def.stat !== 'gain' && agg[def.stat] !== undefined) agg[def.stat] += talent;
     const lvMult = 1 + PET_AFF_LV_STEP * (Math.max(1, num(inst.lv) || 1) - 1);
     for (const a of inst.affixes || []) {
@@ -663,7 +666,9 @@ export function playerCombatStats(data, env) {
   const elixirOn = (id) => elixir.id === id && now < num(elixir.until);
   def *= elixirOn('def') ? 1.2 : 1;
   atk *= elixirOn('atk') ? 1.15 : 1;
-  const species = Object.keys(data.bestiary || {}).length;
+  // 图鉴物种数钳制（2026-11-05 改档修复）：bestiary 镜像键数未校验，伪造数万垃圾键
+  // 可把乘区抬到 ×60+。真实图鉴物种上限约 320（博物成就最高档），钳 500 封顶 ×1.5
+  const species = Math.min(500, Object.keys(data.bestiary || {}).length);
   if (species >= 5) {
     const beastMult = 1 + 0.005 * Math.floor(species / 5);
     atk *= beastMult;
@@ -851,7 +856,9 @@ export function baseGainOf(data, env) {
   for (const inst of activePetInsts(data)) {
     const def = PET_SP_MAP[inst.sp];
     if (!def || def.stat !== 'gain' || !data.pets || data.pets[inst.sp] === undefined) continue;
-    petGain += def.per * num(data.pets[inst.sp]) + 0.005 * num(data.petTokens && data.petTokens[inst.sp]);
+    // 信物等级钳制（2026-11-05，petAggOf 同手法）：离线灵石期望同样吃 0.005/级乘区
+    petGain += def.per * num(data.pets[inst.sp]) +
+      0.005 * Math.max(0, Math.min(200, Math.floor(num(data.petTokens && data.petTokens[inst.sp]))));
   }
   let museum = 0;
   for (const s of SLOTS) {
@@ -892,6 +899,9 @@ export function baseGainOf(data, env) {
 
 export function expectedOf(data, env) {
   const w = weightsOf(data);
+  // 淬炼「修为收益」（2026-11-04 用户指定，game.js expected 同源）：每级开箱修为期望
+  // ×+5%，60 级封顶 ×4；钳制同 gainLv 手法（UPGRADES.exp.max=60，validateDeep 同界）
+  const expLv = Math.max(0, Math.min(60, Math.floor(Number(data.expLv) || 0)));
   let total = 0;
   let exp = 0;
   for (let i = 0; i < w.length; i++) {
@@ -900,7 +910,7 @@ export function expectedOf(data, env) {
   }
   return {
     stone: baseGainOf(data, env),
-    exp: (1 - EQUIP_CHANCE) + EQUIP_CHANCE * exp / total,
+    exp: ((1 - EQUIP_CHANCE) + EQUIP_CHANCE * exp / total) * (1 + 0.05 * expLv),
   };
 }
 

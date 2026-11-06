@@ -1,7 +1,7 @@
 # HANDOFF · 交接与路线图
 
 > 面向下一个开发工具 / 下一位开发的交接文档。读完本文应能继续开发而不需要重新通读全部代码。
-> 最后更新：2026-10-28（第四批「融合/符文/心魔/悬赏/时辰/天劫/道侣/战功碑」完成时点）。
+> 最后更新：2026-11-06（WebSocket 长连接补记与修复批，见 §10 末「2026-11-06」小节；前一批 2026-11-05 为全站文案核校 + 服务端加固 + 前端性能；正文早期批次的数字若与之冲突，以最新小节与现行代码为准）。
 
 ---
 
@@ -109,7 +109,7 @@
 - **道童**（新面板）：`state.steward = {autoWear, autoSalvage(0/1/2), autoEnhance(0/5/10/15/20), autoMarket[]}`；主循环 5 秒一跳 `stewardTick()`：自动穿戴走 `autoEquip(true)` 静默、自动强化静默扣钱升到上限、黑市代购调 `buyMarket`；自动分解在 `addItem` 入口拦截（套装件除外）。tick 末尾顺带做镜像周检。
 - **套装升星**：套装件 `star 0..5`（fixItem 钳制），`itemPower` 每星 ×(1+10%)；工坊内对专属件展示「吞噬同套同部位重复件」列表（背包克隆件即可喂）。
 - **炼器**：专属件分解得器魂（3/件，探幽通关 +5），30 器魂 + 5 万灵石定向打造指定部位天品（名带「器」后缀，2 词条）。
-- **赌石**（黑市面板）：2000 灵石/次，GAMBLE_TABLE 加权：40% 回 200 / 33% 碎屑 20-60 / 15% 灵石 3000-6000 / 10% 碎屑 150-260 / 2% 天品装备。
+- **赌石**（黑市面板，2026-11-05 核校现行值）：20 万灵石/次、单日至多 500 次，GAMBLE_TABLE 加权：62% 石屑（空手）/ 18% 碎屑 2000-6000 / 10% 灵石 30-60 万 / 9% 碎屑 1.5-2.6 万 / 1% 天品装备（2026-10-31 调价，旧文案「2000 灵石」已修）。
 - **斗法·昨日之我**（试炼面板）：stewardTick 每周生成 `mirror.snap{power,atk,hp,def}`，敌人 hp×7.5 用同公式；胜领 max(2000, 战力×3) 灵石 + 50 碎屑，每周一次。**守卫**：快照仅当 `st.power > 1` 才写入，旧坏快照（power≤1）自愈重建——早期测试档曾因空装备态快照 power=0 进档，已根治。
 - **秘境图**（新面板）：12×8，`seed` 确定性哈希出矿/尘/妖/窟；每日 +6 行动力（上限 12），只能走相邻格（含探雾），妖物按离心距离缩放、战败不扣行动力不移动；`state.map = {seed, px, py, rev[], looted[], ap, date}`。
 - **挑战修行**（境界面板）：三项限制（凡衣不穿专属 / 无匠不洗练不继承 / 苦行不吃丹），破戒即时标 dirty（挂在 equipItem / forgeReroll / doInherit / takeElixir），飞升时未破戒则 `ordealDone` 记永久乘区（收益 +10% / 攻血 +6% / 攻 +6%）。
@@ -182,6 +182,12 @@ TOWER_MAX 60   STAGE_MAX 30   WILD_MAX 12
 ### 4.2 开箱经济
 
 ```js
+// ⚠️ 2026-11-05 核校：本块前两行与下方权重行为 2026-10-28 时点旧口径，现行值——
+//   interval()  = max(0.2, 2.5 * 0.95^speedLv)（speed.max=50 触底 0.2s，base 2026-11-01 ×2）
+//   baseGain()  战力乘区 = (1 + √totalPower/20)（平方根软压）、仙缘 = (1+0.05*ascensions)；
+//   气运权重乘区 = (1 + 0.02*luckLv)^i（0.1 时代满级仙品占比爆到 23.6%，2026-11-01 压参，
+//   淬炼卡与帮助文案 2026-11-05 才补齐「+2%/级」）；天/仙基础权重现为 2 / 0.6。
+//   强化/分解公式现为部位强化 +200 上限体系（equip-level 口径），以 game.js 为准。
 interval()            = max(0.25, 2 * 0.94^speedLv)                  // 开箱间隔秒
 baseGain()            = (3 + 0.9*gainLv) * 1.7^realm * (1+0.25*ascensions) * (1+totalPower/400) * buff
 itemPower(it)         = power * (1 + 0.18*lv)                        // 强化每级 +18%
@@ -191,7 +197,7 @@ salvageValue(it)      = 专属件: (power*2+20) * (1+0.35*lv)
                         普通件: RARITIES[r].stone * 2 * (1+0.4*lv) * (1+0.2*gainLv)
 ```
 
-品质权重 `RARITIES[i].weight * (1 + 0.1*luckLv)^i`：凡 1000 / 灵 350 / 玄 100 / 地 25 / 天 5 / 仙 1。
+品质权重 `RARITIES[i].weight * (1 + 0.1*luckLv)^i`：凡 1000 / 灵 350 / 玄 100 / 地 25 / 天 5 / 仙 1（现行系数见上方核校注）。
 `BASE_POWER = [3, 10, 30, 90, 280, 900]` 为普通装各品质战力基准。
 
 ### 4.3 秘境征战常量表（MODES）
@@ -667,6 +673,28 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 - **服务端杂项**：连点判定 `(clicks|0)` 32 位截断（每推恰 +2^32 增量恒 0，判定永不触发）→ 去截断；`acceptsGzip` 把 `gzip;q=0` 当接受 → 排除 q=0（curl 实测 q=0 不再压缩）；login 成功路径不查 `user.status`（停用号可「登录成功」后全 401）→ 对齐 403；`openDb` 补 `PRAGMA busy_timeout=5000`（CLI 与服务共用库撞锁）+ display_name 回填 try/catch（历史唯一冲突不再炸启动）；codes CLI `--max` 负数静默变「不限次」→ 显式报错；`game_saves.size` 存字符数 → `Buffer.byteLength`。
 - **明暗主题可读性（styles.css）**：明色 token 漏定义 `--orange/--red`（#fbbf24/#f87171 原样漏到纸底，天品/仙品名、五行金/火、图鉴 r4/r5、战败标题等十余处 ≈1.4-2.2:1）→ 补深色 token 并把品级/套装/五行字色全部 token 化（暗色逐一同值、像素不变）；明色 `--gold` 加深（#b8945a→#7d5d27，小字从 ≈2.1:1 到 ≈4.9:1）；`.cast-card b` 误入「浅字转墨」组（卡底恒深蓝 → 深字深底 ≈1.4:1）摘出；战斗飘字/战斗记录敌我行/日志分类色（明色被 `.log-list li` 高特异性压成全灰、品质语义全丢）/时辰徽章/宝点提示/凡品名/锁定页签/装备空槽/红尘录注释字/头像兜底首字逐一补明色深变体；暗色侧：选中页签 `--accent`（≈1.8:1，最高频导航）改亮金、「当前位置」格墨字金雾底（≈1.8:1）改金字、顶栏按钮 `--accent` 特异性压过 `.btn`（≈3.8:1）改回墨字；开匣匣面恒暗底字色固定亮金不再随 token 变深；game.js 两处 CSP 内联色（秘境偶遇名/装备查看品质名）补 `themeInk()` 明色 ×0.6 压暗（与说话人名同款）。对比度全部按 WCAG 程序化复核（正常字 ≥4.5 / 大字 ≥3）。
 - **深度校验误拒砖号（高，2026-11-03 正式环境事故）**：同批 validateDeep 补键两处口径写死，老玩家档被永久循环拒收——① `cave.fang` 写成必填，云坊上线前的旧客户端推档不带该键 → `isInt(undefined)` 恒 false →「洞府 fang 越界」（user26）；改可选键模式 `fang !== undefined` 才校验（同 gainLv/activePets 惯例）。② 灵宠品质按物种带 `band[0]..band[1]` 整体拒外，而老档融合迁移（game.js petMigrated）给旧四宠（狐[1,3]/龟[1,2]/鼠[1,2]/貔[2,4]，band[0] 全 ≥1）赠的是凡品 r=0 →「灵宠个体品质越界」（user25）；下界放宽到 0（低于带只是弱于合法下限，词条条数按实际 r 封顶、无放大面，上界 band[1] 保持）。③连带：品质层修复后老号会在 uid 水位层二次拒死——`pet_seq NULL` 行从「旧镜像最大 uid 种入」，但镜像早于灵宠个体化（迁移档自品质校验上线起从未落库）时种入 0；补「镜像无 petInsts 时以档内 petSeq 接续水位」（仅 NULL 行进入、发号时代账号 pet_seq 非 NULL 不受影响，伪造面不变）。全栈 E2E 15 例：两事故形态放行、上界/伪造/既有防线全保持。
+
+### 全站文案核校 + 服务端加固 + 前端性能（2026-11-05 批次）
+
+用户指令「统一检查文案与实际功能对应、查 bug/漏洞、优化界面加载显示性能、更新文档」四合一。四路并行审计（两路文案、一路服务端安全、一路前端性能）定位后逐条核实修复：
+
+**文案核校（描述 ≠ 实装，全部改文案侧）**：赌石提示「2000 灵石」→ 20 万（实价 2026-10-31 已调，静态 hint 漏跟）；气运淬炼「+10%/级」→「+2%/级」（weights 实为 0.02，v1.0.3 压参后文案未跟）；五行道基「每阶 +2%~4%」→ 1.5%（火行 0.015）；垂钓指南「每场一条 7% 龙鱼」→「6.5%~7%」（旧五场 6.5）；洞府指南漏列云坊（三建筑 → 四建筑）；仙道问答两题答案错（洗练货币=碎屑→灵石；分解主要获得=碎屑→灵石，salvageValue 主入账是灵石）；奇遇「帮阿婆修桥」隐藏 2000 灵石花费补标注；鱼饵「每日补 50」→「补足至 50」（Math.max 语义非累加）；道童时长档「一个/四个时辰」→「一/四/八小时」（时辰=2 小时易误读）；星图指南补「守支末星是防御 +10%」；灵潮窗口行名误植「仙豆」→「灵潮」；帮助页品质链「白→绿→蓝→紫→金→仙」→ 现行六品名（凡/灵/玄/地/天/仙）；index 静态兜底三处过期（速度 2.00s→2.50s、升速价 50→100、红尘录 0/50 关→0/150）；周常/七日征程「周一刷新」→「每七日刷新」（weekKey 实为年首锚定 7 天桶，非周一——改文案不动逻辑，避免周键跳变引发周奖重领）；天道录功法梯「功法圆满」@15 层 →「功法小成」（max 600 层）；飞升弹层归零栏漏第四条淬炼线（修为收益，随 2026-11-04 新增线补齐——ascend-modal 记忆「弹层是 ascend() 镜像」口径）。
+
+**服务端加固**：① `petTokens` 镜像（信物等级）validateDeep 全漏校 + battle.js `petAggOf`/`baseGainOf` 裸读——伪造 `petTokens:{sp:1e12}` 即天赋乘区 ×5e9 打穿无尽/离线结算且被增速包络放行；补可选键结构校验（键 ≤12、值 0..200=TOKEN_MAX）+ 两消费点钳制（gainLv 同手法）。② `bestiary` 键数无上界喂攻血乘区——塞数万垃圾键 ×60+；消费点钳 `min(500, keys)`（真实物种上限约 320，乘区封顶 ×1.5）+ validateDeep 键数 ≤500。③ 增益镜像 elixir/ordealDone/title 补结构校验（丹 id 白名单 atk/def/gain、until ≤ now+3 天防伪造永久、苦修行程短串数组、称号 ≤40 字）。④ 存量休眠号（`createdAt < SEED_CHECK_SINCE` 且无账本行）原走零校验直通可一次种满 1e18——补「新号账龄放宽公式 ×10」的宽松种子上限（1e9+1e11×天 等，仙位/轮回不硬锁 0）。⑤ `resetLedger` 归零清单漏 `bond_lv/bond_exp/seclusion_json/dispatch_json`——重置号继承旧器灵等级、可白领旧闭关/历练收益；补四列。⑥ 遛宠 collect 跨零点把完成记录写成收集日，吃掉次日次数——改记出门日 `cur.day`。⑦ social.js 五处扣款/记账非原子（guildDonate/guildCultDonate/visitor gift/pvpBuy/guildCreate 双币+建盟+入盟）全部移入同一 BEGIN…COMMIT，失败全量回滚（guildCreate 不再手工退款，UNIQUE 冲突映射 409）。⑧ 盟任务赏格原只在响应下发由客户端 `addStones` 入账（还吃周/时辰乘区，发的比服务端口径多、且无授权流水）——改服务端直发账本 + action_log（ladderPay 同口径），客户端平加响应实额；连带补无账本行 409 防闸。
+
+**前端性能（10Hz 自动开箱常态下的无效重排清理）**：renderAchv 动态补丁段移出「每帧 200 项 ×4 次裸写 + 全文档 querySelectorAll」（值不变不写 + chips 引用随壳缓存）；applyLocks 24 目标签名门控（解锁态不变整段跳过，元素引用一次缓存）；paintResources（挂 50ms loop，比渲染节流快一倍）全字段变化检测；realPower 45ms 短窗记忆化（同 tick 内 3-5 次 playerCombatStats 重复算合并）；renderUpgrade 四条线 innerHTML/文案变化检测；manualOpen 不再 `paintBag(true)` 绕过 800ms 节流全量重建背包（掉落自带 bagDirty 路径）；进度条族（.timer-fill/.bar-fill/.hp-fill/.shop-progress-fill）width 逐帧布局动画 → 定宽 100% + `transform:scaleX` 合成（7 处 JS 写入点同步，data-w 首帧口径同改）；钓鱼游标 `left:%` → 全宽承载层 + translateX(%)（::before 画 4px 标记）；walkTick 倒计时文本变化检测；`.top-tabs` 常驻悬浮导航去 `backdrop-filter:blur(16px)`（其下 10Hz 重绘全程强制重算模糊，战斗卡去模糊同先例）换高不透明度纯色底；灵宠立绘 12 张 jpg（约 1.1MB）懒加载——首次切入闲趣页前只出剪影 SVG（display:none 不阻止 img 下载，启动即注入是纯浪费），setTopTab('xian') 首达置 seen 并作废 pets 签名换真图。未动：签名表 JSON.stringify 本身（收益中等改动面大）、breathe/treasureGlow 两处桌面端动画（改 opacity 会变观感，触屏端已关）。
+
+### WebSocket 长连接（2026-11-04 实装补记 + 2026-11-06 修复批）
+
+用户指令「开始 2、3，使用 HTTP/1.1 的 WebSocket」（2026-11-04）。此前 HANDOFF 一直漏记该架构，本节补齐并记 2026-11-06 修复。
+
+**服务端 `server/ws.js`（零依赖 RFC6455）**：握手（`node:crypto` SHA-1）→ 分帧解析（客户端帧解除掩码、**强制掩码**、帧 ≤512KB 与 SAVE_BODY_LIMIT 同界、组装 buffer ≤1MB、分片消息组装——2026-11-05 生产修复：大档存档帧 100KB+ 浏览器必分片）→ 协议级 ping 30s 保活（两轮无 pong 判死链 terminate）→ 单会话单连接（新连踢旧，close 回调按 conn 身份比对防误删新连接）。鉴权 = 同源 Origin + 会话 Cookie（与 HTTP API 的 CSRF 口径一致），跨源 403 / 无会话 401。**通道语义**：上行 `{t:'save', body}` 走 `applyStore`——与 HTTP POST /api/save **同一条**校验/账本/包络管线（saves.js 抽出的管线本体，防砖三道防线零改动），回 `{t:'saveAck', status, ...}`；下行 `hello`（连接时：版本/时间/`tzOffset`/体力/悬赏快照）、`time`（60s tick 同面）、`bounty`（跨天 0 点重推）。动作类请求照旧走 HTTP。
+
+**客户端 `game.js` wsConnect 族**：断线自动回退既有 5s HTTP 轮询（防砖逻辑零改动）；未成功过 15s 重试 ×3 后禁用本会话（EdgeOne 免费版需控制台开 WebSocket，未开则恒走 HTTP 回退零回归）、成功过则 60s 重连；存档帧 10s 无 saveAck 回退 HTTP 重试；400 终态弃帧（同 HTTP 口径）、429/5xx 保帧重试；bfcache pagehide 优雅关连接（不禁用、beacon 兜底）、pageshow 立即重连补推 pending；WS 在线时页脚心跳 `sync()` 停跑（省 ~1440 次/天 HTTP）。
+
+**2026-11-06 修复四项**：① `handleMessage` 无异常兜底（高危）——applyStore 内 DB 失败走 ROLLBACK 后 **rethrow**，而 handleMessage 挂在同步 socket `'data'` 回调上，无兜底的 throw 即 uncaughtException **崩整个服务进程**（HTTP 侧 handleApi 有顶层 try，WS 侧此前裸奔）；补 try/catch → `{t:'saveAck', status:500}`，客户端按临时故障既定路径回退 HTTP 重试。② hello/time 帧缺 `tzOffset`——客户端页脚「服务器时间」按 tz=0 直写 UTC（CST 差 8 小时），且 60s 一帧与页脚心跳 IIFE 的每秒走针互相覆写打架；帧补 `tzOffset`（`/api/version` 同口径 getTimezoneOffset），客户端 `wsOnTime` 改喂 `wsTimeFeed`（心跳 IIFE 闭包内注册，offset/tzOff 同源变量、秒针持续走针；帧缺 tzOffset 的过渡帧跳过不错写）。③ hello 帧的悬赏快照嵌在 `msg.bounty`，而 `wsOnBounty` 只认顶层 `day/elites`，原样透传恒被判空挡掉（hello 白推、悬赏要等首个 60s tick 的专帧）——改 `wsOnBounty(msg.bounty || msg)`。④ 客户端帧强制掩码（RFC6455 §5.1 服务端必须对无掩码帧断链；浏览器恒掩码，只拦裸 socket 伪造帧，零误伤）。
+
+**验收**：真实栈冒烟 9/9——注册拿会话 → 101 握手 → hello 帧 `tzOffset=-480`/体力/悬赏三面齐全 → 合法最小档掩码帧 saveAck 200 → 垃圾档 saveAck 400 且连接存活（管线拒收不断链）→ 无掩码帧被断链 → 跨源握手 403 → 全程服务进程无崩溃。
 
 ## 11. 给下一个开发工具的工作约定
 

@@ -737,8 +737,10 @@ export function createPetsService(db, staminaSvc) {
     const seedN = 1 + (Math.random() < 0.5 ? 1 : 0);
     db.exec('BEGIN');
     try {
-      // 完成记录保留当日（walk 以 day+done 防一日多次），跨日 walk() 覆写
-      stmts.setWalk.run(JSON.stringify({ day: today, done: 1 }), ctx.user.id);
+      // 完成记录保留「出门当日」（2026-11-05 跨零点修复）：以 cur.day（出门时记的日）
+      // 为准而非收集时当日——23:50 出门、00:05 收集时若写新日，会把次日 walk() 的
+      // 防重判断（cur.day === today && done）顶掉，次日一天次数凭空蒸发
+      stmts.setWalk.run(JSON.stringify({ day: cur.day || today, done: 1 }), ctx.user.id);
       stmts.addWalkDust.run(dust, ctx.user.id);
       stmts.walkLogAction.run(ctx.user.id, today, 'pet_walk', dust, now);
       db.exec('COMMIT');

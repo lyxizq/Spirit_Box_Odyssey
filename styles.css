@@ -1,8 +1,12 @@
 /* 移动端（2026-10-30）：禁用双击放大——快速连点是游戏核心操作，浏览器把它当
    「可能的双击缩放」消歧会导致点按响应迟滞且真的触发页面放大；manipulation
    保留捏合缩放与滚动，游戏内另有字号设置 */
+/* text-size-adjust 锁 100%（2026-11-06）：iOS Safari 对横向溢出的页面会启发式
+   放大整块文字（字号 > 布局盒 → 行间互相重叠），一律禁止自动调字 */
 html {
   touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* ============================================================
@@ -422,13 +426,18 @@ h2::before {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* 进度条统一 scaleX 口径（2026-11-05 性能）：JS 每 100ms 写 width + transition:width
+   在自动开箱全程持续布局动画（width 非合成属性）；改定宽 100% + transform:scaleX，
+   走合成不碰布局。渐变随缩放压扁的视觉差在 0.08~0.5s 级跳变下不可感知 */
 .timer-fill {
-  width: 0;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--gold-dim), var(--gold-2));
   box-shadow: 0 0 12px rgba(216, 179, 106, 0.55);
-  transition: width 0.08s linear;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  transition: transform 0.08s linear;
 }
 
 .muted { color: var(--muted); }
@@ -726,12 +735,14 @@ body.theme-light .panel.stage .stats div { border-color: rgba(43, 52, 64, 0.14);
 }
 
 .bar-fill {
-  width: 0;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #6d5a2e, var(--gold), var(--gold-2));
   box-shadow: 0 0 10px rgba(216, 179, 106, 0.45);
-  transition: width 0.25s ease;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  transition: transform 0.25s ease;
 }
 
 .exp-text {
@@ -836,20 +847,30 @@ body.theme-light .panel.stage .stats div { border-color: rgba(43, 52, 64, 0.14);
   border-left: 1px solid rgba(22, 163, 74, 0.55);
   border-right: 1px solid rgba(22, 163, 74, 0.55);
 }
+/* 游标改为「全宽承载层 + ::before 4px 标记」（2026-11-05 性能）：JS 逐帧写 left:%
+   每帧触发布局；承载层宽 100% 后 translateX(%) 按轨道宽解析，走合成不碰布局。
+   视觉口径不变：4px 琥珀标记、暗色深琥珀渐变、明色深金棕（2026-10-31 加深） */
 .fish-cursor {
   position: absolute;
   top: 2px;
   left: 0;
-  width: 4px;
+  width: 100%;
   height: calc(100% - 4px);
+  pointer-events: none;
+}
+.fish-cursor::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
   border-radius: 2px;
-  /* 2026-10-31 加深：浅金 #ffd479 在明色纸底轨道上看不清——暗色改深琥珀渐变，
-     明色主题下方另行覆盖为深金棕 */
   background: linear-gradient(180deg, #e2a83a, #b87d1e);
   box-shadow: 0 0 7px rgba(184, 125, 30, 0.75);
 }
 
-body.theme-light .fish-cursor {
+body.theme-light .fish-cursor::before {
   background: linear-gradient(180deg, #a8781f, #6b4a0f);
   box-shadow: 0 1px 5px rgba(58, 44, 16, 0.5);
 }
@@ -1296,6 +1317,14 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
   line-height: 1.9;
 }
 .set-skill.on { color: var(--green); }
+
+/* 工坊 · 本命法宝器灵技能（2026-11-04 用户指定）：一行一个——.set-skill 的内联横排
+   是装备面板套装技能的口径，器灵三条（破阵/守心/崩山）各自成块，长句可折行 */
+#forgeBond .set-skill {
+  display: block;
+  white-space: normal;
+  margin: 3px 0 0;
+}
 
 .sigil-row { border-color: rgba(216, 179, 106, 0.3); }
 .sigil-row .affix-name { color: var(--orange); }
@@ -1771,6 +1800,11 @@ body.theme-light .set-row:not(.on) { opacity: 0.88; }
   z-index: 50;
   display: grid;
   place-items: center;
+  /* 显式单列 minmax(0,1fr)（2026-11-04 用户报窄屏工坊弹层被撑大）：隐式 auto 轨道
+     会被弹层内容的 max-content（符文组词/套装技能长句、nowrap 行）撑到超屏——
+     min(520px,100%) 的 100% 随之按撑大的轨道解析，卡片宽出视口、居中溢出左裁；
+     轨道钳到容器宽后，超宽内容回落到卡片自身滚动，任何弹层都出不了一个屏 */
+  grid-template-columns: minmax(0, 1fr);
   padding: 20px;
   /* 原 backdrop-filter: blur(6px) 已去（2026-10-30）：战斗动画等高频重绘压在
      全屏模糊遮罩下是平板闪屏病灶，改加深遮罩底色替代 */
@@ -1956,7 +1990,9 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
   width: 100%;
   height: 100%;
   border-radius: inherit;
-  transition: width 0.22s ease;
+  transform-origin: 0 50%;
+  transform: scaleX(1);
+  transition: transform 0.22s ease;
 }
 
 .hp-fill.player {
@@ -2195,6 +2231,7 @@ body.theme-light .help-body p { color: rgba(45, 52, 66, 0.9); }
 
 .forge-reroll {
   display: flex;
+  flex-wrap: wrap; /* 洗练钮一行、石头消耗条挪到按钮下方整行（2026-11-04 用户指定） */
   align-items: center;
   gap: 10px;
   margin-top: 10px;
@@ -2800,6 +2837,16 @@ h2 { font-size: 15px; }
     max-width: none;
     margin-top: 7px;
   }
+  /* 悬赏令两钮（2026-11-04 用户报）：不吃上面的两列网格——保持与任务同行、
+     靠拢右对齐；同名覆盖须写在本块 grid 规则之后才能压住（同特异度靠后者赢），
+     .mini 去掉 margin-left:auto（网格单元右贴样式，会把两钮拆到半行宽两端） */
+  .bounty-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    width: auto;
+    margin-top: 0;
+  }
+  .bounty-actions .mini { margin-left: 0; }
   /* 灵圃采集行（2026-11-01 手机竖屏修复 + 用户指定紧凑一行）：按钮组换到文字下方
      第二行，三钮等宽紧凑铺满一行，不再逐个竖排占屏 */
   .gather-actions {
@@ -3226,6 +3273,17 @@ h2 { font-size: 15px; }
 .story-vol-place { color: var(--muted); font-size: 11px; }
 .story-vol-head .count { margin-left: auto; }
 
+/* 卷头尘缘标记（2026-11-05）：隐藏关未完成的卷在卷行右侧 ❓ 徽标，折叠态也可见 */
+.story-vol-yuan {
+  font-size: 11px;
+  color: var(--gold-2);
+  border: 1px solid rgba(216, 179, 106, 0.42);
+  border-radius: 999px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+.story-vol-yuan.dim { color: var(--muted); border-color: rgba(139, 147, 167, 0.35); }
+
 .story-vol-intro {
   margin: 6px 0 10px;
   color: var(--muted);
@@ -3233,7 +3291,11 @@ h2 { font-size: 15px; }
   line-height: 1.8;
 }
 
-.story-stage-list { display: grid; gap: 6px; }
+/* minmax(0,1fr)（2026-11-06 手机竖屏修复）：网格列默认按行内最宽不可断内容取
+   min-content——某行右侧状态文字 nowrap 超长（隐藏关锁定原因）时整列被撑到
+   比屏幕还宽，所有行右侧按钮被顶出屏幕、左侧标题被压成一字一行。锁 1fr 后
+   列宽恒等于容器，行内容各自收缩（标题省略号、备注换行） */
+.story-stage-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
 .story-stage-row {
   display: flex;
@@ -4196,7 +4258,10 @@ body.theme-light .top { background: var(--panel); }
 /* 明色下徽章用白底（--card-2 是淡绿底，徽章换白卡更清爽） */
 body.theme-light .realm-badge, body.theme-light .ver-chip { background: var(--panel); }
 
-/* ---------- 底部悬浮图标导航（原 .top-tabs）：毛玻璃 + 高清晰度 ---------- */
+/* ---------- 底部悬浮图标导航（原 .top-tabs）：高清晰度 ---------- */
+/* 去 backdrop-filter（2026-11-05 性能）：导航条常驻悬浮于主内容之上，其下 10Hz
+   数字更新/飘字/粒子每次重绘都强制重算 16px 模糊（平板闪屏同病灶，全屏战斗卡
+   已有 2026-10-30 去模糊先例）——换更高不透明度纯色底，观感几乎不变 */
 .top-tabs {
   position: fixed;
   left: 50%;
@@ -4212,14 +4277,12 @@ body.theme-light .realm-badge, body.theme-light .ver-chip { background: var(--pa
   flex-wrap: nowrap;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(26, 35, 31, 0.66);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  background: rgba(20, 28, 25, 0.93);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
 body.theme-light .top-tabs {
-  background: rgba(233, 231, 218, 0.78);
+  background: rgba(233, 231, 218, 0.95);
   box-shadow: 0 10px 28px rgba(43, 52, 64, 0.14);
 }
 
@@ -5162,8 +5225,9 @@ body.theme-light .set-wild .set-name {
 body.theme-light .farm-chip.sel { color: var(--gold-dim); }
 .farm-chip.lack { border-color: var(--red); color: var(--red); }
 .farm-seedbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
-/* 洗练弹层里的种子条收窄上边距（原内联 style，CSP style-src 'self' 拦 innerHTML style 属性后改类） */
-.forge-reroll .farm-seedbar.reroll-bar { margin: 4px 0 0; }
+/* 洗练弹层里的种子条收窄上边距（原内联 style，CSP style-src 'self' 拦 innerHTML style 属性后改类）；
+   整行挪到洗练钮下方（2026-11-04 用户指定）：100% 独占一行，不再挤在按钮右侧竖排 */
+.forge-reroll .farm-seedbar.reroll-bar { flex: 0 0 100%; margin: 4px 0 0; }
 /* 购种/一键收获/一键播种收窄：不吃 .mini 的 flex:1，按内容定宽（2026-11-03 用户指定） */
 .farm-seedbar button[data-seedbuy],
 .farm-seedbar button[data-farmbatch] { flex: 0 0 auto; }
@@ -5501,7 +5565,9 @@ body.theme-light .farm-chip.sel { color: var(--gold-dim); }
   padding: 2px 7px; font-size: 11px; line-height: 1.5; border-radius: 8px;
 }
 #caveList .cave-row .cave-desc { margin: 0; }
-@media (max-width: 379px) {
+/* 窄屏一行一个（2026-11-04 用户报：主列 max 560px，两列贴边挤爆升级钮）——
+   断点对齐全站惯用的 540（此前 379 太低，500px 预览/窄窗仍两列被裁） */
+@media (max-width: 540px) {
   #caveList { grid-template-columns: 1fr; }
 }
 
@@ -5701,9 +5767,11 @@ body.theme-light .shop-b-body, body.theme-light .shop-market-card {
   background: rgba(255, 255, 255, 0.05); overflow: hidden;
 }
 .shop-progress-fill {
-  position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+  position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
   background: linear-gradient(90deg, rgba(216, 179, 106, 0.3), rgba(216, 179, 106, 0.6));
-  transition: width 0.5s linear;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  transition: transform 0.5s linear;
 }
 .shop-progress-text {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -5910,3 +5978,18 @@ body.theme-light .apt-pip.lit {
 /* 陈列室两列（2026-11-04 用户指定「一行显示 2 个」）：12 部位展位行成两列网格 */
 #museumList { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 #museumList .pet-row { margin-top: 0; }
+
+/* ---------- 手机竖屏显示异常修复（2026-11-06 同事真机反馈批） ----------
+   ① 成就列表在 iPhone Safari 下行高压扁、文字互相叠压：#achvList 是
+   max-height+overflow-y 内嵌滚动容器，套在 body zoom（字号 85%~125%）下
+   WebKit 的缩放排版会把容器内内容压花。真机上拆掉内滚（页面本身可滚，
+   嵌套滚动在触屏上也难操作）；断点取 480 不取 540——全真机最宽 440，
+   500×900 验收视口（用户指定口径）保留原 470px 内滚不变。 */
+@media (max-width: 480px) {
+  #achvList { max-height: none; overflow: visible; padding-right: 0; }
+}
+/* ② 小屏（≤430，含 320 小机 + 字号 125% 的有效 256px）：右侧「建议战力」允许
+   换行，别让 nowrap 把左侧标题/备注挤成一字一行；空间够时不受影响（不换行） */
+@media (max-width: 430px) {
+  .ss-state { white-space: normal; min-width: 0; }
+}
