@@ -233,6 +233,27 @@ main,
 .status-grid .stats dd { margin: 3px 0 0; font-size: 13px; line-height: 1.35; }
 .status-grid .stats dd .muted { font-size: 11px; font-weight: 400; }
 
+/* 战斗属性/加成明细（2026-11-09）：行是长句，退出 .stats 的 3 列格与 dd nowrap——
+   nowrap 长行会把 1fr 轨道撑到整行内容宽，整组横向溢出面板（panel overflow:hidden 裁切） */
+#bkList dl.stats { grid-template-columns: 1fr; }
+#bkStats dl.stats dd,
+#bkList dl.stats dd { white-space: normal; overflow-wrap: anywhere; }
+/* 战斗属性一行多个（2026-11-09 用户指定）：短值 cell auto-fit 弹性列，宽屏 ~4 列、窄屏 2 列 */
+#bkStats dl.stats { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); row-gap: 6px; }
+/* 加成明细压高度（2026-11-09 用户指定）：标签与数值同行、数值 12px、行距收紧；
+   ≥481px 拆双列再砍半总高，≤480 窄屏单列防挤压 */
+#bkList dl.stats { row-gap: 3px; }
+#bkList .stats div { display: flex; align-items: baseline; gap: 8px; text-align: left; }
+/* 字体互换（2026-11-09 用户指定）：标签取原数值样式（12px/600/正文色），数值取原标签样式（10px/弱色） */
+#bkList .stats dt { flex: 0 0 auto; white-space: nowrap; font-size: 12px; color: var(--text); font-weight: 600; }
+#bkList .stats dd { flex: 1 1 auto; margin: 0; font-size: 10px; color: var(--muted); line-height: 1.3; font-weight: 400; }
+/* 总加成汇总行：置顶、金标题、下分隔线 */
+#bkList .stats div.bk-total { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+#bkList .stats div.bk-total dt { color: var(--gold); }
+@media (min-width: 481px) {
+  #bkList dl.stats { grid-template-columns: repeat(2, 1fr); column-gap: 16px; }
+}
+
 /* ---------- layout ---------- */
 
 main {

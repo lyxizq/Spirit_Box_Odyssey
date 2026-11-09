@@ -235,6 +235,12 @@ CREATE TABLE IF NOT EXISTS save_ledger (
   endless_best INTEGER NOT NULL DEFAULT 0,
   wild_max     INTEGER NOT NULL DEFAULT 0,
   grants       INTEGER NOT NULL DEFAULT 1,   -- 离线补结豁免次数（种子=1，用掉即清；防调钟每窗刷离线额度）
+  -- 服务端扣款待吸收累计（2026-11-09 防旧镜像重推白嫖）：服务端原子扣款（立盟/坊市/
+  -- 灵宠/扫荡…）只减主列；客户端下次推送若未把扣款反映进镜像（改档重推旧快照），
+  -- upsert 会把余额覆写回扣款前值 = 白嫖。三列累计「上次成功推送以来未被客户端吸收的
+  -- 服务端扣款」，saves.js 推送对账时消化/保留（见 applyStore 对账段注释）
+  srv_spent_stones  REAL    NOT NULL DEFAULT 0,
+  srv_spent_tickets REAL    NOT NULL DEFAULT 0,
   updated_at   INTEGER NOT NULL
 );
 -- 动作授权日志（2026-11-01 全量服务端校验迁移）：服务端动作端点发放的每一笔收益
@@ -315,6 +321,9 @@ export const LEDGER_COLUMNS = [
   // {start,dur,incense} / {dest,start,h}），结算由 server/cultivation.js 服务端复算
   ['seclusion_json', "TEXT    NOT NULL DEFAULT ''"],
   ['dispatch_json',  "TEXT    NOT NULL DEFAULT ''"],
+  // 服务端扣款待吸收累计（2026-11-09 防旧镜像重推白嫖，见 SCHEMA save_ledger 同名列注）
+  ['srv_spent_stones',  'REAL NOT NULL DEFAULT 0'],
+  ['srv_spent_tickets', 'REAL NOT NULL DEFAULT 0'],
 ];
 
 // 账本表迁移（2026-10-31 复审）：早版把 stones 等建成 INTEGER，node:sqlite 读 >2^53 的

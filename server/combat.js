@@ -109,7 +109,8 @@ export function createCombatService(db, staminaSvc) {
     // 本命法宝器灵（2026-11-04）：等级/经验真值落账本，推送档对账见 saves.js store
     setBond: db.prepare('UPDATE save_ledger SET bond_lv = ?, bond_exp = ? WHERE user_id = ?'),
     setTrial: db.prepare('UPDATE save_ledger SET trial_day = ?, trial_done = ? WHERE user_id = ?'),
-    spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
+    spendStones: db.prepare(
+      'UPDATE save_ledger SET stones = stones - ?, srv_spent_stones = srv_spent_stones + ? WHERE user_id = ? AND stones >= ?'),
     logAction: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     // 仙盟等级由基金现算（social.js guildLevel 同一口径）：guilds.level 列自建表起
@@ -362,7 +363,7 @@ export function createCombatService(db, staminaSvc) {
             db.exec('ROLLBACK');
             return sendJSON(res, 429, { error: '今日扫荡加购次数已用完' });
           }
-          const out = stmts.spendStones.run(SWEEP_BUY_COST, ctx.user.id, SWEEP_BUY_COST);
+          const out = stmts.spendStones.run(SWEEP_BUY_COST, SWEEP_BUY_COST, ctx.user.id, SWEEP_BUY_COST);
           if (!out.changes) {
             db.exec('ROLLBACK');
             return sendJSON(res, 400, { error: '灵石不足（加购需 20万）' });

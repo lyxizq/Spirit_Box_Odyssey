@@ -483,12 +483,27 @@ const cleanupTimer = setInterval(() => {
 }, 3600 * 1000);
 cleanupTimer.unref();
 
-// WS 升级握手挂点（HTTP/1.1 Upgrade）：非 /api/ws 的升级请求由 ws.js 返回 false 后销毁
+// WS 升级握手挂点（HTTP/1.1 Upgrade）：非 /api/ws 的升级请求由 ws.js 返回 false 后销毁。
+// 兜底 try/catch（2026-11-09）：upgrade 事件回调没有 HTTP 侧的顶层 try，ws.js 内
+// snapshotOf 等链路上的 DB 异常会变 uncaughtException 直接退出进程
 server.on('upgrade', (req, socket, head) => {
-  if (!wsSvc.handleUpgrade(req, socket, head)) socket.destroy();
+  try {
+    if (!wsSvc.handleUpgrade(req, socket, head)) socket.destroy();
+  } catch (err) {
+    console.error('[ws-upgrade]', req.url, err);
+    try { socket.destroy(); } catch (e) {}
+  }
 });
 // 60s 心跳 tick：协议级 ping 保活 + 时间/体力帧 + 跨天重推悬赏快照
-setInterval(() => wsSvc.tick(Date.now()), 60 * 1000);
+setInterval(() => {
+  try { wsSvc.tick(Date.now()); } catch (err) { console.error('[ws-tick]', err); }
+}, 60 * 1000);
+
+// 进程级异常兜底（2026-11-09）：HTTP 请求路径已有顶层 try，但事件回调 / 定时器链路上
+// 的漏网异常（未来新增代码面）此前会让进程直接退出——线上表现是「服务不定时消失」。
+// 记日志保进程；真正不可恢复的内存态损坏由容器重启策略兜底
+process.on('uncaughtException', (err) => console.error('[uncaught]', err));
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 
 server.listen(PORT, () => {
   console.log(`灵匣纪元服务端已启动: http://127.0.0.1:${PORT}  (数据库: ${DB_PATH})`);

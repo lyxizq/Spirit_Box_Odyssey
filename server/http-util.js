@@ -75,8 +75,11 @@ export function readBody(req, limit) {
 // 2. X-Forwarded-For 末位：Nginx / EdgeOne 等把直连对端追加在末位，取末位
 //    可免疫客户端自带伪造 XFF（首段不可信）。
 // 前提：源站端口只对可信代理开放（安全组放行 EdgeOne 回源网段），否则直连
-// 伪造这两个头仍可绕过按 IP 限流。
+// 伪造这两个头仍可绕过按 IP 限流。设 TRUST_PROXY=0（2026-11-09 加固）可在
+// 「源站端口可能直接暴露公网」的部署里整体关掉代理头信任，只认 socket 对端——
+// 代价是全部分支用户共享代理 IP（按 IP 限流会集体计数），仅在确有直连暴露时使用。
 export function getIp(req) {
+  if (process.env.TRUST_PROXY === '0') return req.socket.remoteAddress || 'unknown';
   const eo = req.headers['eo-connecting-ip'];
   if (typeof eo === 'string' && eo.trim()) return eo.trim();
   const fwd = req.headers['x-forwarded-for'];

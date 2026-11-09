@@ -58,6 +58,9 @@ export function createSaveService(db) {
             会话此前不在归零清单——重置号继承旧 lv9 器灵攻防乘区（combat.js
             applyBondTruth 注入），或在重置后 finish 旧闭关/历练白领收益 */
          bond_lv = 0, bond_exp = 0, seclusion_json = '', dispatch_json = '',
+         /* 服务端扣款待吸收累计（2026-11-09）：重置等价于全新账号开局，
+            旧扣款余额语义不复存在，待吸收一并清零 */
+         srv_spent_stones = 0, srv_spent_tickets = 0,
          cli_sync = NULL,
          /* claim_days 保留（2026-11-03）：天道录无 gate 梯子只靠 claim_days 做「终身一次」，
             清空会让 reset×tide 变成可重复领取（3 次/时）；重置清进度但不清领取史 */
@@ -82,14 +85,16 @@ export function createSaveService(db) {
     upsertLedger: db.prepare(
       `INSERT INTO save_ledger (user_id, stones, total_stones, dust_total, opens, exp, pet_tickets,
          ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants,
-         clicks, click_ban_until, cli_sync, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         clicks, click_ban_until, cli_sync, srv_spent_stones, srv_spent_tickets, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET stones = excluded.stones, total_stones = excluded.total_stones,
          dust_total = excluded.dust_total, opens = excluded.opens, exp = excluded.exp,
          pet_tickets = excluded.pet_tickets, ascensions = excluded.ascensions, immortal = excluded.immortal,
          power = excluded.power, grants = excluded.grants,
          clicks = excluded.clicks, click_ban_until = excluded.click_ban_until,
          cli_sync = excluded.cli_sync,
+         srv_spent_stones = excluded.srv_spent_stones,
+         srv_spent_tickets = excluded.srv_spent_tickets,
          /* 进度列只进不退：cli_sync 基线下允许客户端推更低的镜像过单调校验，若照抄
             excluded 值会让服务端进度回退——下一场又按 first=1.5× 首通结算（复刷首通
             奖励 3 倍差的口子）。MAX 钳制后客户端展示镜像不变，防砖语义保留 */
@@ -294,6 +299,9 @@ export function createSaveService(db) {
     }
     if (!isInt(data.towerCleared, 0, DEEP.PROGRESS_MAX)) bad('爬塔进度越界');
     if (!isInt(data.stageCleared, 0, DEEP.PROGRESS_MAX)) bad('闯关进度越界');
+    // 无尽进度（2026-11-09 补校验）：模式无上限，界放 1e6 只防天文数字种基线砖号；
+    // 账本列侧另按天道录 endless 梯最高档 2000 钳（economy.js ledgerOf）
+    if (data.endlessBest !== undefined && !isInt(data.endlessBest, 0, 1e6)) bad('无尽进度越界');
     // 野外已探区列表：只收 0..200 的整型元素（与 wildMaxOf 的钳制同口径）。
     // 不校验会有自锁口：推 wildCleared:[1e300] 种下巨大 wild_max 基线，
     // 之后任何真实进度都触发「野外探区出现回退」被永久拒收。
@@ -400,6 +408,9 @@ export function createSaveService(db) {
         if (!isInt(b.exp, 0, 1e9)) bad('本命法宝器灵经验越界');
         const asc = isInt(data.ascensions, 0, 1e6) ? data.ascensions : 0;
         if (!isInt(b.lv, 0, 9) || b.lv > 3 + 2 * Math.min(asc, 3)) bad('本命法宝器灵等级越界');
+        // 认主才有效力（2026-11-09 双端对齐）：经验只在认主后结算（combat.js bondAccrue
+        // 同门槛），lv>0 而 slot 空 = 非法态——battle.js 此前漏了客户端的 slot 门槛
+        if (b.lv > 0 && !b.slot) bad('本命法宝未认主');
         if (Object.keys(b).length > 3) bad('本命法宝字段越界');
       }
     }
@@ -840,6 +851,9 @@ export function createSaveService(db) {
     }
     const now = Date.now();
     const led = ledgerOf(data, now);
+    // 服务端扣款推送对账结果（见 prevRow 块内对账段）：{stones, tickets} =
+    // 本次推送后仍「未被客户端镜像吸收」的待吸收扣款，随 upsertLedger 落回账本
+    let srvPend = { stones: 0, tickets: 0 };
     // —— 增速账本校验：无账本行以当档种入基线；有则做单调性 + 增速校验 ——
     const prevRow = stmts.getLedger.get(userId);
     if (prevRow) {
@@ -880,6 +894,48 @@ export function createSaveService(db) {
       if (fail) {
         console.error('[saves] 增速校验拒收 user=' + userId + '：' + fail);
         return { status: 400, body: { error: '存档增速异常，已保留上次云端进度' } };
+      }
+      // —— 服务端扣款推送对账（2026-11-09 防旧镜像重推白嫖）——
+      // 服务端扣款（spendLedger/spendTickets：立盟/捐献/加购/扫荡/灵宠喂食合成洗髓/
+      // 坊市建筑…）只减账本主列；upsertLedger 又用客户端镜像整体覆写余额列——改档
+      // 客户端消费后重推扣款前的旧快照，单调性/跳变检查全过（相对 cli_sync 增量为 0），
+      // 余额被覆写回扣款前值 = 服务端定价的消费全部免费。srv_spent_* 两列累计「上次
+      // 成功推送以来未被客户端镜像吸收的服务端扣款」，此处对账：
+      //   吸收判据（stones）= 推送余额 ≤ cli 基线 + 同窗收益实额 − 待吸收额。所有入账
+      //   路径同步抬高 stones 与 totalStones（双列同加的入账纪律），dTotal 即收益实额
+      //   的独立证明；要伪造「已吸收」只能让 totalStones 真涨（单调列，锁死）或把余额
+      //   真花下去（真消费）——退款无利可图。2e6 余量兼容旧口径「只加 stones 不加
+      //   totalStones」的入账。
+      //   吸收判据（tickets）= 推送余额 ≤ cli 基线 + 券增速包络 − 待吸收额（券是镜像
+      //   自报掉落、无第二列可证，包络余量内的白嫖被每日猎捕上限兜底）。
+      //   未吸收 → 账本按「推送值 − 待吸收」落库（服务端真值），cli_sync 仍存原始推送
+      //   值：合法客户端漏吸收（响应丢失/在途竞态）时显示余额暂时虚高，下一次成功
+      //   消费/带余额的动作响应会自然对齐；改档重推则每次推送都被压回真值。
+      // 旧 cli_sync（NULL，账本上线前的行）无对账基线，跳过并把待吸收清零（误压 =
+      //   真玩家双扣）。修为扣款不跟踪：唯一消耗是立盟 2 万修为，量级远低于修为增速
+      //   包络的绝对底，跟踪无执行力。
+      if (prevRow.cli_sync) {
+        let pendStones = Math.max(0, Number(prevRow.srv_spent_stones) || 0);
+        let pendTickets = Math.max(0, Number(prevRow.srv_spent_tickets) || 0);
+        if (pendStones > 0) {
+          // 1000 绝对余量只兜大数取整（1e15+ 的 REAL 列 floor 换算），不再留 2e6 旧口径
+          // 余量——「只加 stones 不加 totalStones」的入账 2026-11-05 批已全量双列同加，
+          // 留 2e6 会把所有 ≤2e6 的服务端扣款重新变成免费退款面
+          const dTotal = Math.max(0, Number(data.totalStones) - prev.totalStones);
+          if (Number(data.stones) <= prev.stones + dTotal + 1000 - pendStones) pendStones = 0;
+        }
+        if (pendTickets > 0) {
+          const daysW = Math.max(now - prevRow.updated_at, 60000) / 86400000;
+          const dOpens = Math.max(0, Number(data.opens) - prev.opens);
+          const sTk = Math.max(0, sanctionedSince(userId, prevRow.updated_at).tickets);
+          const tkAllow = dOpens * 0.01 + 50 * daysW + 3 + sTk;
+          if (Number(data.petTickets) <= prev.petTickets + tkAllow - pendTickets) pendTickets = 0;
+        }
+        if (pendStones > 0 || pendTickets > 0) {
+          console.error('[saves] 服务端扣款未吸收压回 user=' + userId + '：stones −' +
+            pendStones + ' / tickets −' + pendTickets);
+        }
+        srvPend = { stones: pendStones, tickets: pendTickets };
       }
     } else if ((user ? user.createdAt : 0) && (user ? user.createdAt : 0) >= SEED_CHECK_SINCE) {
       // —— 新号首推种子校验（2026-11-01 三修：阈值时长感知）——
@@ -1012,17 +1068,22 @@ export function createSaveService(db) {
     try {
       stmts.upsert.run(userId, rawBody, Buffer.byteLength(rawBody), now);
       syncPowerScore(userId, data);
+      // cli_sync 存客户端「原始推送值」：对账压回只影响账本主列（服务端真值），
+      // 不毒化客户端基线——下一窗增速对比仍以客户端自身申报为准
+      const cliSync = JSON.stringify({
+        stones: led.stones, totalStones: led.totalStones, dustTotal: led.dustTotal,
+        opens: led.opens, petTickets: led.petTickets, towerCleared: led.towerCleared,
+        stageCleared: led.stageCleared, endlessBest: led.endlessBest, wildMax: led.wildMax,
+      });
+      // 服务端扣款未吸收：账本主列按「推送值 − 待吸收」落库（见上方对账段注释）
+      if (srvPend.stones > 0) led.stones = Math.max(-1e12, led.stones - srvPend.stones);
+      if (srvPend.tickets > 0) led.petTickets = Math.max(0, Math.floor(led.petTickets - srvPend.tickets));
       stmts.upsertLedger.run(
         userId, led.stones, led.totalStones, led.dustTotal, led.opens, led.exp,
         led.petTickets, led.ascensions, led.immortal, led.power,
         led.towerCleared, led.stageCleared, led.endlessBest, led.wildMax,
-        prevRow ? 0 : 1, led.clicks, clickBanUntil,
-        // cli_sync：客户端已确认基线快照（单调性对比用，见上方 prev 构建处注释）
-        JSON.stringify({
-          stones: led.stones, totalStones: led.totalStones, dustTotal: led.dustTotal,
-          opens: led.opens, petTickets: led.petTickets, towerCleared: led.towerCleared,
-          stageCleared: led.stageCleared, endlessBest: led.endlessBest, wildMax: led.wildMax,
-        }), now);   // 校验通过即清离线豁免；种基线发 1 次
+        prevRow ? 0 : 1, led.clicks, clickBanUntil, cliSync,
+        srvPend.stones, srvPend.tickets, now);   // 校验通过即清离线豁免；种基线发 1 次
       // 在线心跳：推送成功即证明玩家此刻在线，推进离线结算起点（见 stmts.setOfflineAt 注）
       stmts.setOfflineAt.run(now, userId);
       db.exec('COMMIT');

@@ -84,7 +84,8 @@ export function createCultivationService(db) {
     addStonesDust: db.prepare(
       'UPDATE save_ledger SET stones = stones + ?, total_stones = total_stones + ?, dust_total = dust_total + ? WHERE user_id = ?'),
     addExp: db.prepare('UPDATE save_ledger SET exp = exp + ? WHERE user_id = ?'),
-    spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
+    spendStones: db.prepare(
+      'UPDATE save_ledger SET stones = stones - ?, srv_spent_stones = srv_spent_stones + ? WHERE user_id = ? AND stones >= ?'),
     logAction: db.prepare(
       'INSERT INTO action_log (user_id, day, kind, stones, dust, tickets, exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     setSeclusion: db.prepare('UPDATE save_ledger SET seclusion_json = ? WHERE user_id = ?'),
@@ -140,7 +141,7 @@ export function createCultivationService(db) {
         return sendJSON(res, 429, { error: '已在闭关中，出关后再来' });
       }
       if (cost > 0) {
-        const spent = stmts.spendStones.run(cost, ctx.user.id, cost);
+        const spent = stmts.spendStones.run(cost, cost, ctx.user.id, cost);
         if (spent.changes === 0) {
           db.exec('ROLLBACK');
           return sendJSON(res, 400, { error: '灵石不足，上不起这炷香' });
@@ -213,7 +214,9 @@ export function createCultivationService(db) {
       const demon = !insight && roll < SECL_INSIGHT_CHANCE + SECL_DEMON_CHANCE;
       if (insight) {
         exp *= 2;
-        stmts.addExp.run(exp + SECL_INSIGHT_DAOYUN, ctx.user.id); // exp 列同账，道韵经响应下发客户端入库
+        // 道韵不混入 exp 主列（2026-11-09 复审）：+25 道韵此前一并加进 exp，账本比授权
+        // 流水多 25/次（对账误判面）；道韵只经响应 daoyun 字段下发客户端入自己的档
+        stmts.addExp.run(exp, ctx.user.id);
         stmts.logAction.run(ctx.user.id, dayStr(now), 'seclusion', 0, 0, 0, exp, now);
       } else {
         stmts.addExp.run(exp, ctx.user.id);

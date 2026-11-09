@@ -181,8 +181,11 @@ export function createPetsService(db, staminaSvc) {
          ascensions, immortal, power, tower_cleared, stage_cleared, endless_best, wild_max, grants,
          clicks, click_ban_until, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)`),
-    spendLedger: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
-    spendTickets: db.prepare('UPDATE save_ledger SET pet_tickets = pet_tickets - ? WHERE user_id = ? AND pet_tickets >= ?'),
+    // srv_spent_* 同语句累计待吸收扣款（2026-11-09 防旧镜像重推白嫖，saves.js 推送对账）
+    spendLedger: db.prepare(
+      'UPDATE save_ledger SET stones = stones - ?, srv_spent_stones = srv_spent_stones + ? WHERE user_id = ? AND stones >= ?'),
+    spendTickets: db.prepare(
+      'UPDATE save_ledger SET pet_tickets = pet_tickets - ?, srv_spent_tickets = srv_spent_tickets + ? WHERE user_id = ? AND pet_tickets >= ?'),
     setPetHunt: db.prepare('UPDATE save_ledger SET pet_hunt = ? WHERE user_id = ?'),
     // 遛宠日常（2026-11-04）：进行中的遛宠 {start, spot} 墙钟权威在账本列
     getWalk: db.prepare('SELECT pet_walk FROM save_ledger WHERE user_id = ?'),
@@ -322,7 +325,7 @@ export function createPetsService(db, staminaSvc) {
           ...(cur ? staminaView(cur) : {}),
         });
       }
-      const tOut = stmts.spendTickets.run(PET_HUNT_TICKET, ctx.user.id, PET_HUNT_TICKET);
+      const tOut = stmts.spendTickets.run(PET_HUNT_TICKET, PET_HUNT_TICKET, ctx.user.id, PET_HUNT_TICKET);
       if (!tOut.changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 402, { error: '招募券不足（开箱掉落、签到与任务可得）' });
@@ -400,7 +403,7 @@ export function createPetsService(db, staminaSvc) {
       let feedStones = 0;
       if (policyKey === 'feed') {
         feedStones = policy.stones(enc.r);
-        const out = stmts.spendLedger.run(feedStones, ctx.user.id, feedStones);
+        const out = stmts.spendLedger.run(feedStones, feedStones, ctx.user.id, feedStones);
         if (!out.changes) {
           db.exec('ROLLBACK');
           return sendJSON(res, 402, { error: '灵石不足（投喂需 ' + feedStones + '）' });
@@ -504,7 +507,7 @@ export function createPetsService(db, staminaSvc) {
         db.exec('ROLLBACK');
         return sendJSON(res, 400, { error: '材料灵宠已被消耗（请刷新后重试）' });
       }
-      const out = stmts.spendLedger.run(cost, ctx.user.id, cost);
+      const out = stmts.spendLedger.run(cost, cost, ctx.user.id, cost);
       if (!out.changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 402, { error: '灵石不足（合成需 ' + cost + '）' });
@@ -570,7 +573,7 @@ export function createPetsService(db, staminaSvc) {
       const times = Math.max(0, Math.floor(num(rmap[uid])));
       const cost = Math.min(1e15, PET_REROLL_STONES(inst.r, times, lockSet.size));
       const dust = Math.round(PET_REROLL_DUST(inst.r, lockSet.size));
-      const out = stmts.spendLedger.run(cost, ctx.user.id, cost);
+      const out = stmts.spendLedger.run(cost, cost, ctx.user.id, cost);
       if (!out.changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 402, { error: '灵石不足（洗髓需 ' + cost + '）' });
@@ -634,7 +637,7 @@ export function createPetsService(db, staminaSvc) {
         db.exec('ROLLBACK');
         return sendJSON(res, 429, { error: '今日加购次数已用完（' + PET_HUNT_BUY_DAILY + ' 次/日）' });
       }
-      const out = stmts.spendLedger.run(PET_HUNT_BUY_COST, ctx.user.id, PET_HUNT_BUY_COST);
+      const out = stmts.spendLedger.run(PET_HUNT_BUY_COST, PET_HUNT_BUY_COST, ctx.user.id, PET_HUNT_BUY_COST);
       if (!out.changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 402, { error: '灵石不足（加购 1 次需 ' + PET_HUNT_BUY_COST + '）' });

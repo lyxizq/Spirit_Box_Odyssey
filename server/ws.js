@@ -8,16 +8,21 @@
 // 传输层只换通道：防砖三道防线（单调性/增速包络/cli_sync）在 applyStore 内一行业务未动。
 // 依赖注入：auth（会话）、applyStore（存档管线）、snapshotOf（连接时首帧快照）、version。
 import crypto from 'node:crypto';
-import { sameOrigin } from './http-util.js';
+import { sameOrigin, getIp, sha256, SlidingWindow } from './http-util.js';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const PING_EVERY_MS = 30 * 1000;      // 协议级 ping 保活（WS 帧不产生对域名的 HTTP 请求）
 const PONG_TIMEOUT_MS = 12 * 1000;    // 两轮 ping 无 pong 视为死链，直接 terminate
 const MAX_FRAME = 512 * 1024;         // 与 SAVE_BODY_LIMIT 同界，超长帧直接断开
 const MAX_BUFFER = 1024 * 1024;
+const MAX_CLIENTS = 2000;             // 全局连接上限（账号数即连接数，正常部署远达不到）
+// 握手限流（2026-11-09 加固）：裸 socket 伪造 Origin/Host 即可无限发起握手，每次成本
+// 一次 session 哈希查库；合法客户端重连风暴（移动网络抖动）也远够用
+const HANDSHAKE_WINDOW = { ms: 10 * 1000, max: 30 };
 
 export function createWsService({ auth, applyStore, snapshotOf, version }) {
   const clients = new Map(); // userId -> conn（单会话单连接：新连踢旧）
+  const hsWindow = new SlidingWindow(HANDSHAKE_WINDOW.ms, HANDSHAKE_WINDOW.max);
 
   // —— 帧编码（服务端下行不掩码）——
   function encodeFrame(opcode, payload = Buffer.alloc(0)) {
@@ -107,7 +112,9 @@ export function createWsService({ auth, applyStore, snapshotOf, version }) {
       console.error('[ws] applyStore 异常 user=' + conn.user.id + '：' + (e && e.message));
       r = { status: 500, body: { error: '存档管线异常' } };
     }
-    sendObj(conn, Object.assign({ t: 'saveAck', status: r.status }, r.body));
+    // q = 客户端存档帧序号原样回带（2026-11-09 帧关联）：迟到 ack 冒领新帧/误清
+    // cloudPending 的窗口由此关闭；旧客户端不发 q 时字段为 undefined，客户端按旧口径对账
+    sendObj(conn, Object.assign({ t: 'saveAck', status: r.status, q: msg.q }, r.body));
   }
   const sendTo = (userId, obj) => {
     const c = clients.get(userId);
@@ -126,12 +133,18 @@ export function createWsService({ auth, applyStore, snapshotOf, version }) {
     };
     // 同源校验（浏览器 WS 握手必带 Origin；与 HTTP API 的 CSRF 口径一致）+ 会话鉴权
     if (!sameOrigin(req)) return finish('403 Forbidden', 'origin');
+    // 握手限流 + 全局连接上限（2026-11-09 加固）：握手每次消耗一次 session 哈希查库，
+    // 裸 socket 可无限重试；连接总量随账号数无界增长同样有内存面
+    if (!hsWindow.hit(getIp(req))) return finish('429 Too Many Requests', 'rate');
+    if (clients.size >= MAX_CLIENTS) return finish('503 Service Unavailable', 'busy');
     const user = auth.getSessionUser(req);
     if (!user) return finish('401 Unauthorized', 'auth');
     const key = req.headers['sec-websocket-key'];
     if (!key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') {
       return finish('400 Bad Request', 'handshake');
     }
+    // 连接期会话复核用的原始 token（tick 每轮 auth.sessionAlive 复查，失效断链）
+    const sessionToken = String((req.headers.cookie || '').match(/(?:^|;\s*)lx_session=([^;]+)/)?.[1] || '');
     const accept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
     socket.write(
       'HTTP/1.1 101 Switching Protocols\r\n' +
@@ -143,7 +156,7 @@ export function createWsService({ auth, applyStore, snapshotOf, version }) {
     const prev = clients.get(user.id);
     if (prev) { try { prev.socket.write(encodeFrame(0x8, Buffer.from([0x03, 0xe8]))); prev.socket.destroy(); } catch (e) {} }
 
-    const conn = { user, socket, buffer: Buffer.alloc(0), frag: null, alive: true, day: '' };
+    const conn = { user, socket, token: sessionToken, buffer: Buffer.alloc(0), frag: null, alive: true, day: '' };
     clients.set(user.id, conn);
 
     socket.on('data', (chunk) => {
@@ -160,6 +173,13 @@ export function createWsService({ auth, applyStore, snapshotOf, version }) {
       }
       conn.buffer = frames.rest;
       for (const fr of frames.frames) {
+        // RFC6455 §5.5：控制帧（close/ping/pong）不得分片、载荷 ≤125 字节——超规即协议
+        // 错误断链（2026-11-09 规范化：此前 ping 载荷按 MAX_FRAME 上限原样回显）
+        if ((fr.opcode & 0x8) !== 0 && (!fr.fin || fr.payload.length > 125)) {
+          socket.destroy();
+          clients.delete(user.id);
+          return;
+        }
         if (fr.opcode === 0x8) { // close：回关闭帧并断开
           try { socket.write(encodeFrame(0x8, fr.payload)); } catch (e) {}
           socket.destroy();
@@ -199,32 +219,59 @@ export function createWsService({ auth, applyStore, snapshotOf, version }) {
 
     // 连接时首帧快照（版本 / 服务器时间 / 体力 / 悬赏妖踪快照，2026-11-04 二期推送）。
     // time 帧必须带 tzOffset（2026-11-06 修复）：与 /api/version 同口径（getTimezoneOffset，
-    // UTC+8 为 -480）——此前缺失，客户端页脚「服务器时间」按 UTC 直写，CST 差 8 小时
-    if (snapshotOf) sendObj(conn, Object.assign(
-      { t: 'hello', version, time: Date.now(), tzOffset: new Date().getTimezoneOffset() },
-      snapshotOf(user.id, conn)));
+    // UTC+8 为 -480）——此前缺失，客户端页脚「服务器时间」按 UTC 直写，CST 差 8 小时。
+    // snapshotOf 链多条 DB 查询，异常兜底防崩进程（与 handleMessage 同口径，2026-11-09）
+    try {
+      if (snapshotOf) sendObj(conn, Object.assign(
+        { t: 'hello', version, time: Date.now(), tzOffset: new Date().getTimezoneOffset() },
+        snapshotOf(user.id, conn)));
+    } catch (e) {
+      console.error('[ws] hello 快照异常 user=' + user.id + '：' + (e && e.message));
+    }
     return true;
   }
 
-  // 60s 心跳 tick（index.js setInterval 调用）：协议级 ping 保活 + 时间帧 + 日期翻转重推悬赏
+  // 会话失效断链（1008 Policy Violate）：登出互踢/封号/过期后，已建立连接的写权限
+  // 不应继续存活（2026-11-09 复核：此前鉴权只在握手做一次，HTTP 侧每请求都过
+  // getSessionUser，WS 侧没有对应防线）
+  function killSession(conn) {
+    try {
+      conn.socket.write(encodeFrame(0x8, Buffer.from([0x03, 0xf0])));
+    } catch (e) {}
+    try { conn.socket.destroy(); } catch (e) {}
+  }
+
+  // 60s 心跳 tick（index.js setInterval 调用）：协议级 ping 保活 + 时间帧 + 日期翻转重推悬赏。
+  // 每连接独立 try/catch（2026-11-09）：snapshotOf 链多条 DB 查询，任一异常不能变
+  // uncaughtException 崩掉整个服务进程（setInterval 回调无顶层兜底）
   function tick(now = Date.now()) {
     const timeFrame = { t: 'time', version, time: now, tzOffset: new Date(now).getTimezoneOffset() };
+    const d = new Date(now);
+    const p = (n) => String(n).padStart(2, '0');
+    const today = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     for (const [userId, conn] of clients) {
-      if (!conn.alive) { // 上一轮 ping 至今无 pong：死链
-        try { conn.socket.destroy(); } catch (e) {}
-        clients.delete(userId);
-        continue;
-      }
-      conn.alive = false;
-      try { conn.socket.write(encodeFrame(0x9, Buffer.alloc(0))); } catch (e) { continue; }
-      const d = new Date(now);
-      const p = (n) => String(n).padStart(2, '0');
-      const today = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-      const snap = snapshotOf ? snapshotOf(userId, conn, today) : {};
-      sendObj(conn, Object.assign({ t: 'time' }, timeFrame, snap));
-      if (conn.day !== today) { // 跨天重推悬赏快照（每日 0 点换榜）
-        conn.day = today;
-        if (snap.bounty) sendObj(conn, Object.assign({ t: 'bounty' }, snap.bounty));
+      try {
+        if (!conn.alive) { // 上一轮 ping 至今无 pong：死链
+          try { conn.socket.destroy(); } catch (e) {}
+          clients.delete(userId);
+          continue;
+        }
+        // 会话复核：登出/互踢/封号/过期即断链（写权限随会话生死）
+        if (auth.sessionAlive && !auth.sessionAlive(conn.token)) {
+          killSession(conn);
+          clients.delete(userId);
+          continue;
+        }
+        conn.alive = false;
+        try { conn.socket.write(encodeFrame(0x9, Buffer.alloc(0))); } catch (e) { continue; }
+        const snap = snapshotOf ? snapshotOf(userId, conn, today) : {};
+        sendObj(conn, Object.assign({ t: 'time' }, timeFrame, snap));
+        if (conn.day !== today) { // 跨天重推悬赏快照（每日 0 点换榜）
+          conn.day = today;
+          if (snap.bounty) sendObj(conn, Object.assign({ t: 'bounty' }, snap.bounty));
+        }
+      } catch (e) {
+        console.error('[ws] tick 异常 user=' + userId + '：' + (e && e.message));
       }
     }
   }

@@ -149,7 +149,8 @@ export function createShopService(db) {
     getSave: db.prepare('SELECT data FROM game_saves WHERE user_id = ?'),
     getLedger: db.prepare('SELECT user_id FROM save_ledger WHERE user_id = ?'),
     // 支出：严格足额原子扣（social.js spendLedger 口径，堵推送滞后窗口重复消费）
-    spendStones: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
+    spendStones: db.prepare(
+      'UPDATE save_ledger SET stones = stones - ?, srv_spent_stones = srv_spent_stones + ? WHERE user_id = ? AND stones >= ?'),
     // 收入：主列 + 累计同步加（客户端吸收响应后推档，cli_sync 对齐——combat.js 同款）
     addStones: db.prepare('UPDATE save_ledger SET stones = stones + ?, total_stones = total_stones + ? WHERE user_id = ?'),
     logAction: db.prepare(
@@ -249,7 +250,7 @@ export function createShopService(db) {
       if (lv >= def.max) { db.exec('ROLLBACK'); return sendJSON(res, 400, { error: def.name + '已满级' }); }
       if (st.rep < def.repNeed) { db.exec('ROLLBACK'); return sendJSON(res, 403, { error: '商誉不足（需 ' + def.repNeed + '）' }); }
       const cost = upCostOf(key, lv);
-      if (!stmts.spendStones.run(cost, ctx.user.id, cost).changes) {
+      if (!stmts.spendStones.run(cost, cost, ctx.user.id, cost).changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 400, { error: '灵石不足（需 ' + cost + '）' });
       }
@@ -288,7 +289,7 @@ export function createShopService(db) {
           return sendJSON(res, 400, { error: '原料不足：' + MATS[m] + ' ×' + rec.r.mats[m] });
         }
       }
-      if (!stmts.spendStones.run(rec.r.fee, ctx.user.id, rec.r.fee).changes) {
+      if (!stmts.spendStones.run(rec.r.fee, rec.r.fee, ctx.user.id, rec.r.fee).changes) {
         db.exec('ROLLBACK');
         return sendJSON(res, 400, { error: '灵石不足（手续费 ' + rec.r.fee + '）' });
       }

@@ -2603,6 +2603,8 @@
   let wsTimer = 0;
   let wsAckTimer = 0;
   let wsSaveText = null;   // 在途存档帧原文（ack 对账用）
+  let wsSaveQ = 0;         // 在途帧序号（ack 关联对账用）
+  let wsSaveSeq = 0;       // 存档帧自增序号（发给服务端、ack 回带）
   let wsBountyFeed = null; // 悬赏快照消费点（renderBountyElites 所在闭包后置注册）
   let wsTimeFeed = null;   // 时间帧消费点（页脚心跳 IIFE 后置注册：喂 offset/tzOff，秒针持续走针）
   const WS_RETRY_OK = 60000;   // 曾成功过：断开后 60s 重连
@@ -2619,11 +2621,12 @@
     try { wsSock = new WebSocket(proto + location.host + '/api/ws'); } catch (e) { return; }
     wsSock.onopen = () => {
       wsOn = true;
-      wsFails = 0;
       hideCloudBanner();
       // 握手 ≠ 应用层活着（2026-11-06 半死态修复）：反代半开 WS 时 onopen 照常、帧全黑洞——
       // 5s 内没收到任何帧即判半死，主动断开走重连路径。此前 onopen 直接置 wsEverOk=true，
-      // 半死连接断开后走 60s 慢速重连，永远到不了「3 连败 15s 禁用」的自愈，拖累整会话
+      // 半死连接断开后走 60s 慢重连，永远到不了「3 连败 15s 禁用」的自愈，拖累整会话。
+      // wsFails 同理不在 onopen 清零（2026-11-09）：半死链路 onopen→5s 超时→close 循环里
+      // 计数恒被清回 0，永远到不了「3 连败禁用」——与 wsEverOk 一起挪到应用层首帧
       clearTimeout(wsHelloTimer);
       wsHelloTimer = setTimeout(() => { try { if (wsSock) wsSock.close(); } catch (e) {} }, 5000);
     };
@@ -2640,7 +2643,7 @@
       let msg = null;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (!msg || !msg.t) return;
-      if (!wsEverOk) wsEverOk = true; // 应用层首帧才算「成功过」（半死态修复：onopen 不算数）
+      if (!wsEverOk) { wsEverOk = true; wsFails = 0; } // 应用层首帧才算「成功过」（半死态修复：onopen 不算数）
       if (msg.t === 'saveAck') return wsOnSaveAck(msg);
       // time 帧里服务端顺带捎了悬赏快照（60s tick 的 snap 面）：一并消费，胜场状态
       // 每分钟自动保鲜（跨设备打过 / 面板久开不重拉也不至于一钟头陈旧）
@@ -2666,7 +2669,8 @@
     if (!wsOn || !wsSock || wsSock.readyState !== 1) return false;
     cloudBusy = true;
     wsSaveText = text;
-    wsSend({ t: 'save', body: text });
+    wsSaveQ = ++wsSaveSeq;
+    wsSend({ t: 'save', q: wsSaveQ, body: text });
     clearTimeout(wsAckTimer);
     wsAckTimer = setTimeout(() => { // 10s 无 ack：临时故障，回退 HTTP 重试
       cloudBusy = false;
@@ -2685,6 +2689,11 @@
 
   // ack 帧 = HTTP POST /api/save 响应的同语义（200 吸收 / 400 拒收弃帧 / 429 5xx 保留重试）
   function wsOnSaveAck(ack) {
+    // 帧关联（2026-11-09）：ack 带 q 时只对账同序号帧——存档 #1 的 ack 迟到 >10s 时，
+    // 超时路径已把在途帧推进到 #2（或清空回退 HTTP），旧 ack 无条件套用会误清新帧的
+    // cloudPending（#2 实际 400 拒收则永久丢帧）并错刷 cloudLastPush 节流后续推送。
+    // 旧服务端不回 q（部署过渡窗）：undefined 视为匹配，维持旧口径
+    if (ack.q !== undefined && ack.q !== wsSaveQ) return;
     clearTimeout(wsAckTimer);
     const text = wsSaveText;
     wsSaveText = null;
@@ -3162,6 +3171,23 @@
         hp: fixInt(state.gongfa.hp, 0, GONGFA.hp.max),
         hui: fixInt(state.gongfa.hui, 0, GONGFA.hui.max),
       };
+      // 五行道基 / 道悟星图（2026-11-09 补兜底）：此前唯一没结构校验的战斗输入态——
+      // 畸形档（xingtu: 5 之类）会让 xingtuAgg 在渲染循环里每帧 TypeError 游戏假死；
+      // 云端侧 validateDeep 已挡，这里补本地脏档/迁移序列的纵深防御（同 cave/gongfa 手法）
+      if (!state.daoji || typeof state.daoji !== 'object' || Array.isArray(state.daoji)) {
+        state.daoji = { el: '', stage: 0, picked: false };
+      }
+      state.daoji = {
+        el: typeof state.daoji.el === 'string' && DAOJI_BONUS[state.daoji.el] ? state.daoji.el : '',
+        stage: fixInt(state.daoji.stage, 0, 5),
+        picked: !!state.daoji.picked,
+      };
+      if (!state.xingtu || typeof state.xingtu !== 'object' || Array.isArray(state.xingtu)) {
+        state.xingtu = { lit: [] };
+      }
+      if (!Array.isArray(state.xingtu.lit)) state.xingtu.lit = [];
+      state.xingtu.lit = state.xingtu.lit.filter((id) =>
+        typeof id === 'string' && /^([abc](10|[1-9]))$/.test(id)).slice(0, 30);
       state.petSlots = Math.min(PET_SLOT_MAX, Math.max(1, Math.floor(Number(state.petSlots)) || 1));
       // —— 灵宠个体化（2026-11-02 融合重构）：个体表钳制 + 老档一次性迁移 ——
       if (!Array.isArray(state.petInsts)) state.petInsts = [];
@@ -4104,15 +4130,22 @@
   function petBasePower() {
     const saved = state.activePets;
     state.activePets = [];
+    // 与 evalLoadout 同款「写后读」绕记忆化（2026-11-09）：renderNow 每帧先实算 realPower
+    // 刷新 rpMemo、renderCombat 清 combatDirty，随后 renderPets 才调到这里——45ms 记忆窗
+    // 内命中的是带全阵容的旧缓存，powBase 虚高、solo 差值恒 0（灵宠面板/背包排序受害）
+    rpMemo.t = -1e9;
     const p = realPower();
     state.activePets = saved;
+    rpMemo.t = -1e9; // 临时态战力不许留在记忆窗里污染随后的真读
     return p;
   }
   function petSoloPower(inst, base) {
     const saved = state.activePets;
     state.activePets = [inst.uid];
+    rpMemo.t = -1e9;
     const p = realPower();
     state.activePets = saved;
+    rpMemo.t = -1e9;
     return Math.max(0, p - base);
   }
   const expMult = () => (1 + 0.10 * state.cave.library) * (1 + 0.05 * state.gongfa.hui);
@@ -4639,8 +4672,19 @@
     return counts;
   }
 
-  function playerCombatStats() {
+  function playerCombatStats(withBk) {
     const power = totalPower();
+    // 加成明细采集（withBk=true 才收）：renderStatus「战斗属性/加成明细」两组消费。
+    // 各行与下方乘区逐点同位采集，数字即计算真值、零二次推导（改乘区必同步 bkPush）
+    const bk = [];
+    const pctTxt = (v) => trim((v * 100).toFixed(2)) + '%';
+    const AX_LBL = { atk: '攻', hp: '血', def: '防', crit: '暴', dr: '减伤', ls: '吸血', pierce: '破甲' };
+    const bkPush = (n, o) => {
+      if (!withBk) return;
+      const s = Object.keys(AX_LBL).filter((k) => o[k]).map((k) => AX_LBL[k] + ' +' + pctTxt(o[k])).join(' · ');
+      if (s) bk.push({ n, s });
+    };
+    const bkScaled = (o) => ({ atk: o.atk * GROWTH_SCALE, hp: o.hp * GROWTH_SCALE, def: o.def * GROWTH_SCALE, crit: o.crit * GROWTH_SCALE, ls: o.ls * GROWTH_SCALE, pierce: o.pierce * GROWTH_SCALE });
     let atk = 16 + power * 0.9;
     let hp = 120 + power * 5.5;
     let def = 3 + power * 0.28;
@@ -4663,18 +4707,23 @@
     atk *= fangMult;
     hp *= fangMult;
     def *= fangMult;
+    bkPush('境界 · ' + REALMS[state.realm], { atk: 0.12 * state.realm, hp: 0.15 * state.realm, def: 0.10 * state.realm });
+    if (state.ascensions > 0) bkPush('飞升 ×' + state.ascensions, { atk: 0.08 * state.ascensions, hp: 0.08 * state.ascensions, def: 0.08 * state.ascensions });
+    if ((state.cave.fang || 0) > 0) bkPush('云坊 Lv.' + state.cave.fang, { atk: 0.002 * state.cave.fang, hp: 0.002 * state.cave.fang, def: 0.002 * state.cave.fang });
 
     // 词条与宝石：词条逐装备汇总；宝石绑部位（2026-10-31），不随装备离手失效
     const agg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
+    const affAgg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
+    const gemAgg = { atk: 0, hp: 0, def: 0, crit: 0, ls: 0, pierce: 0 };
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
       if (it) {
         for (const a of it.affixes || []) {
-          if (agg[a.k] !== undefined) agg[a.k] += a.v || 0;
+          if (agg[a.k] !== undefined) { agg[a.k] += a.v || 0; affAgg[a.k] += a.v || 0; }
         }
       }
       for (const g of state.slotGems[s.key] || []) {
-        if (g && agg[g.k] !== undefined) agg[g.k] += gemValue(g);
+        if (g && agg[g.k] !== undefined) { agg[g.k] += gemValue(g); gemAgg[g.k] += gemValue(g); }
       }
     }
     atk *= 1 + agg.atk * GROWTH_SCALE;
@@ -4683,23 +4732,34 @@
     crit += agg.crit * GROWTH_SCALE;
     lifesteal += agg.ls * GROWTH_SCALE;
     pierce += agg.pierce * GROWTH_SCALE;
+    bkPush('装备词条', bkScaled(affAgg));
+    bkPush('宝石', bkScaled(gemAgg));
 
     // 灵宠出战加成（天赋 + 个体词条六系，server/battle.js 消费端同位）+ 图鉴收集 + 功法
     const colB = collectionBonus();
-    atk *= 1 + (petBonus('atk') + 0.02 * state.gongfa.atk) * GROWTH_SCALE + colB.combat;
-    hp *= 1 + (petBonus('hp') + 0.02 * state.gongfa.hp) * GROWTH_SCALE + colB.combat;
-    def *= 1 + petBonus('def') * GROWTH_SCALE;
-    crit += petBonus('crit') * GROWTH_SCALE;
-    lifesteal += petBonus('ls') * GROWTH_SCALE;
-    pierce += petBonus('pierce') * GROWTH_SCALE;
+    const pb = { atk: petBonus('atk'), hp: petBonus('hp'), def: petBonus('def'), crit: petBonus('crit'), ls: petBonus('ls'), pierce: petBonus('pierce') };
+    atk *= 1 + (pb.atk + 0.02 * state.gongfa.atk) * GROWTH_SCALE + colB.combat;
+    hp *= 1 + (pb.hp + 0.02 * state.gongfa.hp) * GROWTH_SCALE + colB.combat;
+    def *= 1 + pb.def * GROWTH_SCALE;
+    crit += pb.crit * GROWTH_SCALE;
+    lifesteal += pb.ls * GROWTH_SCALE;
+    pierce += pb.pierce * GROWTH_SCALE;
+    bkPush('灵宠出战', bkScaled(pb));
+    if (state.gongfa.atk || state.gongfa.hp) bkPush('功法', bkScaled({ atk: 0.02 * state.gongfa.atk, hp: 0.02 * state.gongfa.hp }));
+    if (colB.combat) bkPush('图鉴收集', { atk: colB.combat, hp: colB.combat });
     // 出战灵宠内丹特性
-    atk *= 1 + coreBonus('atk') * GROWTH_SCALE;
-    hp *= 1 + coreBonus('hp') * GROWTH_SCALE;
-    crit += coreBonus('crit') * GROWTH_SCALE;
-    dr += coreBonus('dr') * GROWTH_SCALE;
-    pierce += coreBonus('pierce') * GROWTH_SCALE;
-    def *= elixirOn('def') ? 1.2 : 1;
-    atk *= elixirOn('atk') ? 1.15 : 1;
+    const cb = { atk: coreBonus('atk'), hp: coreBonus('hp'), crit: coreBonus('crit'), dr: coreBonus('dr'), pierce: coreBonus('pierce') };
+    atk *= 1 + cb.atk * GROWTH_SCALE;
+    hp *= 1 + cb.hp * GROWTH_SCALE;
+    crit += cb.crit * GROWTH_SCALE;
+    dr += cb.dr * GROWTH_SCALE;
+    pierce += cb.pierce * GROWTH_SCALE;
+    bkPush('灵宠内丹', bkScaled(cb));
+    const elAtk = elixirOn('atk');
+    const elDef = elixirOn('def');
+    def *= elDef ? 1.2 : 1;
+    atk *= elAtk ? 1.15 : 1;
+    if (elAtk || elDef) bkPush('丹药', { atk: elAtk ? 0.15 : 0, def: elDef ? 0.2 : 0 });
     // 图鉴物种数钳 500（server/battle.js 同源同界，2026-11-05）：博物成就最高档 320，
     // 钳后乘区封顶 ×1.5，双端同口径防镜像键数打穿
     const species = Math.min(500, Object.keys(state.bestiary).length);
@@ -4707,6 +4767,7 @@
       const beastMult = 1 + 0.005 * Math.floor(species / 5);
       atk *= beastMult;
       hp *= beastMult;
+      bkPush('妖兽图鉴 ×' + species, { atk: beastMult - 1, hp: beastMult - 1 });
     }
 
     // 词条共鸣：同词条 3/5 条触发
@@ -4717,6 +4778,7 @@
     crit += res.bonus.crit ? res.bonus.crit.flat : 0;
     lifesteal += res.bonus.ls ? res.bonus.ls.flat : 0;
     pierce += res.bonus.pierce ? res.bonus.pierce.flat : 0;
+    bkPush('词条共鸣', { atk: res.bonus.atk ? res.bonus.atk.pct : 0, hp: res.bonus.hp ? res.bonus.hp.pct : 0, def: res.bonus.def ? res.bonus.def.pct : 0, crit: res.bonus.crit ? res.bonus.crit.flat : 0, ls: res.bonus.ls ? res.bonus.ls.flat : 0, pierce: res.bonus.pierce ? res.bonus.pierce.flat : 0 });
 
     // 挑战修行永久乘区
     let ordealAtk = 0;
@@ -4725,6 +4787,7 @@
     if (state.ordealDone.includes('kuXing')) ordealAtk += 0.06;
     atk *= 1 + ordealAtk;
     hp *= 1 + ordealHp;
+    bkPush('挑战试炼', { atk: ordealAtk, hp: ordealHp });
 
     // 符文组词 + 时辰 + 道侣
     let rune = { atk: 0, hp: 0, def: 0, dr: 0, crit: 0, ls: 0, pierce: 0 };
@@ -4739,36 +4802,46 @@
     crit += rune.crit;
     lifesteal += rune.ls;
     pierce += rune.pierce;
+    bkPush('符文组词', rune);
     if (shichenIs('atk')) atk *= 1.05;
     if (shichenIs('def')) def *= 1.05;
     if (shichenIs('pierce')) pierce += shichenNow().pierce;
     if (skyVal('atk')) atk *= skyVal('atk');
     if (skyVal('pierce')) pierce += skyVal('pierce');
+    bkPush('时辰', { atk: shichenIs('atk') ? 0.05 : 0, def: shichenIs('def') ? 0.05 : 0, pierce: shichenIs('pierce') ? shichenNow().pierce || 0 : 0 });
+    bkPush('天象', { atk: skyVal('atk') ? skyVal('atk') - 1 : 0, pierce: skyVal('pierce') || 0 });
     atk *= 1 + daoBonus('atk');
     hp *= 1 + daoBonus('hp');
+    bkPush('道侣', { atk: daoBonus('atk'), hp: daoBonus('hp') });
 
-    // 五行道基（2026-11-04 修炼扩容，server/battle.js 同源位，改一处必改两处）
+    // 五行道基（2026-11-04 修炼扩容，server/battle.js 同源位，改一处必改两处）；
+    // stage 钳 0..5（2026-11-09 对齐服务端 Math.max(0, Math.min(5,…))——本地脏档
+    // 越界值此前只在客户端显示面虚高，推送会被 400 拒）
     const djDef = state.daoji.el && DAOJI_BONUS[state.daoji.el] ? DAOJI_BONUS[state.daoji.el] : null;
-    const djStage = state.daoji.stage | 0;
+    const djStage = Math.max(0, Math.min(5, state.daoji.stage | 0));
     if (djDef && djStage > 0) {
       if (djDef.atk) atk *= 1 + djDef.atk * djStage;
       if (djDef.hp) hp *= 1 + djDef.hp * djStage;
       if (djDef.def) def *= 1 + djDef.def * djStage;
       if (djDef.crit) crit += djDef.crit * djStage;
+      bkPush('五行道基 · ' + (state.daoji.el || '') + djStage + ' 阶', { atk: (djDef.atk || 0) * djStage, hp: (djDef.hp || 0) * djStage, def: (djDef.def || 0) * djStage, crit: (djDef.crit || 0) * djStage });
     }
     // 道悟星图（2026-11-04 修炼扩容，server/battle.js 同源位）：三支点亮加成
     const xAgg = xingtuAgg();
     if (xAgg.atk) atk *= 1 + xAgg.atk;
     if (xAgg.hp) hp *= 1 + xAgg.hp;
     if (xAgg.def) def *= 1 + xAgg.def;
+    bkPush('道悟星图', { atk: xAgg.atk, hp: xAgg.hp, def: xAgg.def });
 
     const counts = setCounts();
     const b = { atk, hp, def, crit, dr, lifesteal };
+    const setBase = withBk ? { atk: b.atk, hp: b.hp, def: b.def, crit: b.crit, dr: b.dr, lifesteal: b.lifesteal } : null;
     for (const key of Object.keys(SETS)) {
       for (const bonus of SETS[key].bonuses) {
         if (counts[key] >= bonus.need) bonus.apply(b);
       }
     }
+    if (setBase) bkPush('套装加成', { atk: b.atk / setBase.atk - 1, hp: b.hp / setBase.hp - 1, def: b.def / setBase.def - 1, crit: b.crit - setBase.crit, dr: b.dr - setBase.dr, ls: b.lifesteal - setBase.lifesteal });
     // 套装混搭共鸣（2026-11-04，server/battle.js 同源位）：≥2 套各凑 2 件 → 攻血防 ×(1+0.03×套数)
     let crossSets = 0;
     for (const key of Object.keys(SETS)) if (counts[key] >= 2) crossSets++;
@@ -4777,43 +4850,65 @@
       b.atk *= crossMult;
       b.hp *= crossMult;
       b.def *= crossMult;
+      bkPush('混搭共鸣 ×' + crossSets + ' 套', { atk: 0.03 * crossSets, hp: 0.03 * crossSets, def: 0.03 * crossSets });
     }
 
     // 战斗技能聚合（2026-11-04 套装技能化/神纹/本命法宝）：顺序固定——套装（SETS 键序）
     // → 神纹（SLOTS 槽序）→ 器灵（lv 档位序），双端聚合结果逐项一致（parity 门比对）
     const skills = [];
+    const skillNames = [];
     for (const key of Object.keys(SETS)) {
       for (const s of SETS[key].skills || []) {
-        if (counts[key] >= s.need) skills.push(s.skill);
+        if (counts[key] >= s.need) { skills.push(s.skill); skillNames.push(s.name); }
       }
     }
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
       const sg = it && it.sigil && SIGIL_DEFS[it.sigil.k];
-      if (sg) skills.push(sg.skill);
+      if (sg) { skills.push(sg.skill); skillNames.push(sg.name); }
     }
     const bondLv = Math.max(0, Math.min(9, state.bond && state.bond.slot ? state.bond.lv | 0 : 0));
     for (const t of BOND_SKILLS) {
-      if (bondLv >= t.lv) skills.push(t.skill);
+      if (bondLv >= t.lv) { skills.push(t.skill); skillNames.push(t.name); }
     }
+    if (withBk && skillNames.length) bk.push({ n: '战斗技能', s: skillNames.join(' · ') });
     // 器灵共鸣：等级 → 攻血防 ×(1+0.012·lv)（lv9 ≈ +10.8%，共鸣量级内不动经济包络）
     if (bondLv > 0) {
       const bondMult = 1 + 0.012 * bondLv;
       b.atk *= bondMult;
       b.hp *= bondMult;
       b.def *= bondMult;
+      bkPush('器灵共鸣 Lv.' + bondLv, { atk: 0.012 * bondLv, hp: 0.012 * bondLv, def: 0.012 * bondLv });
     }
 
     atk = b.atk * (1 + 0.03 * GROWTH_SCALE * state.trainAtk);
     hp = b.hp * (1 + 0.03 * GROWTH_SCALE * state.trainHp);
+    bkPush('战意 / 体魄', { atk: 0.03 * GROWTH_SCALE * state.trainAtk, hp: 0.03 * GROWTH_SCALE * state.trainHp });
+    bkPush('破甲战技', { pierce: 0.015 * state.trainPierce });
     def = b.def;
     crit = Math.min(CRIT_CAP, b.crit);
     dr = Math.min(0.6, b.dr);
     lifesteal = Math.min(0.5, b.lifesteal);
     pierce = Math.min(0.6, pierce);
+    // 总加成汇总（2026-11-09 用户指定）：攻/血/防按「终值 ÷ 基础值」给净乘区倍率，
+    // 暴/减伤/吸血/破甲给净增量（基础暴击 0.1、破甲基础=破甲战技 0.015·级，两者已单列行）；
+    // 分子分母全取自上方同一套计算值，无独立公式
+    if (withBk) {
+      const pBase = 0.015 * state.trainPierce;
+      const totS = [
+        '攻 ×' + trim((atk / (16 + power * 0.9)).toFixed(2)),
+        '血 ×' + trim((hp / (120 + power * 5.5)).toFixed(2)),
+        '防 ×' + trim((def / (3 + power * 0.28)).toFixed(2)),
+        crit > 0.1 ? '暴 +' + pctTxt(crit - 0.1) : '',
+        dr > 0 ? '减伤 +' + pctTxt(dr) : '',
+        lifesteal > 0 ? '吸血 +' + pctTxt(lifesteal) : '',
+        pierce > pBase ? '破甲 +' + pctTxt(pierce - pBase) : '',
+      ].filter(Boolean).join(' · ');
+      bk.unshift({ n: '总加成', s: totS, total: true });
+    }
 
     // 破甲钳制 100%：超过只视为完全无视防御，防止战技 200 级后防御反向加伤
-    return { power, atk, hp, def, crit, critMult, lifesteal, dr, pierce: Math.min(1, pierce), counts, skills };
+    return { power, atk, hp, def, crit, critMult, lifesteal, dr, pierce: Math.min(1, pierce), counts, skills, breakdown: bk };
   }
 
   // 实际战力：装备分基数 × 实战综合乘区（境界/轮回/词条/宝石/灵宠/套装等，与
@@ -4826,7 +4921,9 @@
   const rpMemo = { t: -1e9, v: 0 };
   function realPower() {
     const now = performance.now();
-    if (now - rpMemo.t < 45) return rpMemo.v;
+    // combatDirty 置位期间（任何变动后 → 下一帧 renderCombat 前）不走记忆化：
+    // 变动后的首读必须真算，否则 45ms 窗内读到旧战力（面板显示/persist 快照同受累）
+    if (!combatDirty && now - rpMemo.t < 45) return rpMemo.v;
     const cs = playerCombatStats();
     const base = 16 + cs.power * 0.9;
     const mult = base > 1 ? cs.atk / base : 1;
@@ -5335,8 +5432,12 @@
     const evalLoadout = (assign) => {
       const olds = assign.map((a) => state.equipped[a.slotKey]);
       for (const a of assign) if (a.item) state.equipped[a.slotKey] = a.item;
+      // 试穿是同 tick「写后读」：必须绕过 realPower 的 45ms 记忆化（rpMemo），否则所有候选
+      // 读到的都是换装前的基线缓存 → 一键穿戴/道童自动穿戴恒判「不会更高」（v1.0.20 记忆化回归）
+      rpMemo.t = -1e9;
       const p = realPower();
       for (let i = 0; i < assign.length; i++) state.equipped[assign[i].slotKey] = olds[i];
+      rpMemo.t = -1e9; // 还原后同样作废：试穿值不许留在记忆窗里污染随后的真读
       return p;
     };
 
@@ -10509,10 +10610,12 @@
   // display:none 不阻止 img 下载——首次切入闲趣页前只出剪影占位（.story-art svg 同规格），
   // setTopTab('xian') 首次到达时置 seen 并作废 pets 签名换真图
   let petArtSeen = false;
-  function petArtHtml(sp, cls) {
+  // force=true：跳过懒加载闸直接出真图——给开箱台旁的出战灵宠行（renderPetCompanion）用，
+  // 该行首屏即可见，剪影占位等于图挂了；其余隐藏页/弹层维持「进过闲趣页才放行」省流量
+  function petArtHtml(sp, cls, force) {
     const def = petSpDef(sp);
     if (!def) return '';
-    if (!petArtSeen) {
+    if (!petArtSeen && !force) {
       return '<div class="story-art pet-art' + (cls ? ' ' + cls : '') + '">' +
         petSilhouetteSvg(sp, 0) + '</div>';
     }
@@ -17427,6 +17530,39 @@
   let achvChips = null;      // 筛选 chips 引用（壳重建时重建）；补丁帧值不变不写 DOM（2026-11-05 性能）
   let achvTitleOn = false;   // titleBadge 显隐/文案缓存（同上）
   let achvTitleTxt = '';
+  // 「战斗属性 / 加成明细」签名门控（2026-11-09 用户指定加成展示）：签名 = 全部加成源的低频
+  // 状态位 + 30s 时间桶——丹药/时辰/天象随钟摆变化，桶保证最多滞后 30s 自愈；变化才重算
+  // playerCombatStats(true)（带明细采集），其余渲染帧只做字符串比对零重算
+  let statusBkCache = { sig: '', html: '' };
+  function statusBonusSig() {
+    let items = '';
+    for (const s of SLOTS) {
+      const it = state.equipped[s.key];
+      // star / enh（2026-11-09 补）是 totalPower 的输入：漏签会让强化/升星后明细组
+      // 等满 30s 时间桶才自愈
+      items += (it ? it.id + ':' + (it.star | 0) + ':' + (state.enh[s.key] | 0) + ':' + (it.affixes || []).map((a) => a.k + (a.v || 0)).join('/') + ':' + (it.sigil ? it.sigil.k : 0) : 0) + ';';
+    }
+    let gems = '';
+    for (const s of SLOTS) gems += (state.slotGems[s.key] || []).map((gm) => gm ? gm.k + (gm.v || 0) : 0).join(',') + ';';
+    const pets = (state.activePets || []).map((uid) => {
+      const p = (state.petInsts || []).find((x) => x.uid === uid);
+      return p ? uid + ':' + (p.lv | 0) + ':' + (p.affixes || []).map((a) => a.k).join('/') + ':' + (p.core ? JSON.stringify(p.core) : 0) : 0;
+    }).join(',');
+    // 内丹是物种级（coreBonus 读 state.petCores[物种]，2026-11-09 补签）：喂内丹
+    // 不动实例字段，此前签名完全不感知
+    const cores = JSON.stringify(state.petCores || {});
+    return [
+      Math.floor(Date.now() / 30000), items, gems, pets, cores,
+      state.gongfa.atk, state.gongfa.hp,
+      state.daoji.el, state.daoji.stage,
+      (state.xingtu && state.xingtu.lit || []).join(','),
+      state.cave.fang || 0, (state.bond && state.bond.lv) || 0, (state.bond && state.bond.slot) || 0,
+      state.trainAtk, state.trainHp, state.trainPierce,
+      state.ordealDone.join(','),
+      Object.keys(state.bestiary).length, state.ascensions, state.realm,
+      state.elixir.id || 0,
+    ].join('|');
+  }
   function renderStatus() {
     const el = $('statusGrid');
     if (!el) return;
@@ -17482,6 +17618,8 @@
           row('称号', state.title ? '「' + esc(state.title) + '」' : '<span class="muted">无</span>'),
           row('仙盟', g ? esc(g.name) + ' · Lv.' + g.level : '<span class="muted">' + (WORLD.guild ? '未加入' : '查询中') + '</span>'),
         ].join('')) +
+        '<div class="status-group" id="bkStats"></div>' +
+        '<div class="status-group" id="bkList"></div>' +
         group('资源', [
           row(resIcon('stones') + ' 灵石', '', 'stones'),
           row(resIcon('dust') + ' 碎屑', '', 'dust'),
@@ -17502,6 +17640,28 @@
         ].join('')) +
         group('装备', eqRow);
     }
+    // 战斗属性 / 加成明细：签名门控重算（见 statusBonusSig），主格重建后从缓存回填两格
+    const bkSig = statusBonusSig();
+    if (statusBkCache.sig !== bkSig) {
+      statusBkCache.sig = bkSig;
+      const cs = playerCombatStats(true);
+      const pctS = (v) => trim((v * 100).toFixed(2)) + '%';
+      const attrRows = [
+        ['攻击', fmt(cs.atk)], ['生命', fmt(cs.hp)], ['防御', fmt(cs.def)],
+        ['暴击', pctS(cs.crit) + ' · 暴伤 ×' + trim(String(cs.critMult))],
+        ['减伤', pctS(cs.dr)], ['吸血', pctS(cs.lifesteal)], ['破甲', pctS(cs.pierce)],
+      ].map((r) => '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '</dd></div>').join('');
+      const bkRows = (cs.breakdown || []).map((r) => '<div' + (r.total ? ' class="bk-total"' : '') + '><dt>' + r.n + '</dt><dd>' + r.s + '</dd></div>').join('');
+      statusBkCache.html =
+        '<p class="side-title">战斗属性</p><dl class="stats">' + attrRows + '</dl>@@SPLIT@@' +
+        '<p class="side-title">加成明细</p><dl class="stats">' +
+        (bkRows || '<div><dt>—</dt><dd><span class="muted">无</span></dd></div>') + '</dl>';
+    }
+    const bkHtml = statusBkCache.html.split('@@SPLIT@@');
+    const bkStatsEl = $('bkStats');
+    const bkListEl = $('bkList');
+    if (bkStatsEl && bkStatsEl.innerHTML !== bkHtml[0]) bkStatsEl.innerHTML = bkHtml[0];
+    if (bkListEl && bkListEl.innerHTML !== bkHtml[1]) bkListEl.innerHTML = bkHtml[1];
     // 高频数值补丁：每次渲染只做十来次 textContent，重建零开销
     const patch = (key, v) => {
       const n = el.querySelector('[data-st="' + key + '"]');
@@ -17757,7 +17917,7 @@
     el.hidden = false;
     el.innerHTML = list.map((inst) => {
       const def = petSpDef(inst.sp);
-      return '<span class="pc-slot">' + petArtHtml(inst.sp, 'r' + inst.r) +
+      return '<span class="pc-slot">' + petArtHtml(inst.sp, 'r' + inst.r, true) + // 首屏可见，直接真图（懒加载只管隐藏页）
         '<i class="pc-name">' + esc(def.name) + '</i></span>';
     }).join('');
     armPetArtGuards(el);
@@ -19350,7 +19510,7 @@
       (r.guild ? ' <i class="gd">『' + esc(r.guild) + '』</i>' : '') + '</span>' +
       '<span class="pw">' + r.rating + ' 分 · ' + r.wins + '胜' + r.losses + '负</span></div>'
     ).join('');
-    const me = data.me;
+    const me = data.me || { rank: 0 }; // 旧缓存 payload 兜底（2026-11-09，同 cult/aid 手法）
     $('ladderMe').textContent = me.rank > 0
       ? '我的排名：第 ' + me.rank + ' 名 · ' + me.rating + ' 分（' + me.wins + '胜' + me.losses + '负）'
       : '尚未入榜：赢下第一场切磋即上榜。';
@@ -19631,7 +19791,9 @@
     const leader = g.isLeader;
     // 仙盟共修（2026-11-04）：旧缓存 payload 无 cult 字段时给兜底壳，防渲染崩
     const cult = g.cult || { stones: 0, myTimes: 0, cap: 3, amount: 200000, tiers: [] };
-    const boss = g.boss;
+    // 旧缓存 payload 兜底（2026-11-09，同 cult/aid 手法）：boss 单独裸访问，
+    // 缓存里无该键时渲染直接 TypeError
+    const boss = g.boss || { hp: 0, maxHp: 0 };
     const pct = boss.maxHp > 0 ? Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100)) : 0;
     const fmtReward = (r) => fmt(r.stones) + ' 灵石 +' + r.contribution + ' 贡献';
     // 同门互助状态块（传功 / 赠礼权益在服务端，领取按钮走 guildAidCollect）
@@ -19782,7 +19944,9 @@
   async function guildLeave() {
     const g = WORLD.guild && WORLD.guild.guild;
     if (!g) return;
-    if (!(await gameConfirm('确定退出「' + g.name + '」？' + (g.isLeader ? '盟位将转交最早入盟的同门。' : ''),
+    // 盟名/道号是他人可控文本（gameConfirm 走 innerHTML，拼接处必须 esc——
+    // 当前仅字符集正则兜底，正则放宽/存量脏数据时会变存储型 XSS）
+    if (!(await gameConfirm('确定退出「' + esc(g.name) + '」？' + (g.isLeader ? '盟位将转交最早入盟的同门。' : ''),
       { title: '退出仙盟', okText: '退出' }))) return;
     try {
       await worldFetch('/api/guild/leave', { method: 'POST', body: JSON.stringify({}) });
@@ -19796,7 +19960,7 @@
 
   async function guildKick(id) {
     const m = ((WORLD.guild || {}).guild || {}).members?.find((x) => x.id === id);
-    if (!(await gameConfirm('确定将同门「' + (m ? m.name : '该成员') + '」移出仙盟？此操作不可撤销。',
+    if (!(await gameConfirm('确定将同门「' + (m ? esc(m.name) : '该成员') + '」移出仙盟？此操作不可撤销。',
       { title: '移出同门', okText: '移出' }))) return;
     try {
       const out = await worldFetch('/api/guild/kick', { method: 'POST', body: JSON.stringify({ userId: id }) });

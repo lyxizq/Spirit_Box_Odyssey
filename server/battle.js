@@ -783,8 +783,10 @@ export function playerCombatStats(data, env) {
     const sg = it && it.sigil && SIGIL_DEFS[it.sigil.k];
     if (sg) skills.push(sg.skill);
   }
+  // 认主才有效力（2026-11-09 对齐 game.js 客户端口径）：combat.js bondAccrue 只在
+  // 认主后结算经验，此处此前漏看 slot——未认主档在服务端复算里凭空多吃器灵乘区
   const bondLv = Math.max(0, Math.min(9,
-    Math.floor(num(data.bond && data.bond.lv))));
+    Math.floor(num(data.bond && data.bond.slot && data.bond.lv))));
   for (const t of BOND_SKILLS) {
     if (bondLv >= t.lv) skills.push(t.skill);
   }

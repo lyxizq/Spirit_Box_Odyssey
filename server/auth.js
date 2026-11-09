@@ -93,6 +93,7 @@ export function createAuthService(db) {
     delExpired: db.prepare('DELETE FROM sessions WHERE expires_at < ?'),
     resetFails: db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0, last_login_at = ?, last_login_ip = ? WHERE id = ?'),
     addFail: db.prepare('UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ?'),
+    failRead: db.prepare('SELECT failed_logins FROM users WHERE id = ?'),
     setLock: db.prepare('UPDATE users SET locked_until = ? WHERE id = ?'),
     failCount: db.prepare(
       'SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND ok = 0 AND created_at > ?'),
@@ -135,6 +136,15 @@ export function createAuthService(db) {
       out[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
     }
     return out;
+  }
+
+  // 会话是否仍有效（2026-11-09 WS 复核用）：WS 鉴权只在握手时做一次，此后登出互踢/
+  // 封号/过期不会自动断开已建立的连接——tick 每轮按握手 token 复查，失效即断链。
+  // 不做滑动续期：长连接的续期由并行的 HTTP 请求 / 客户端重连完成，这里只判生死
+  function sessionAlive(token) {
+    if (!token) return false;
+    const row = stmts.sessionByHash.get(sha256(token));
+    return !!row && row.expires_at > Date.now() && row.status === 'active';
   }
 
   function clearCookie(secure) {
@@ -213,7 +223,9 @@ export function createAuthService(db) {
       logAttempt(db, username, ip, false);
       if (user) {
         stmts.addFail.run(user.id);
-        const failed = user.failed_logins + 1;
+        // 重读计数（2026-11-09 TOCTOU 修复）：并发失败请求在 verifyPassword 的 await
+        // 处交错、各自拿到过期计数，极端时一波并发全读到阈值以下谁都不设锁
+        const failed = stmts.failRead.get(user.id).failed_logins;
         if (failed >= MAX_FAILS) stmts.setLock.run(Date.now() + lockDuration(failed), user.id);
       }
       return sendJSON(res, 401, { error: '道号或口令错误' });
@@ -290,6 +302,6 @@ export function createAuthService(db) {
 
   return {
     register, login, logout, me, setDisplayName,
-    getSessionUser, cleanup, byId: (id) => stmts.byId.get(id),
+    getSessionUser, sessionAlive, cleanup, byId: (id) => stmts.byId.get(id),
   };
 }

@@ -329,7 +329,9 @@ export function ledgerOf(data, now) {
     power: equipPowerOf(data),
     towerCleared: clampInt(data.towerCleared, 0, 200),
     stageCleared: clampInt(data.stageCleared, 0, 200),
-    endlessBest: clampInt(data.endlessBest, 0, 200),
+    // 无尽进度上界 2000 = 天道录 endless 梯最高档（saves.js TIDE，2026-11-09 复审：
+    // 原钳 200 比奖励梯低一个数量级，进度过 200 的档 endless_best 基线被压回 200）
+    endlessBest: clampInt(data.endlessBest, 0, 2000),
     wildMax: wildMaxOf(data),
     clicks: clampInt(data.clickCount, 0, 1e12),
     updatedAt: now,

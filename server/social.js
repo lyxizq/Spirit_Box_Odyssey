@@ -214,7 +214,7 @@ export function createSocialService(db) {
        ORDER BY u.power_score DESC LIMIT 50`),
     betterCount: db.prepare(
       "SELECT COUNT(*) AS n FROM users WHERE power_score > ? AND status = 'active'"),
-    byId: db.prepare('SELECT id, username, display_name, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at, ladder_pay_day, memory_week FROM users WHERE id = ?'),
+    byId: db.prepare('SELECT id, username, display_name, status, realm, power_score, pvp_rating, pvp_wins, pvp_losses, pvp_snapshot, pvp_day, pvp_used, pvp_buys, pvp_buy_day, last_pvp_at, ladder_pay_day, memory_week FROM users WHERE id = ?'),
     // PvP（真人候选池不含假人；假人由 botCandidates 按战力就近补位）
     candidates: db.prepare(
       `SELECT id, COALESCE(NULLIF(display_name, ''), username) AS name, realm, power_score, pvp_rating, pvp_snapshot, 0 AS bot
@@ -371,12 +371,14 @@ export function createSocialService(db) {
     ladderBetter: db.prepare(
       `SELECT COUNT(*) AS n FROM users
        WHERE (status = 'bot' OR pvp_wins + pvp_losses > 0) AND pvp_rating > ?`),
-    // 灵石余额（增速账本，saves.js 随存档更新）：加购 / 立盟 / 捐献的服务端余额依据
-    ledgerSpend: db.prepare('UPDATE save_ledger SET stones = stones - ? WHERE user_id = ? AND stones >= ?'),
-    ledgerRefund: db.prepare('UPDATE save_ledger SET stones = stones + ? WHERE user_id = ?'),
-    // 修为余额（同账本口径）：立盟双币消耗的修为侧原子扣款与退款
+    // 灵石余额（增速账本，saves.js 随存档更新）：加购 / 立盟 / 捐献的服务端余额依据。
+    // srv_spent_stones 同语句累计「未被客户端镜像吸收的扣款」（2026-11-09 防旧镜像
+    // 重推白嫖，saves.js 推送对账消化/保留）
+    ledgerSpend: db.prepare(
+      'UPDATE save_ledger SET stones = stones - ?, srv_spent_stones = srv_spent_stones + ? WHERE user_id = ? AND stones >= ?'),
+    // 修为余额（同账本口径）：立盟双币消耗的修为侧原子扣款（修为不跟踪待吸收：
+    // 唯一消耗 2 万修为远低于修为增速包络绝对底，跟踪无执行力）
     ledgerSpendExp: db.prepare('UPDATE save_ledger SET exp = exp - ? WHERE user_id = ? AND exp >= ?'),
-    ledgerRefundExp: db.prepare('UPDATE save_ledger SET exp = exp + ? WHERE user_id = ?'),
     // —— 2026-11-04 天下扩容：悬赏妖踪 / 天梯日俸 ——
     bountyGet: db.prepare(
       'SELECT win, damage, stones, dust FROM bounty_kills WHERE day = ? AND user_id = ? AND slot = ?'),
@@ -427,15 +429,14 @@ export function createSocialService(db) {
   // 无账本行（刚注册还没传过档）按 0 计直接拒绝，客户端传档后（约 5 秒）自愈；
   // 服务端扣减后客户端存档侧同步扣款，下次推送 dStones 向下不触发跳变校验。
   function spendLedger(userId, cost) {
-    return stmts.ledgerSpend.run(cost, userId, cost).changes > 0;
+    return stmts.ledgerSpend.run(cost, cost, userId, cost).changes > 0;
   }
 
-  // 修为原子扣款/退款（与 spendLedger 同款防重复消费口径，2026-11-01 立盟双币消耗引入）
+  // 修为原子扣款（与 spendLedger 同款防重复消费口径，2026-11-01 立盟双币消耗引入；
+  // 2026-11-09 复审删除手工退款 refundLedgerExp——事务化后无调用方，留着会诱导
+  // 「扣款失败手工退款」的非原子写法）
   function spendLedgerExp(userId, cost) {
     return stmts.ledgerSpendExp.run(cost, userId, cost).changes > 0;
-  }
-  function refundLedgerExp(userId, cost) {
-    stmts.ledgerRefundExp.run(cost, userId);
   }
 
   // 服务启动时补齐假人名册（幂等：按道号查重）
@@ -680,6 +681,11 @@ export function createSocialService(db) {
     }
     const opp = stmts.byId.get(targetId);
     if (!opp || !opp.pvp_snapshot) return sendJSON(res, 400, { error: '对手尚未立档，无从切磋' });
+    // 停用账号不得作为对手被刷分（2026-11-09 复审，与 candidates 候选池口径对齐；
+    // 假人 status='bot' 照常可战）
+    if (opp.status !== 'active' && opp.status !== 'bot') {
+      return sendJSON(res, 404, { error: '对手不存在' });
+    }
     // 对位日限：同一对手每日至多 3 场，堵双号互刷天梯分
     if (stmts.pvpVsCount.get(me.id, opp.id, dayStart()).n >= PVP_PER_TARGET_DAILY) {
       return sendJSON(res, 429, { error: '今日已与这位道号切磋 3 场，换个人过招吧' });
@@ -702,10 +708,19 @@ export function createSocialService(db) {
     const dOpp = eloDelta(opp.pvp_rating, me.pvp_rating, 1 - win);
     const myRating = Math.max(RATING_FLOOR, me.pvp_rating + dMe);
     const oppRating = Math.max(RATING_FLOOR, opp.pvp_rating + dOpp);
-    stmts.pvpSelf.run(myRating, me.pvp_wins + (win ? 1 : 0), me.pvp_losses + (win ? 0 : 1),
-      today, used + 1, Date.now(), me.id);
-    stmts.pvpOpp.run(oppRating, opp.pvp_wins + (win ? 0 : 1), opp.pvp_losses + (win ? 1 : 0), opp.id);
-    stmts.logBattle.run(me.id, opp.id, win ? me.id : opp.id, Date.now());
+    // 三连写入事务（2026-11-09 补齐）：第二条抛错时攻方分已改/守方未改/对局流水缺记，
+    // pvpVsCount 少记会让同对手日限 3 场被放大
+    db.exec('BEGIN');
+    try {
+      stmts.pvpSelf.run(myRating, me.pvp_wins + (win ? 1 : 0), me.pvp_losses + (win ? 0 : 1),
+        today, used + 1, Date.now(), me.id);
+      stmts.pvpOpp.run(oppRating, opp.pvp_wins + (win ? 0 : 1), opp.pvp_losses + (win ? 1 : 0), opp.id);
+      stmts.logBattle.run(me.id, opp.id, win ? me.id : opp.id, Date.now());
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     return sendJSON(res, 200, {
       ok: true, win: !!win, delta: dMe, rating: myRating,
       wins: me.pvp_wins + (win ? 1 : 0), losses: me.pvp_losses + (win ? 0 : 1),
@@ -771,8 +786,17 @@ export function createSocialService(db) {
     // 量级钳制兜底：单场伤害不超过战力 × 300（120 回合理论上限再留余量）；
     // 1e15 硬顶防超 2^53 的伤害值进 world_boss_hits（node:sqlite 读回会 RangeError 砖全服面板）
     const clamped = Math.min(dealt, 1e15, Math.max(1000, me.power_score * 300));
-    stmts.hitBoss.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null, boss.hp - clamped <= 0 ? Date.now() : null, today);
-    stmts.upsertHit.run(today, ctx.user.id, me.display_name || me.username, clamped);
+    // 双写入事务（2026-11-09 补齐）：upsertHit 失败时 BOSS 血扣了而玩家伤害/次数没记，
+    // 玩家白损一次打击次数
+    db.exec('BEGIN');
+    try {
+      stmts.hitBoss.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null, boss.hp - clamped <= 0 ? Date.now() : null, today);
+      stmts.upsertHit.run(today, ctx.user.id, me.display_name || me.username, clamped);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     const after = stmts.bossOfDay.get(today);
     const mineAfter = stmts.myHits.get(today, ctx.user.id);
     return sendJSON(res, 200, {
@@ -959,17 +983,25 @@ export function createSocialService(db) {
   function guildLeave(req, res, ctx) {
     const row = stmts.myGuildRow.get(ctx.user.id);
     if (!row) return sendJSON(res, 400, { error: '你尚未加入仙盟' });
-    stmts.leaveGuild.run(row.id, ctx.user.id);
-    // 盟主退位：转给最早入盟者；无人则解散
-    const g = stmts.guildGet.get(row.id);
-    if (g && g.leader_id === ctx.user.id) {
-      const next = stmts.earliestMember.get(row.id);
-      if (next) {
-        stmts.setGuildLeader.run(next.user_id, row.id);
-        stmts.promoteMember.run(row.id, next.user_id);
-      } else {
-        stmts.deleteGuild.run(row.id);
+    // 整段入事务（2026-11-09 补齐）：退盟/转盟主/解散多写中途失败会留下无主盟
+    db.exec('BEGIN');
+    try {
+      stmts.leaveGuild.run(row.id, ctx.user.id);
+      // 盟主退位：转给最早入盟者；无人则解散
+      const g = stmts.guildGet.get(row.id);
+      if (g && g.leader_id === ctx.user.id) {
+        const next = stmts.earliestMember.get(row.id);
+        if (next) {
+          stmts.setGuildLeader.run(next.user_id, row.id);
+          stmts.promoteMember.run(row.id, next.user_id);
+        } else {
+          stmts.deleteGuild.run(row.id);
+        }
       }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
     }
     return sendJSON(res, 200, { ok: true });
   }
@@ -1101,9 +1133,17 @@ export function createSocialService(db) {
     // 记发起：aid_day 供两类共用（每次写入带上另一类当天已有值，避免互相覆盖清掉）
     const skillTo = type === 'skill' ? targetId : (aidToday ? aidRow.aid_skill_to : null);
     const giftTo = type === 'gift' ? targetId : (aidToday ? aidRow.aid_gift_to : null);
-    stmts.aidSetGive.run(today, skillTo, giftTo, row.id, ctx.user.id);
-    // 记受赠（对方今日来源以最后一次为准，领取即清）
-    stmts.aidSetFrom.run(type, me.display_name || me.username, today, row.id, targetId);
+    // 双写入事务（2026-11-09 补齐）：只落发起不落受赠会让对方永远收不到
+    db.exec('BEGIN');
+    try {
+      stmts.aidSetGive.run(today, skillTo, giftTo, row.id, ctx.user.id);
+      // 记受赠（对方今日来源以最后一次为准，领取即清）
+      stmts.aidSetFrom.run(type, me.display_name || me.username, today, row.id, targetId);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     return sendJSON(res, 200, { ok: true, guild: guildPayload(row.id, ctx.user.id) });
   }
 
@@ -1145,11 +1185,19 @@ export function createSocialService(db) {
     }
     const dealt = simulateBattle(snap, bossEnemyOf(boss.max_hp)).dealt;
     const clamped = Math.min(dealt, 1e15, Math.max(1000, me.power_score * 300));
-    stmts.gbossHit.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null,
-      boss.hp - clamped <= 0 ? Date.now() : null, Date.now(), row.id);
-    stmts.gbossHitUp.run(row.id, ctx.user.id, today, me.display_name || me.username, clamped);
-    const contrib = Math.floor(clamped / GBOSS_CONTRIB_PER);
-    if (contrib > 0) stmts.addContribution.run(contrib, row.id, ctx.user.id);
+    // 三连写入事务（2026-11-09 补齐）：伤害榜/贡献任一未落都会让玩家白打一场
+    db.exec('BEGIN');
+    try {
+      stmts.gbossHit.run(clamped, boss.hp - clamped <= 0 ? ctx.user.id : null,
+        boss.hp - clamped <= 0 ? Date.now() : null, Date.now(), row.id);
+      stmts.gbossHitUp.run(row.id, ctx.user.id, today, me.display_name || me.username, clamped);
+      const contrib = Math.floor(clamped / GBOSS_CONTRIB_PER);
+      if (contrib > 0) stmts.addContribution.run(contrib, row.id, ctx.user.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     const after = stmts.gbossOf.get(row.id);
     const mineAfter = stmts.gbossMyHits.get(row.id, ctx.user.id, today);
     const afterContrib = stmts.myContribution.get(row.id, ctx.user.id);
@@ -1173,9 +1221,20 @@ export function createSocialService(db) {
     if (bought >= item.times) {
       return sendJSON(res, 429, { error: `「${item.name}」今日已购满 ${item.times} 次` });
     }
-    const out = stmts.spendContribution.run(item.cost, row.id, ctx.user.id, item.cost);
-    if (!out.changes) return sendJSON(res, 400, { error: '贡献不足' });
-    stmts.shopBuy.run(row.id, ctx.user.id, item.id, today);
+    // 扣贡献与记购买入事务（2026-11-09 补齐）：原先第二条失败 = 贡献被扣、货没记、无退款
+    db.exec('BEGIN');
+    try {
+      const out = stmts.spendContribution.run(item.cost, row.id, ctx.user.id, item.cost);
+      if (!out.changes) {
+        db.exec('ROLLBACK');
+        return sendJSON(res, 400, { error: '贡献不足' });
+      }
+      stmts.shopBuy.run(row.id, ctx.user.id, item.id, today);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     const after = stmts.myContribution.get(row.id, ctx.user.id);
     return sendJSON(res, 200, {
       ok: true, itemId: item.id, reward: item.reward,
@@ -1189,7 +1248,9 @@ export function createSocialService(db) {
   function redeem(req, res, ctx) {
     const code = typeof ctx.body?.code === 'string' ? ctx.body.code.trim().toUpperCase() : '';
     if (!REDEEM_RE.test(code)) return sendJSON(res, 400, { error: '兑换码格式不对' });
-    if (stmts.redeemCountToday.get(ctx.user.id, Date.now() - 24 * 3600 * 1000).n >= REDEEM_DAILY_CAP) {
+    // 每日次数按日历日键（2026-11-09 复审）：原滚动 24h 窗与全站 dayStr() 口径不一致，
+    // 连续兑换时窗口滑动可边际多领
+    if (stmts.redeemCountToday.get(ctx.user.id, dayStart()).n >= REDEEM_DAILY_CAP) {
       return sendJSON(res, 429, { error: '今日兑换次数已用完' });
     }
     const row = stmts.codeGet.get(code);
