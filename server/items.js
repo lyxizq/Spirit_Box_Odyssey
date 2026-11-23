@@ -119,6 +119,8 @@ export const SETS = {
     pieces: {
       weapon: '镇塔·斩妖剑', armor: '镇塔·玄鳞甲', helm: '镇塔·观星冠',
       boots: '镇塔·踏云履', wrist: '镇塔·玄铁腕', legs: '镇塔·盘龙腿',
+      artifact: '镇塔·浮屠印', talisman: '镇塔·安神符', bracelet: '镇塔·念珠镯',
+      ring: '镇塔·舍利戒', band: '镇塔·禅心箍', wings: '镇塔·栖檐羽',
     },
     bonuses: [
       { need: 2, text: '防御 +15%', apply: (b) => { b.def *= 1.15; } },
@@ -138,6 +140,8 @@ export const SETS = {
     pieces: {
       weapon: '征伐·破阵刀', armor: '征伐·百战袍', helm: '征伐·将军盔',
       boots: '征伐·疾风靴', wrist: '征伐·伏虎腕', legs: '征伐·追电腿',
+      artifact: '征伐·破军幡', talisman: '征伐·先锋令', bracelet: '征伐·虎铮镯',
+      ring: '征伐·勋功戒', band: '征伐·赤缨带', wings: '征伐·凯旋翎',
     },
     bonuses: [
       { need: 2, text: '攻击 +10%', apply: (b) => { b.atk *= 1.1; } },
@@ -155,6 +159,8 @@ export const SETS = {
     pieces: {
       weapon: '荒狩·噬骨矛', armor: '荒狩·兽皮甲', helm: '荒狩·狼首冠',
       boots: '荒狩·追风靴', wrist: '荒狩·熊筋腕', legs: '荒狩·猎风腿',
+      artifact: '荒狩·引兽铃', talisman: '荒狩·缚兽符', bracelet: '荒狩·兽牙镯',
+      ring: '荒狩·猎首戒', band: '荒狩·翎冠带', wings: '荒狩·鹰隼翼',
     },
     bonuses: [
       { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },
@@ -228,9 +234,9 @@ export function specialPower(mode, level, contentReqFn) {
   return Math.max(1, Math.round(base * (0.9 + Math.random() * 0.2)));
 }
 
-// 套装件生成（战斗/里程碑掉落）。部位收窄（2026-11-02 用户指定，game.js makeSpecialItem 同源）：
-// 请求部位不在 pieces 6 部位内（法宝/灵符/手镯/戒指/发箍/翅膀）时改在 6 部位内重随机，
-// 不再出 6 部位之外的套装件；兜底命名与客户端一致（validateItem 拒非字符串名）
+// 套装件生成（战斗/里程碑掉落）。12 部位全集（2026-11-19 用户指定「所有装备加入套装」，
+// game.js makeSpecialItem 同源）：请求部位不在 pieces 内时在 pieces 内重随机（防御性兜底，
+// 正常 12 部位全覆盖）；兜底命名与客户端一致（validateItem 拒非字符串名）
 export function makeSpecialItem(mode, level, slotKey, itemSeq, contentReqFn) {
   const set = SETS[mode];
   const setSlotKeys = Object.keys(set.pieces);

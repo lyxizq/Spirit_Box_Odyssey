@@ -81,6 +81,7 @@ const GATHER_MAX_LV = 60;
 const ORDER_SLOT_MS = 30 * 60000;
 const ORDER_COUNT = 3;
 const ORDER_PREMIUM = 1.8;
+const ORDER_REFRESH_DAILY = 5; // 手动刷新每日上限（2026-11-19 用户指定）
 
 // 解锁门槛：境界第二境「金丹」（故事卷三·坊市风云，game.js FEATURE_GATES 口径）
 const REALM_GATE = 2;
@@ -106,6 +107,12 @@ function loadState(text) {
     lastGather: (s.lastGather && typeof s.lastGather === 'object' && !Array.isArray(s.lastGather)) ? s.lastGather : {},
     oSlot: Math.floor(num(s.oSlot)),
     oDone: Array.isArray(s.oDone) ? s.oDone.map((n) => Math.floor(num(n))).slice(0, ORDER_COUNT) : [],
+    // 手动刷新（2026-11-19 用户指定：每日 5 次）：oSalt 并入订单种子——刷新一次换一批，
+    // oRefresh 记当日已刷次数（跨日自动归零）
+    oSalt: Math.abs(Math.floor(num(s.oSalt))) % 2147483647,
+    oRefresh: (s.oRefresh && typeof s.oRefresh === 'object' && !Array.isArray(s.oRefresh))
+      ? { day: String(s.oRefresh.day || ''), n: clampInt(s.oRefresh.n, 0, ORDER_REFRESH_DAILY) }
+      : { day: '', n: 0 },
   };
 }
 
@@ -187,7 +194,9 @@ export function createShopService(db) {
       for (const r of RECIPES[b]) if (lv[b] >= r.req) pool.push({ b, r });
     }
     if (!pool.length) return { slot, orders: [] };
-    const rand = rngOf((Math.floor(num(userId)) * 2654435761) ^ slot);
+    // 种子并入 oSalt：手动刷新一次换一批（同 用户×槽×盐 恒同序列，确定性口径不破）
+    const rand = rngOf((Math.floor(num(userId)) * 2654435761) ^ slot ^
+      ((Math.floor(num(st.oSalt)) % 2147483647) * 0x9E3779B1));
     const orders = [];
     for (let i = 0; i < ORDER_COUNT; i++) {
       const pick = pool[Math.floor(rand() * pool.length)] || pool[0];
@@ -217,6 +226,10 @@ export function createShopService(db) {
       orders, orderSlot: slot, nextSlotAt: (slot + 1) * ORDER_SLOT_MS,
       nextSlotIn: Math.max(0, (slot + 1) * ORDER_SLOT_MS - now),
       done: st.oDone.slice(),
+      oRefreshLeft: (() => {
+        const r = st.oRefresh;
+        return r.day === dayStr(now) ? Math.max(0, ORDER_REFRESH_DAILY - r.n) : ORDER_REFRESH_DAILY;
+      })(),
       catalog: CATALOG,
     };
   }
@@ -419,6 +432,29 @@ export function createShopService(db) {
     }
   }
 
+  // POST /api/shop/orderrefresh：手动刷新当前槽 3 张订单（2026-11-19 用户指定，每日 5 次）。
+  // oSalt 自增并入种子 → 同槽换一批；oDone 清空（新单可交付）。计数跨日归零，服务端权威。
+  function orderrefresh(req, res, ctx) {
+    if (!mutWindow.hit(ctx.user.id)) {
+      return sendJSON(res, 429, { error: '操作过于频繁，请稍后再试' }, { 'Retry-After': '5' });
+    }
+    if (realmOf(ctx.user.id) < REALM_GATE) return sendJSON(res, 403, { error: '坊市尚未解锁' });
+    const now = Date.now();
+    const today = dayStr(now);
+    const row = stmts.getShop.get(ctx.user.id);
+    const st = loadState(row ? row.state : '');
+    if (st.oRefresh.day !== today) st.oRefresh = { day: today, n: 0 };
+    if (st.oRefresh.n >= ORDER_REFRESH_DAILY) {
+      return sendJSON(res, 429, { error: '今日手动刷新已用完（5 次），明天再来' });
+    }
+    st.oRefresh.n += 1;
+    st.oSalt = (st.oSalt + 1) % 2147483647;
+    st.oSlot = Math.floor(now / ORDER_SLOT_MS);
+    st.oDone = [];
+    stmts.putShop.run(ctx.user.id, JSON.stringify(st), now);
+    return sendJSON(res, 200, { ok: true, view: viewOf(ctx.user.id, st, now) });
+  }
+
   // POST /api/shop/deposit：牧场/灵圃收获的原料入账。
   // farm:  {kind:'farm', cell, seed, ts=doneAt}   —— ts ≤ now 且距上次入账 ≥ 该种子生长时长
   // gather:{kind:'gather', key, ts=until, lv}     —— 同上（间隔 ≥ 节点周期），产出按 gatherYield
@@ -518,6 +554,7 @@ export function createShopService(db) {
     if (p === '/api/shop/collect' && ctx.method === 'POST') { collect(req, res, ctx); return true; }
     if (p === '/api/shop/sell' && ctx.method === 'POST') { sell(req, res, ctx); return true; }
     if (p === '/api/shop/order' && ctx.method === 'POST') { order(req, res, ctx); return true; }
+    if (p === '/api/shop/orderrefresh' && ctx.method === 'POST') { orderrefresh(req, res, ctx); return true; }
     if (p === '/api/shop/deposit' && ctx.method === 'POST') { deposit(req, res, ctx); return true; }
     if (p === '/api/shop/windfall' && ctx.method === 'POST') { windfall(req, res, ctx); return true; }
     return false;

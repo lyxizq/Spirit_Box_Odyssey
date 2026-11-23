@@ -751,7 +751,7 @@ export function playerCombatStats(data, env) {
   const setCounts = { tower: 0, stage: 0, wild: 0 };
   for (const s of SLOTS) {
     const it = data.equipped && data.equipped[s.key];
-    // 只计「当前仍属套装」的部位（2026-11-01 收窄后，移除槽位的存量件不计）
+    // 只计「当前仍属套装」的部位（pieces 键集判定；11-19 全 12 部位后收窄期件自然复归）
     if (it && it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[s.key] && setCounts[it.setKey] !== undefined) setCounts[it.setKey]++;
   }
   const b = { atk, hp, def, crit, dr, lifesteal };

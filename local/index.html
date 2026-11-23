@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#101614">
+  <base href="../">
+  <title>灵匣纪元 · Spirit Box Odyssey · 单机版</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="180x180" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="local/local.css">
+</head>
+<body>
+  <script src="theme-boot.js"></script>
+  <div class="bg-glow" aria-hidden="true"></div>
+  <div class="event-banner hidden" id="wanderBanner" role="status">
+    <span id="wanderBannerText">✦ 奇遇降临</span>
+    <button class="mini" id="wanderGo">前往奇遇 ▸</button>
+  </div>
+  <div class="event-banner cloud-banner hidden" id="cloudBanner" role="alert">
+    <span id="cloudBannerText">⚠ 云端存档同步异常</span>
+  </div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="seal">
+        <svg class="seal-icon" viewBox="0 0 96 96" aria-hidden="true">
+          <defs>
+            <radialGradient id="slGlow" cx="50%" cy="46%" r="52%">
+              <stop offset="0" stop-color="#ffd76b" stop-opacity="0.5"/>
+              <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="slFill" cx="50%" cy="40%" r="70%">
+              <stop offset="0" stop-color="#fff6d8"/>
+              <stop offset="0.55" stop-color="#ffd76b"/>
+              <stop offset="1" stop-color="#c9973f"/>
+            </radialGradient>
+            <linearGradient id="slBody" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#e8b54d"/>
+              <stop offset="0.5" stop-color="#c9973f"/>
+              <stop offset="1" stop-color="#8a5f24"/>
+            </linearGradient>
+            <linearGradient id="slLid" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8a5f24"/>
+              <stop offset="1" stop-color="#553a14"/>
+            </linearGradient>
+            <linearGradient id="slRay" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.9"/>
+              <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <ellipse cx="48" cy="47" rx="42" ry="38" fill="url(#slGlow)"/>
+          <polygon points="43,55 53,55 48,13" fill="url(#slRay)" opacity="0.85"/>
+          <polygon points="36,57 41,53 25,28" fill="url(#slRay)" opacity="0.5"/>
+          <polygon points="55,53 60,57 71,28" fill="url(#slRay)" opacity="0.5"/>
+          <path d="M24 52 Q24 28 48 26 Q72 28 72 52 Z" fill="url(#slLid)" stroke="#d8b36a" stroke-width="1.4"/>
+          <g fill="#ffd76b" opacity="0.9">
+            <circle cx="34" cy="37" r="1.7"/>
+            <circle cx="48" cy="31.5" r="1.7"/>
+            <circle cx="62" cy="37" r="1.7"/>
+          </g>
+          <ellipse cx="48" cy="53.5" rx="25.5" ry="7.2" fill="#1c0d18"/>
+          <ellipse cx="48" cy="53" rx="20.5" ry="5.2" fill="url(#slFill)"/>
+          <ellipse cx="48" cy="48" rx="11.5" ry="6" fill="#fff6d8" opacity="0.5"/>
+          <rect x="24" y="58" width="48" height="25" rx="5" fill="url(#slBody)" stroke="#6b4a1c" stroke-width="1.2"/>
+          <rect x="25" y="58.8" width="46" height="3.2" rx="1.6" fill="#ffd76b" opacity="0.85"/>
+          <rect x="25" y="79" width="46" height="2.2" rx="1.1" fill="#d8b36a" opacity="0.55"/>
+          <rect x="25.6" y="58.4" width="3" height="24.2" rx="1.5" fill="#ffd76b" opacity="0.75"/>
+          <rect x="67.4" y="58.4" width="3" height="24.2" rx="1.5" fill="#ffd76b" opacity="0.75"/>
+          <circle cx="48" cy="68.5" r="4.8" fill="url(#slFill)" stroke="#6b4a1c" stroke-width="0.9"/>
+          <circle cx="48" cy="67.2" r="1.5" fill="#4a2c10"/>
+          <rect x="47.2" y="67.2" width="1.6" height="3.6" rx="0.8" fill="#4a2c10"/>
+          <g fill="#ffe9a8" opacity="0.85">
+            <circle cx="30.5" cy="63" r="1.3"/>
+            <circle cx="65.5" cy="63" r="1.3"/>
+            <circle cx="30.5" cy="78.5" r="1.3"/>
+            <circle cx="65.5" cy="78.5" r="1.3"/>
+          </g>
+          <g fill="#ffe9a8">
+            <path d="M16 29 Q16.9 33.1 21 34 Q16.9 34.9 16 39 Q15.1 34.9 11 34 Q15.1 33.1 16 29 Z" opacity="0.8"/>
+            <path d="M80 24 Q81.3 28.7 86 30 Q81.3 31.3 80 36 Q78.7 31.3 74 30 Q78.7 28.7 80 24 Z" opacity="0.9"/>
+            <path d="M70 8 Q70.7 11.3 74 12 Q70.7 12.7 70 16 Q69.3 12.7 66 12 Q69.3 11.3 70 8 Z" opacity="0.7"/>
+          </g>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>灵匣纪元</h1>
+        <p>SPIRIT BOX ODYSSEY</p>
+      </div>
+    </div>
+    <div class="top-badges">
+      <div class="realm-badge">境界 <strong id="realmName">炼气</strong></div>
+      <span class="shichen-badge" id="shichenBadge">子时</span>
+      <span class="shichen-badge hidden" id="skyBadge">晴空万里</span>
+      <span class="title-badge hidden" id="titleBadge"></span>
+      <div class="realm-badge">战力 <strong id="resPower">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1.5 3.5 9h3.2L6 14.5 12.5 6.5H9L9 1.5Z" fill="#f87171" stroke="#8a2f28" stroke-width=".9"/></svg></div>
+    </div>
+    <div class="top-badges top-res">
+      <div class="realm-badge">灵石 <strong id="resStones">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 13.5 5v6L8 14.5 2.5 11V5Z" fill="#ffd76b" stroke="#8a6a1c" stroke-width="1"/><path d="M8 1.5v13" stroke="#c9973f" stroke-width=".8" opacity=".7"/></svg></div>
+      <div class="realm-badge">碎屑 <strong id="resDust">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 14 8l-6 6L2 8z" fill="#c084fc" stroke="#6b3fa0" stroke-width=".9"/></svg></div>
+      <div class="realm-badge">器魂 <strong id="resSouls">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2c3 3 5 5.5 5 8a5 5 0 0 1-10 0c0-2.5 2-5 5-8z" fill="#4ade80" stroke="#2f7d52" stroke-width=".9"/></svg></div>
+      <div class="realm-badge">招募券 <strong id="resTickets">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="1.5" fill="#fbbf24" stroke="#8a6a1c" stroke-width=".9"/><path d="M5 4v8M11 4v8" stroke="#8a6a1c" stroke-width=".8" stroke-dasharray="2 2"/></svg></div>
+      <div class="realm-badge">洗练券 <strong id="resReroll">0</strong><svg class="res-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="1.5" fill="#f9a8d4" stroke="#9d4f7c" stroke-width=".9"/><circle cx="8" cy="8" r="2.2" fill="#fdf2f8"/></svg></div>
+      <div class="realm-badge hidden" id="ascBadge" title="飞升次数（仙缘）">飞升 <strong id="resAsc">+0</strong></div>
+    </div>
+    <div class="user-area">
+      <button class="btn tiny ghost" id="themeToggleBtn" title="切换明暗主题">
+        <svg class="ic-sun" id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" width="15" height="15"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ic-moon" id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="btn tiny ghost" id="setOpenBtn" title="设置"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.72 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+      <span class="btn tiny" id="userChip" title="江湖称呼">…</span>
+      <button class="btn tiny" id="logoutBtn">退出</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="top-tabs" id="topTabs" aria-label="功能分组">
+      <button class="top-tab" data-tab="equip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M14 4 20 10 8.5 21.5 3 22l.5-5.5z"/><path d="M13 5.5 18.5 11"/></svg><span>装备</span></button>
+      <button class="top-tab" data-tab="richang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>日常</span></button>
+      <button class="top-tab" data-tab="zhan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 8v8M8.5 12h7"/></svg><span>征战</span></button>
+      <button class="top-tab active" data-tab="xiu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3l1.8 5.6L19 10l-5.2 1.4L12 17l-1.8-5.6L5 10l5.2-1.4z"/></svg><span>修炼</span></button>
+      <button class="top-tab" data-tab="gushi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14l-8-4z"/><path d="M8 7h8M8 11h5"/></svg><span>故事</span></button>
+      <button class="top-tab" data-tab="world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span>天下</span></button>
+      <button class="top-tab" data-tab="xian"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M12 21c-5 0-8-3-8-8 0-6 5-9 8-10 3 1 8 4 8 10 0 5-3 8-8 8z"/><path d="M12 21V9"/></svg><span>闲趣</span></button>
+    </nav>
+    <div class="tab-page" data-page="richang">
+      <div class="col col-a">
+<section class="panel daily" aria-label="日常">
+      <h2>日常</h2>
+      <p class="hint" id="weekBuffLine"></p>
+      <div class="signin-box" id="signInBox"></div>
+      <div id="dailyList"></div>
+      <p class="hint">每日 0 点刷新；三项全部领取有额外奖励。</p>
+      <p class="side-title">周常（每七日刷新）</p>
+      <div id="weeklyList"></div>
+      <p class="hint">周常进度跨天累计，三项全领有额外奖励。</p>
+      <p class="side-title">七日征程（每七日一轮）</p>
+      <div id="journeyList"></div>
+</section>
+<section class="panel daily-ext" aria-label="日常扩容">
+      <h2>日活福利</h2>
+      <div id="dailyExt"></div>
+</section>
+      </div>
+      <div class="col col-b">
+<section class="panel market" aria-label="黑市">
+      <h2>黑市</h2>
+      <p class="panel-meta"><span class="count" id="marketDate">今日货单</span></p>
+      <div id="marketList"></div>
+      <p class="hint">每日 0 点换货，每件限购一次。</p>
+      <p class="side-title">赌石</p>
+      <p class="hint">20 万灵石开一块璞玉（单日至多 500 次）：多为石屑，也可能开出碎屑、灵石，甚至天品装备。</p>
+      <div class="btn-row">
+        <button class="btn" id="gambleBtn">开璞玉（20 万灵石）</button>
+        <button class="btn" id="gamble10Btn">连开 10 次（200 万灵石）</button>
+      </div>
+      <p class="gamble-result" id="gambleResult" hidden></p>
+</section>
+      </div>
+<section class="panel panel-wide titles" aria-label="称号">
+      <h2>称号</h2>
+      <div class="chip-row title-row" id="titleRow"></div>
+</section>
+<section class="panel panel-wide achv" aria-label="成就">
+      <h2>成就</h2>
+      <div class="chip-row" id="achvFilterRow"></div>
+      <div id="achvList"></div>
+</section>
+    </div>
+
+    <div class="tab-page active" data-page="xiu">
+      <div class="col col-a">
+<section class="panel stage" aria-label="开箱">
+      <div class="box-wrap">
+        <div class="ring r1"></div>
+        <div class="ring r2"></div>
+        <div class="ring r3"></div>
+        <button class="box" id="boxBtn" aria-label="开一次灵匣">
+          <svg class="box-icon" viewBox="0 0 96 96" aria-hidden="true">
+            <defs>
+              <radialGradient id="bxGlow" cx="50%" cy="46%" r="52%">
+                <stop offset="0" stop-color="#ffd76b" stop-opacity="0.5"/>
+                <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
+              </radialGradient>
+              <radialGradient id="bxFill" cx="50%" cy="40%" r="70%">
+                <stop offset="0" stop-color="#fff6d8"/>
+                <stop offset="0.55" stop-color="#ffd76b"/>
+                <stop offset="1" stop-color="#c9973f"/>
+              </radialGradient>
+              <linearGradient id="bxBody" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#e8b54d"/>
+                <stop offset="0.5" stop-color="#c9973f"/>
+                <stop offset="1" stop-color="#8a5f24"/>
+              </linearGradient>
+              <linearGradient id="bxLid" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#8a5f24"/>
+                <stop offset="1" stop-color="#553a14"/>
+              </linearGradient>
+              <linearGradient id="bxRay" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.9"/>
+                <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <ellipse cx="48" cy="47" rx="42" ry="38" fill="url(#bxGlow)"/>
+            <polygon points="43,55 53,55 48,13" fill="url(#bxRay)" opacity="0.85"/>
+            <polygon points="36,57 41,53 25,28" fill="url(#bxRay)" opacity="0.5"/>
+            <polygon points="55,53 60,57 71,28" fill="url(#bxRay)" opacity="0.5"/>
+            <path d="M24 52 Q24 28 48 26 Q72 28 72 52 Z" fill="url(#bxLid)" stroke="#d8b36a" stroke-width="1.4"/>
+            <g fill="#ffd76b" opacity="0.9">
+              <circle cx="34" cy="37" r="1.7"/>
+              <circle cx="48" cy="31.5" r="1.7"/>
+              <circle cx="62" cy="37" r="1.7"/>
+            </g>
+            <ellipse cx="48" cy="53.5" rx="25.5" ry="7.2" fill="#1c0d18"/>
+            <ellipse cx="48" cy="53" rx="20.5" ry="5.2" fill="url(#bxFill)"/>
+            <ellipse cx="48" cy="48" rx="11.5" ry="6" fill="#fff6d8" opacity="0.5"/>
+            <rect x="24" y="58" width="48" height="25" rx="5" fill="url(#bxBody)" stroke="#6b4a1c" stroke-width="1.2"/>
+            <rect x="25" y="58.8" width="46" height="3.2" rx="1.6" fill="#ffd76b" opacity="0.85"/>
+            <rect x="25" y="79" width="46" height="2.2" rx="1.1" fill="#d8b36a" opacity="0.55"/>
+            <rect x="25.6" y="58.4" width="3" height="24.2" rx="1.5" fill="#ffd76b" opacity="0.75"/>
+            <rect x="67.4" y="58.4" width="3" height="24.2" rx="1.5" fill="#ffd76b" opacity="0.75"/>
+            <circle cx="48" cy="68.5" r="4.8" fill="url(#bxFill)" stroke="#6b4a1c" stroke-width="0.9"/>
+            <circle cx="48" cy="67.2" r="1.5" fill="#4a2c10"/>
+            <rect x="47.2" y="67.2" width="1.6" height="3.6" rx="0.8" fill="#4a2c10"/>
+            <g fill="#ffe9a8" opacity="0.85">
+              <circle cx="30.5" cy="63" r="1.3"/>
+              <circle cx="65.5" cy="63" r="1.3"/>
+              <circle cx="30.5" cy="78.5" r="1.3"/>
+              <circle cx="65.5" cy="78.5" r="1.3"/>
+            </g>
+            <g fill="#ffe9a8">
+              <path d="M16 29 Q16.9 33.1 21 34 Q16.9 34.9 16 39 Q15.1 34.9 11 34 Q15.1 33.1 16 29 Z" opacity="0.8"/>
+              <path d="M80 24 Q81.3 28.7 86 30 Q81.3 31.3 80 36 Q78.7 31.3 74 30 Q78.7 28.7 80 24 Z" opacity="0.9"/>
+              <path d="M70 8 Q70.7 11.3 74 12 Q70.7 12.7 70 16 Q69.3 12.7 66 12 Q69.3 11.3 70 8 Z" opacity="0.7"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+
+      <div class="timer" aria-hidden="true"><div class="timer-fill" id="timerFill"></div></div>
+      <button class="pet-companion" id="petCompanion" aria-label="出战灵宠（点击进入灵宠面板）" hidden></button>
+      <p class="muted">自动开箱 <strong id="intervalText">2.00</strong> 秒 / 次</p>
+
+      <div class="buff hidden" id="buffBadge">丹药加成 ×2 · <span id="buffTime">30</span>s</div>
+
+      <div class="actions">
+        <button class="btn primary" id="open1">开一次</button>
+        <button class="btn" id="open10">连开十次</button>
+      </div>
+
+      <dl class="stats">
+        <div><dt>灵石</dt><dd id="stones" class="gold">0</dd></div>
+        <div><dt>每秒收益</dt><dd id="perSec">0</dd></div>
+        <div><dt>总战力</dt><dd id="powerTotal">0</dd></div>
+        <div><dt>暴击</dt><dd>5% ×10</dd></div>
+      </dl>
+
+      <p class="tip">点击灵匣或按空格手动开箱 · 累计开箱 <strong id="opens">0</strong> 次</p>
+    </section>
+<section class="panel upgrades" aria-label="淬炼">
+      <h2>淬炼</h2>
+
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">开箱速度 <em id="speedLv">Lv.0</em></span>
+          <p class="cave-desc" id="speedDesc">每 2.50 秒自动开一次</p></div>
+        <button class="mini" id="buySpeed">升级 100</button>
+      </div>
+
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 3h12l3 6-9 12L3 9l3-6z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">灵石收益 <em id="gainLv">Lv.0</em></span>
+          <p class="cave-desc" id="gainDesc">灵石收益 +0%</p></div>
+        <button class="mini" id="buyGain">升级 40</button>
+      </div>
+
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">气运 <em id="luckLv">Lv.0</em></span>
+          <p class="cave-desc" id="luckDesc">高品质权重 +0% / 阶</p></div>
+        <button class="mini" id="buyLuck">升级 150</button>
+      </div>
+
+      <div class="cave-row">
+        <span class="cave-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M5 3h11a3 3 0 0 1 3 3v13a1 1 0 0 1-1.45.9L14 18l-3.55 1.9A1 1 0 0 1 9 19V6a3 3 0 0 0-3-3h-.5A.5.5 0 0 1 5 2.5V3Zm3 3v12.6l3-1.6 3 1.6V6H8Zm12.5-.5a.5.5 0 0 1 .5.5v13a1 1 0 0 1-1 1H16v-2h4V6a.5.5 0 0 1 .5-.5Z"/></svg></span>
+        <div class="cave-main"><span class="cave-name">修为收益 <em id="expLv">Lv.0</em></span>
+          <p class="cave-desc" id="expDesc">开箱修为 +0%</p></div>
+        <button class="mini" id="buyExp">升级 120</button>
+      </div>
+    </section>
+      </div>
+      <div class="col col-b">
+      <section class="panel realm" aria-label="境界">
+            <h2 id="realmTitle" title="点击折叠 / 展开境界面板">境界 <button class="realm-toggle" id="realmToggle" title="展开 / 收起境界清单">▸</button></h2>
+            <div id="realmList" class="realm-list hidden"></div>
+            <div class="realm-hero">
+              <span class="realm-hero-moon" id="heroEmblem"></span>
+              <p class="realm-hero-tag" id="heroTag">修士</p>
+              <div class="realm-hero-name" id="realmNow">炼气</div>
+              <div class="realm-hero-pills">
+                <span class="pill" id="heroAscPill">✦ 仙缘 ×0</span>
+                <span class="pill">◔ 修行之中</span>
+              </div>
+              <div class="realm-hero-exp"><span class="realm-hero-label">境界修为</span><span id="expText">0 / 60 修为</span></div>
+              <div class="bar"><div class="bar-fill" id="expFill"></div></div>
+              <div class="realm-hero-cta">
+                <button class="btn primary" id="breakBtn">突破境界</button>
+                <button class="btn ghost hidden" id="ascendBtn">飞升（重置本世）</button>
+              </div>
+              <div class="realm-hero-foot">
+                <div><span class="label">累计开箱</span><b id="heroOpens">0</b></div>
+                <div><span class="label">飞升轮回</span><b id="heroAsc">0</b></div>
+              </div>
+            </div>
+            <p class="hint" id="ascendHint"></p>
+            <p class="side-title">挑战修行（飞升时达成条件即功成）</p>
+            <div id="ordealList"></div>
+            <p class="side-title">天道录</p>
+            <div id="chapterBox"></div>
+            <p class="side-title">功法（消耗修为）</p>
+            <div id="gongfaSec">
+              <div id="gongfaList"></div>
+            </div>
+            <button class="btn ghost wide hidden" id="immortalBtn">入仙界</button>
+            <p class="hint hidden" id="immortalHint"></p>
+          </section>
+
+
+      </div>
+<section class="panel status panel-wide" aria-label="角色状态">
+      <h2>角色状态</h2>
+      <div class="status-grid" id="statusGrid"></div>
+    </section>
+<section class="panel steward panel-wide" aria-label="道童">
+      <h2>道童</h2>
+      <div class="rogue-box">
+        <div class="rogue-head"><span class="side-title">自动穿戴</span></div>
+        <div class="chip-row" id="stewardWear"></div>
+      </div>
+      <div class="rogue-box">
+        <div class="rogue-head"><span class="side-title">自动分解</span></div>
+        <p class="hint">掉落的低品装备直接折成灵石与碎屑（套装件不受影响）。</p>
+        <div class="chip-row" id="stewardSalvage"></div>
+      </div>
+      <div class="rogue-box">
+        <div class="rogue-head"><span class="side-title">黑市代购</span></div>
+        <div class="chip-row" id="stewardMarket"></div>
+        <p class="hint">点亮后每日自动购买该商品。</p>
+      </div>
+    </section>
+
+    <!-- 修炼扩容（2026-11-04）：闭关打坐 / 道童历练 / 五行道基 / 道悟星图（内容 JS 渲染） -->
+    <section class="panel seclusion panel-wide" aria-label="闭关打坐">
+      <h2>闭关打坐</h2>
+      <div id="seclBox"></div>
+    </section>
+    <section class="panel dispatch panel-wide" aria-label="道童历练">
+      <h2>道童历练</h2>
+      <div id="dispatchBox"></div>
+    </section>
+    <section class="panel daoji panel-wide" aria-label="五行道基">
+      <h2>五行道基</h2>
+      <div id="daojiBox"></div>
+    </section>
+    <section class="panel xingtu panel-wide" aria-label="道悟星图">
+      <h2>道悟星图</h2>
+      <div id="xingtuBox"></div>
+    </section>
+
+      <!-- 修行指南：修炼页最下方（仅修炼页显示，panel-wide 全宽） -->
+      <section class="panel guide panel-wide" aria-label="修行指南">
+        <h2>修行指南</h2>
+        <p class="hint" id="guideLead"></p>
+        <div id="guideList"></div>
+        <p class="guide-meta" id="guideMeta"></p>
+      </section>
+    </div>
+
+    <div class="tab-page" data-page="equip">
+<section class="panel equipment" aria-label="装备">
+      <h2>装备</h2>
+      <div class="power-line">
+        <div class="power-main">
+          <span class="power-label">总战力</span>
+          <strong class="power-num" id="powerPanel">0</strong>
+          <span class="power-bonus" id="powerBonus">收益 ×1.00</span>
+          <span class="power-gear" id="powerGear">装备战力 0</span>
+        </div>
+        <button class="btn tiny" id="autoEquip">一键穿戴</button>
+      </div>
+      <div class="equip-grid" id="equipGrid"></div>
+      <div class="set-list" id="setList"></div>
+      <p class="side-title">词条共鸣</p>
+      <div class="res-box" id="resonanceBox"></div>
+      <div id="craftSec">
+        <p class="side-title">炼器（器魂定向打造天品）</p>
+        <p class="hint"><span id="soulCount">器魂 0</span> · 分解专属件与探幽通关可得器魂</p>
+        <div class="chip-row" id="craftList"></div>
+      </div>
+      <div id="meltSec">
+        <p class="side-title">熔铸（同品质 → 更高一品）</p>
+        <p class="hint">取背包中最弱的一批熔铸，部位随机：地品 ×10 → 天品；天品 ×5 → 仙品；仙品 ×5 → 星级更高的仙品（封顶 ★5）。成功率统一 70%±10%，手续费按档位计，失败材料与手续费不退。</p>
+        <div class="chip-row" id="meltList"></div>
+      </div>
+      <p class="hint">强化只作用于已穿戴装备，最高 +200。装备战力决定灵石收益；总战力为实战口径（含境界 / 时辰 / 灵宠 / 功法等加成），与顶栏和战力榜一致。</p>
+    </section>
+<section class="panel bag" aria-label="背包">
+      <h2>背包</h2>
+      <div class="bag-tools">
+        <span class="count" id="bagCount">0 / 100</span>
+        <button class="btn tiny hidden" id="bagExpandBtn">使用扩容符</button>
+        <button class="btn tiny" id="salvageLow">分解 凡/灵/玄</button>
+        <button class="btn tiny" id="salvageAll">清空分解</button>
+      </div>
+      <div class="bag-filters">
+        <div class="chip-row" id="bagSortRow">
+          <button class="bag-chip active" data-sort="power">战力</button>
+          <button class="bag-chip" data-sort="rarity">品质</button>
+          <button class="bag-chip" data-sort="slot">部位</button>
+        </div>
+        <div class="chip-row" id="bagFilterRow">
+          <button class="bag-chip active" data-slot="all">全部</button>
+          <button class="bag-chip" data-slot="weapon"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 2.5 6 10l-1.2-.3L4.2 11l1.2 1.2 1.3-.6-.3-1.2 7.3-7.4Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M5 11.5 3 13.5M2.5 11l2.5 2.5" stroke="#8a6a2c" stroke-width="1.1" stroke-linecap="round"/></svg>武器</button>
+          <button class="bag-chip" data-slot="armor"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2 8 4l2.5-2 3 2-1 4h-1.5v6H5v-6H3.5l-1-4Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M8 4v10" stroke="#8a6a2c" stroke-width=".8"/></svg>衣袍</button>
+          <button class="bag-chip" data-slot="helm"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12V7a5 5 0 0 1 10 0v5l-1.6-1.4L9.8 12 8 10.6 6.2 12 4.6 10.6Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M8 3v6" stroke="#8a6a2c" stroke-width=".8"/></svg>冠冕</button>
+          <button class="bag-chip" data-slot="boots"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h4v6l4.5 2.5V14H5Z" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><path d="M5 12h8.5" stroke="#8a6a2c" stroke-width="1" opacity=".7"/></svg>云靴</button>
+          <button class="bag-chip" data-slot="artifact"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="7" r="4.2" fill="#d8b36a" stroke="#8a6a2c" stroke-width=".8"/><circle cx="6.8" cy="5.8" r="1.2" fill="#fff6d8" opacity=".9"/><path d="M5.5 13.5h5M8 11.2v2.3" stroke="#8a6a2c" stroke-width="1" stroke-linecap="round"/></svg>法宝</button>
+          <button class="bag-chip" data-slot="talisman"><svg class="slot-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h6l2 2v9H4Z" fill="#e8d5a8" stroke="#8a6a2c" stroke-width=".8"/><path d="M10 2.5v2h2" fill="none" stroke="#8a6a2c" stroke-width=".8"/><path d="M6.5 6v5M9 6v5" stroke="#8a2f28" stroke-width="1" stroke-linecap="round"/></svg>灵符</button>
+        </div>
+      </div>
+      <ul class="bag-list" id="bagList"></ul>
+      <p class="hint">装备默认不分解；背包装满时，自动保留更强的一件。</p>
+    </section>
+<section class="panel log" aria-label="最近掉落">
+      <h2>最近掉落</h2>
+      <ul class="log-list" id="logList"></ul>
+    </section>
+    </div>
+    <div class="tab-page" data-page="zhan">
+<section class="panel combat" aria-label="秘境征战">
+      <h2>秘境征战</h2>
+      <p class="combat-lead">四处秘境产出开匣得不到的专属套装与战利品。难度逐层递增，建议先闯关，再野外，最后爬塔，通关爬塔后开启无尽。</p>
+
+      <div class="trophy-box">
+        <p class="side-title">战利品</p>
+        <ul class="trophy-list" id="trophyList"></ul>
+      </div>
+
+      <div class="training-box">
+        <p class="side-title">战技</p>
+        <div class="training-list" id="trainingList"></div>
+      </div>
+
+      <div class="combat-tabs" role="tablist" aria-label="秘境玩法">
+        <button class="combat-tab active" data-mode="stage" role="tab" aria-selected="true">闯关</button>
+        <button class="combat-tab" data-mode="tower" role="tab" aria-selected="false">爬塔</button>
+        <button class="combat-tab" data-mode="wild" role="tab" aria-selected="false">野外</button>
+        <button class="combat-tab" data-mode="endless" role="tab" aria-selected="false">无尽</button>
+      </div>
+
+      <div class="combat-grid">
+        <div class="combat-main">
+          <div class="enemy-card" id="enemyCard">
+            <div class="enemy-head">
+              <span class="enemy-icon" id="enemyIcon">关</span>
+              <div class="enemy-title">
+                <p class="enemy-kicker" id="enemyKicker">第 1 关</p>
+                <h3 id="enemyName">山贼</h3>
+                <span class="enemy-el el-jin" id="enemyEl">金</span>
+                <span class="diff" id="difficultyBadge">势均力敌</span>
+              </div>
+              <span class="enemy-tag hidden" id="enemyTag">首领</span>
+            </div>
+            <dl class="enemy-stats">
+              <div><dt>生命</dt><dd id="enemyHp">0</dd></div>
+              <div><dt>攻击</dt><dd id="enemyAtk">0</dd></div>
+              <div><dt>防御</dt><dd id="enemyDef">0</dd></div>
+              <div><dt>建议战力</dt><dd id="enemyReq">0</dd></div>
+            </dl>
+          </div>
+
+          <div class="player-strip">
+            <span>战力 <b id="combatPower">0</b></span>
+            <span>攻击 <b id="combatAtk">0</b></span>
+            <span>生命 <b id="combatHp">0</b></span>
+            <span>防御 <b id="combatDef">0</b></span>
+            <span>五行 <b id="combatEl">持平</b></span>
+            <span>体力 <b id="combatStamina">…</b></span>
+          </div>
+
+          <div class="zone-strip hidden" id="zoneStrip"></div>
+
+          <div class="zone-strip hidden" id="sweepStrip"></div>
+
+          <div class="combat-actions">
+            <button class="btn primary" id="combatBtn">挑战第 1 关</button>
+            <button class="btn ghost hidden" id="sweepBtn">扫荡</button>
+          </div>
+
+          <p class="combat-progress" id="combatProgress">套装部件按概率掉落</p>
+
+          <div class="report-head">
+            <span>战斗日志</span>
+            <button class="btn tiny replay-btn" id="replayBattleBtn" disabled>回看战报</button>
+          </div>
+          <div class="battle-report" id="battleReport">
+            <p class="empty">选择秘境，挑战守卫，赢取专属套装。</p>
+          </div>
+        </div>
+
+        <aside class="combat-side">
+          <p class="hint" id="combatHint">链路：闯关 3 关解锁野外，5 关解锁爬塔；通塔 60 层开启无尽秘境。境界一路筑基、金丹、元婴……更有功法、道童、探幽、黑市、灵宠、洞府相继现世，详见「修行指南」。</p>
+        </aside>
+      </div>
+    </section>
+      <div class="col col-a">
+<section class="panel trials" aria-label="试炼">
+      <h2>试炼</h2>
+      <div class="rogue-box" id="rogueBoxRogue">
+        <div class="rogue-head">
+          <span class="side-title">秘境探幽</span>
+          <span class="count" id="rogueBest">最远 0 / 200 层</span>
+        </div>
+        <p class="hint" id="rogueStatus">未在进行中</p>
+        <p class="hint" id="rogueBuffSum" hidden></p>
+        <p class="hint">连闯 200 层，每层胜后三选一神物加持，中途战败整局结束；每 25 层有里程碑碎屑，通关奖励三倍。</p>
+        <div class="combat-actions">
+          <button class="btn primary" id="rogueBtn">开始探幽</button>
+          <button class="btn ghost hidden" id="rogueGiveup">收手保奖</button>
+        </div>
+      </div>
+      <div class="rogue-box" id="bossBox">
+        <div class="rogue-head">
+          <span class="side-title">首领连战</span>
+        </div>
+        <p class="hint" id="bossRushNote"></p>
+        <button class="btn wide" id="bossRushBtn">首领连战</button>
+      </div>
+      <div class="rogue-box" id="anomalyBox">
+        <div class="rogue-head">
+          <span class="side-title">异象秘境</span>
+          <span class="count">每日一词缀组合 · 0 点更替</span>
+        </div>
+        <p class="hint" id="anomalyNote"></p>
+        <button class="btn wide" id="anomalyBtn">平定异象</button>
+      </div>
+      <div class="rogue-box" id="trialsBox">
+        <div class="rogue-head">
+          <span class="side-title">条件试炼</span>
+        </div>
+        <div id="trialList"></div>
+        <p class="hint">每日各限达成一次，三项全通额外 60 碎屑。</p>
+      </div>
+      <div class="rogue-box" id="mirrorBox"></div>
+      <div class="rogue-box">
+        <div class="rogue-head">
+          <span class="side-title">心魔劫</span>
+        </div>
+        <div id="demonBox"></div>
+      </div>
+      <div class="rogue-box" id="bountyBox">
+        <div class="rogue-head">
+          <span class="side-title">悬赏令</span>
+          <span class="count">白/绿/蓝/紫 各一单 · 每日 0 点换榜</span>
+        </div>
+        <div id="bountyList"></div>
+      </div>
+      <div class="rogue-box" id="tribBox">
+        <div class="rogue-head">
+          <span class="side-title">天劫将至</span>
+        </div>
+        <p class="hint">每三日九霄神雷来袭一次：抗住得重奖，可提前用碎屑炼护体符减伤。</p>
+        <div class="combat-actions">
+          <button class="btn primary" id="tribBtn">迎击天劫</button>
+        </div>
+      </div>
+    </section>
+      </div>
+      <div class="col col-b">
+
+      </div>
+<section class="panel panel-wide map-panel" aria-label="秘境图">
+      <h2>秘境图</h2>
+      <div class="panel-meta"><span class="count" id="mapAp">行动力 0 / 12</span>
+        <button class="btn tiny" id="mapBuyBtn">加购 1 行动力（1 万灵石）</button></div>
+      <div class="map-grid" id="mapGrid"></div>
+      <p class="hint">每日 +6 行动力；点相邻的「+」格探雾前进，可采矿、拾尘、斩妖、闯藏宝窟，或与故人偶遇。妖物越远越强。</p>
+      <div id="treasureBox"></div>
+    </section>
+    </div>
+
+    <div class="tab-page" data-page="gushi">
+<section class="panel panel-wide story-panel" aria-label="红尘录">
+      <h2>红尘录</h2>
+      <p class="panel-meta">进度 <span class="count" id="storyProg">0 / 150 关</span></p>
+      <p class="story-lead" id="storyLead">青石镇的采药少年林小凡，捡到一只会自己响的旧灵匣。此后山贼、魔修、老祖、邪神——挡路者，一刀一个。</p>
+      <div id="storyBox"></div>
+      <p class="hint">每卷需先抵达对应境界；卷内逐关解锁，战力达到建议值再战更稳。已通关卡可随时回顾剧情。卷末有关键抉择（改动果报）、卷后有隐藏关「尘缘未了」（本卷全通且同卷人物全结识后开放）、全卷通关解锁红尘手札；战斗关可邀结识角色同行助战（人物志赠礼提升好感加成）。</p>
+    </section>
+<section class="panel panel-wide cast-panel" aria-label="人物志">
+      <h2>人物志</h2>
+      <p class="panel-meta">已结识 <span class="count" id="castCount">0 / 0</span></p>
+      <div class="cast-grid" id="castGrid"></div>
+      <p class="hint">随剧情推进结识的人物会在此留下立绘与小传。</p>
+    </section>
+    </div>
+
+    <div class="tab-page" data-page="world">
+      <div class="col col-a">
+<section class="panel rank-panel" aria-label="战力榜">
+      <h2>战力榜</h2>
+      <div class="panel-meta"><button class="btn tiny" id="rankRefresh">刷新</button></div>
+      <div class="rank-list" id="rankList"><p class="hint">加载中……</p></div>
+      <p class="hint" id="rankMe">切到此页自动刷新。</p>
+</section>
+<section class="panel arena" aria-label="竞技场">
+      <h2>竞技场</h2>
+      <div class="panel-meta"><button class="btn tiny" id="arenaRefresh">刷新</button><button class="btn tiny" id="arenaBuy" disabled>加购 1 场（1 万灵石）</button></div>
+      <p class="hint" id="arenaInfo">加载中……</p>
+      <div class="arena-list" id="arenaOpps"></div>
+      <p class="hint">与同辈修士切磋（战力快照对战），每日 15 场；灵石加购每场 1 万、每日至多 10 场，胜负皆动天梯分；同一对手每日至多三场。名单不足时由「剑影」补位。</p>
+</section>
+<section class="panel ladder-panel" aria-label="天梯榜">
+      <h2>天梯榜</h2>
+      <div class="rank-list" id="ladderList"><p class="hint">加载中……</p></div>
+      <p class="hint" id="ladderMe">—</p>
+      <div class="set-row"><button class="btn tiny" id="ladderPayBtn" disabled>领取今日天梯俸</button><span class="hint" id="ladderPayHint">切磋过一场即可每日按段位领俸。</span></div>
+</section>
+<section class="panel worldboss" aria-label="世界妖王">
+      <h2>世界妖王</h2>
+      <p class="panel-meta">当前妖王 <span class="count" id="bossName">—</span></p>
+      <div class="bar"><div class="bar-fill" id="bossBarFill"></div></div>
+      <p class="hint" id="bossHpText">—</p>
+      <button class="btn wide primary" id="bossAttack">出手攻妖</button>
+      <p class="hint" id="bossMy">—</p>
+      <p class="side-title">今日战功</p>
+      <div class="rank-list" id="bossTop"><p class="hint">—</p></div>
+      <p class="hint">全服共讨一只妖王，血条共享、按日重开；讨平后有战功者各领奖励，结击者加倍。</p>
+</section>
+<section class="panel bounty" aria-label="悬赏妖踪">
+      <h2>悬赏妖踪</h2>
+      <p class="panel-meta">今日妖踪 <span class="count" id="bountyDay">—</span></p>
+      <div id="bountyEliteList"><p class="hint">加载中……</p></div>
+      <p class="hint">每日三只妖将按你的实力现身，各可出战一场；战胜得赏，越强的亲卫赏越厚。胜负由服务端按天梯快照复算，战败不折损。</p>
+</section>
+<section class="panel bounty" aria-label="回忆之战">
+      <h2>回忆之战</h2>
+      <p class="panel-meta">本周回忆 <span class="count" id="memoryWeek">—</span></p>
+      <div id="memoryBody"><p class="hint">加载中……</p></div>
+      <p class="hint">每周一位红尘录旧首领自回忆中现身，按你的实力缩放；战胜得周赏，每人每周一战，胜负由服务端复算。</p>
+</section>
+      </div>
+      <div class="col col-b">
+<section class="panel guild" aria-label="仙盟">
+      <h2>仙盟</h2>
+      <div id="guildBox"><p class="hint">加载中……</p></div>
+</section>
+      </div>
+    </div>
+
+<div class="modal set-modal" id="setModal" role="dialog" aria-modal="true" aria-labelledby="setModalTitle">
+    <div class="modal-card set-card">
+      <div class="set-head"><h2 id="setModalTitle">设置</h2><button class="mini" id="setCloseBtn">✕</button></div>
+      <div class="set-scroll">
+<div class="col col-a">
+<section class="panel set-guide" aria-label="玩法指南">
+      <h2>玩法指南</h2>
+      <p class="hint">随时回看「初入江湖」新手教程：核心玩法循环与各系统入口。</p>
+      <button class="btn wide" id="replayTutorial">回看新手教程</button>
+      <button class="btn wide" id="gameplayGuideBtn">整体玩法说明（全系统）</button>
+</section>
+<section class="panel set-display" aria-label="显示设置">
+      <h2>显示</h2>
+      <p class="side-title">游戏字号</p>
+      <div class="set-row">
+        <button class="btn tiny" id="fontMinus">A－</button>
+        <span class="set-value" id="fontScaleLabel">100%</span>
+        <button class="btn tiny" id="fontPlus">A＋</button>
+        <button class="btn tiny ghost" id="fontReset">重置</button>
+      </div>
+      <p class="hint">范围 85% – 125%，影响整个游戏页面，随存档保存。</p>
+      <p class="side-title">主题</p>
+      <div class="set-row">
+        <button class="btn tiny" id="themeDark">暗</button>
+        <button class="btn tiny" id="themeLight">明</button>
+      </div>
+      <p class="hint">暗色为默认水墨夜色；明色为羊皮纸日间风。</p>
+</section>
+<section class="panel set-name" aria-label="显示名">
+      <h2>显示名</h2>
+      <p class="hint">当前显示名：<b id="displayNameNow">…</b></p>
+      <div class="guild-row-input">
+        <input id="displayNameInput" maxlength="16" placeholder="游戏内显示名（2-16 位）" autocomplete="off">
+        <button class="btn primary" id="displayNameBtn">修改</button>
+      </div>
+      <p class="hint">账号（道号）仅用于登录；此处改的是江湖称呼，顶部与各榜单即时生效，24 小时可改一次且不可重名。失败原因会弹窗提示。</p>
+</section>
+<section class="panel set-audio" aria-label="音效设置">
+      <h2>音效</h2>
+      <div class="set-row">
+        <button class="btn tiny" id="muteBtn">音效：开</button>
+        <input type="range" id="volumeSlider" min="0" max="100" value="60" aria-label="音量">
+      </div>
+      <p class="hint">关键事件音效随音量联动，关闭后完全静音。</p>
+</section>
+      </div>
+      <div class="col col-b">
+<section class="panel set-save" aria-label="存档与版本">
+      <h2>存档与版本</h2>
+      <p class="hint">进度云端保存 · 换设备登录同一账号自动恢复</p>
+      <p><span class="ver-chip" id="serverTime">服务器时间 …</span>
+      <span class="ver-chip" id="gameVersion">版本 …</span></p>
+      <div class="set-row">
+        <button class="btn tiny" id="resetBtn">重置存档</button>
+      </div>
+      <p class="hint">重置存档会清空本地与云端进度，且不可恢复。</p>
+</section>
+      </div>
+      </div>
+    </div>
+  </div>
+
+    <div class="tab-page" data-page="xian">
+      <div class="col col-a">
+<section class="panel cave" aria-label="洞府">
+      <h2>洞府</h2>
+      <div id="caveSec">
+        <div id="caveList"></div>
+        <p class="hint">洞府建筑提供全局加成：聚灵阵加灵石收益，药园加开箱暴击，藏经阁加修为。</p>
+        <p class="side-title">炼丹房</p>
+        <div id="elixirList"></div>
+      </div>
+      <div id="farmSec">
+        <p class="side-title">牧场</p>
+        <div id="farmStones" class="farm-counts"></div>
+        <div id="farmSeedBar"></div>
+        <div id="farmGrid" aria-label="牧场方格"></div>
+        <p class="hint">点空格弹层选种播种 · 点熟格收获 · 点锁格花灵石开垦</p>
+      </div>
+      <div id="gatherSec">
+        <p class="side-title">灵圃采集</p>
+        <div id="gatherList"></div>
+      </div>
+    </section>
+<section class="panel fishing" aria-label="垂钓">
+      <h2>垂钓</h2>
+      <div id="fishingBox"></div>
+</section>
+<section class="panel collection" aria-label="图鉴">
+      <h2>图鉴</h2>
+      <ul class="collection-list" id="collectionList"></ul>
+      <p class="hint" id="bestText">最高收集：—</p>
+      <div class="set-collect" id="setCollect"></div>
+      <p class="hint">套装图鉴按「曾获得」收录，分解也算；收集加成全局生效，与穿戴的套装效果独立。</p>
+      <div id="museumSec">
+        <p class="side-title">陈列室</p>
+        <div id="museumList"></div>
+      </div>
+      <p class="side-title">怪物图鉴 <span class="count" id="bestiaryCount">0 种</span></p>
+      <div class="bestiary-list" id="bestiaryList"></div>
+      <p class="hint">每 5 个物种：攻击与生命 +0.5%。</p>
+      <p class="side-title">战功碑</p>
+      <div id="battleStatsBox"></div>
+    </section>
+      </div>
+      <div class="col col-b">
+<section class="panel pets" aria-label="灵宠">
+      <h2>灵宠</h2>
+      <div class="pet-top" id="petTopRow">
+        <span class="count" id="ticketCount">券 0</span>
+        <button class="btn tiny" id="petHuntBtn">捕捉</button>
+        <button class="btn tiny" id="petFuseBtn">合成</button>
+        <span id="petBagInline" class="pet-bag-inline"></span>
+      </div>
+      <div id="petWalkBox"></div>
+      <div class="pet-list" id="petList"></div>
+      <p class="hint">缚灵谷消耗招募券与体力捕捉个体；合成三合一提品质；洗髓重随词条。亲密度/信物/内丹为物种级熟练度。</p>
+    </section>
+    <section class="panel dao" aria-label="道侣">
+      <h2>道侣</h2>
+      <p class="hint">赠礼积攒情谊：单个道侣累计灵石礼满 20 亿或碎屑礼满 500 万可结为道侣，得永久常驻加成与一段往事。</p>
+      <div id="daoList"></div>
+    </section>
+<section class="panel market" aria-label="云来坊市">
+      <h2>云来坊市</h2>
+      <p class="panel-meta"><span class="count" id="shopRep"></span></p>
+      <div id="shopBox"></div>
+      <p class="hint">成品为坊市商品，用途是变现：直售兜底价，接订单 1.8 倍溢价＋商誉（悬停成品看说明）。牧场 / 灵圃收获自动送入坊市仓库。</p>
+    </section>
+<section class="panel wander" aria-label="云游奇遇">
+      <h2>云游奇遇</h2>
+      <div id="wanderList"></div>
+    </section>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal" id="offlineModal" role="dialog" aria-modal="true" aria-labelledby="offlineTitle">
+    <div class="modal-card">
+      <h3 id="offlineTitle">离线挂机收益</h3>
+      <p id="offlineText"></p>
+      <button class="btn primary wide" id="offlineClose">收下</button>
+    </div>
+  </div>
+  <div class="modal cast-modal" id="castModal" role="dialog" aria-modal="true" aria-labelledby="castModalName">
+    <div class="modal-card cast-card-modal">
+      <div class="cast-modal-head">
+        <span class="cast-modal-avatar" id="castModalAvatar" aria-hidden="true"></span>
+        <div class="cast-modal-id">
+          <h2 id="castModalName">—</h2>
+          <p class="cast-modal-sub">人物志 · 已结识</p>
+        </div>
+        <button class="mini" id="castModalClose">✕</button>
+      </div>
+      <div class="cast-modal-art" id="castModalArt"></div>
+      <p class="cast-modal-brief" id="castModalBrief"></p>
+      <div class="cast-favor-box hidden" id="castFavorBox"></div>
+    </div>
+  </div>
+  <div class="modal cast-modal" id="journalModal" role="dialog" aria-modal="true" aria-labelledby="journalTitle">
+    <div class="modal-card cast-card-modal">
+      <div class="cast-modal-head">
+        <div class="cast-modal-id">
+          <h2 id="journalTitle">红尘手札</h2>
+          <p class="cast-modal-sub">手札成册 · 随卷解锁</p>
+        </div>
+        <button class="mini" id="journalModalClose">✕</button>
+      </div>
+      <p class="cast-modal-brief journal-text" id="journalText"></p>
+    </div>
+  </div>
+  <div class="modal" id="gambleModal" role="dialog" aria-modal="true" aria-labelledby="gambleModalTitle">
+    <div class="modal-card">
+      <h3 id="gambleModalTitle">璞玉结果</h3>
+      <div class="gamble-modal-list" id="gambleModalList"></div>
+      <p class="hint" id="gambleModalSum"></p>
+      <div class="modal-actions">
+        <button class="btn" id="gambleModalClose">关闭</button>
+        <button class="btn primary" id="gambleModalAgain">再开一次</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="ascendModal" role="dialog" aria-modal="true" aria-labelledby="ascendModalTitle">
+    <div class="modal-card">
+      <h3 id="ascendModalTitle">飞升轮回</h3>
+      <div class="ascend-modal-grid" id="ascendModalBody"></div>
+      <p class="hint" id="ascendModalHint"></p>
+      <div class="modal-actions">
+        <button class="btn" id="ascendModalCancel">再想想</button>
+        <button class="btn primary" id="ascendModalGo">散尽灵石，飞升</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="daoBaseModal" role="dialog" aria-modal="true" aria-labelledby="daoBaseModalTitle">
+    <div class="modal-card">
+      <h3 id="daoBaseModalTitle">五行择道</h3>
+      <div id="daoBaseModalBody"></div>
+      <p class="hint" id="daoBaseModalHint"></p>
+      <div class="modal-actions">
+        <button class="btn" id="daoBaseModalClose">暂不择道</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fishModal" role="dialog" aria-modal="true" aria-labelledby="fishModalTitle">
+    <div class="modal-card fish-modal-card">
+      <h3 id="fishModalTitle">垂钓 · 十钓场</h3>
+      <div id="fishModalBody"></div>
+      <div class="modal-actions">
+        <button class="btn" id="fishModalClose">收竿离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fishKingModal" role="dialog" aria-modal="true" aria-labelledby="fkTitle">
+    <div class="modal-card">
+      <h3 id="fkTitle">👑 鱼王到手</h3>
+      <p id="fkBody"></p>
+      <div class="modal-actions">
+        <button class="btn primary wide" id="fkCloseBtn">收进鱼护 ▸</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmUnlockModal" role="dialog" aria-modal="true" aria-labelledby="farmUnlockTitle">
+    <div class="modal-card">
+      <h3 id="farmUnlockTitle">开垦方格</h3>
+      <p id="farmUnlockText"></p>
+      <div class="modal-actions">
+        <button class="btn" id="farmUnlockCancel">取消</button>
+        <button class="btn primary" id="farmUnlockOk">解锁</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmPlantModal" role="dialog" aria-modal="true" aria-labelledby="farmPlantTitle">
+    <div class="modal-card">
+      <h3 id="farmPlantTitle">选择种籽</h3>
+      <div class="farm-plant-list" id="farmPlantList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="farmPlantCancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="farmBuyModal" role="dialog" aria-modal="true" aria-labelledby="farmBuyTitle">
+    <div class="modal-card">
+      <h3 id="farmBuyTitle">购种</h3>
+      <div class="farm-buy-list" id="farmBuyList"></div>
+      <p class="hint" id="farmBuyTotal"></p>
+      <div class="modal-actions">
+        <button class="btn" id="farmBuyCancel">取消</button>
+        <button class="btn primary" id="farmBuyOk">购买</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="petBagModal" role="dialog" aria-modal="true" aria-labelledby="petBagTitle">
+    <div class="modal-card">
+      <h3 id="petBagTitle">灵宠背包 <span class="count" id="petBagCount"></span></h3>
+      <div class="chip-row" id="petBagSortRow"></div>
+      <div class="pet-bag-list" id="petBagList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="petBagClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="signLogModal" role="dialog" aria-modal="true" aria-labelledby="signLogTitle">
+    <div class="modal-card">
+      <h3 id="signLogTitle">签到战绩 · 流水</h3>
+      <p class="hint" id="signLogStats"></p>
+      <div class="signlog-list" id="signLogModalList"></div>
+      <div class="modal-actions">
+        <button class="btn" id="signLogClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="mapEventModal" role="dialog" aria-modal="true" aria-labelledby="mapEventTitle">
+    <div class="modal-card">
+      <h3 id="mapEventTitle">秘境奇遇</h3>
+      <div id="mapEventBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="mapEventBtn">继续 ▸</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="inspectModal" role="dialog" aria-modal="true" aria-labelledby="inspectTitle">
+    <div class="modal-card">
+      <h3 id="inspectTitle">查看装备</h3>
+      <div id="inspectBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="inspectBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="beastModal" role="dialog" aria-modal="true" aria-labelledby="beastTitle">
+    <div class="modal-card">
+      <h3 id="beastTitle">怪物详情</h3>
+      <div id="beastBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="beastCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal battle-modal" id="battleModal" role="dialog" aria-modal="true" aria-labelledby="battleTitle">
+    <div class="modal-card battle-card">
+      <div class="battle-head">
+        <div>
+          <h3 id="battleTitle">战斗</h3>
+          <p class="battle-kicker" id="battleKicker">秘境 · 第 1 关</p>
+        </div>
+        <span class="battle-round" id="battleRound">准备</span>
+      </div>
+
+      <div class="battle-arena" id="battleArena">
+        <div class="fighter fighter-player" id="battlePlayer">
+          <span class="fighter-avatar" id="battlePlayerIcon"></span>
+          <span class="fighter-name" id="battlePlayerName">灵匣修士</span>
+          <div class="hp-bar"><div class="hp-fill player" id="battlePlayerHp"></div></div>
+          <span class="hp-text" id="battlePlayerHpText">0 / 0</span>
+        </div>
+
+        <div class="battle-vs">VS</div>
+
+        <div class="fighter fighter-enemy" id="battleEnemy">
+          <span class="fighter-avatar" id="battleEnemyIcon">妖</span>
+          <span class="fighter-name" id="battleEnemyName">敌人</span>
+          <div class="hp-bar"><div class="hp-fill enemy" id="battleEnemyHp"></div></div>
+          <span class="hp-text" id="battleEnemyHpText">0 / 0</span>
+        </div>
+      </div>
+
+      <p class="battle-log-title">战斗日志</p>
+      <div class="battle-log" id="battleLog">
+        <p class="empty">战斗即将开始……</p>
+      </div>
+
+      <div class="battle-result hidden" id="battleResult"></div>
+
+      <div class="battle-actions">
+        <button class="btn tiny" id="battleSpeed">倍速 ×1</button>
+        <button class="btn tiny" id="battleSkip">跳过动画</button>
+        <button class="btn primary wide" id="battleClose" disabled>战斗进行中</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal forge-modal" id="forgeModal" role="dialog" aria-modal="true" aria-labelledby="forgeTitle">
+    <div class="modal-card forge-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="forgeTitle">工坊</h3>
+          <p class="forge-kicker" id="forgeKicker"></p>
+        </div>
+        <span class="forge-dust">碎屑 <b id="forgeDust">0</b></span>
+      </div>
+      <div id="forgeStones" class="farm-counts"></div>
+      <div id="forgeAffixes"></div>
+      <div id="forgeGems"></div>
+      <div class="forge-picker hidden" id="forgePicker"></div>
+      <div id="forgeStars"></div>
+      <div id="forgeRunes"></div>
+      <div id="forgeInherit"></div>
+      <div id="forgeLvInherit"></div>
+      <div id="forgeBond"></div>
+      <p class="forge-msg" id="forgeMsg"></p>
+      <div class="forge-actions">
+        <button class="btn wide" id="forgeClose">关闭工坊</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petHuntModal" role="dialog" aria-modal="true" aria-labelledby="petHuntTitle">
+    <div class="modal-card pet-hunt-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petHuntTitle">缚灵谷</h3>
+          <p class="forge-kicker">探灵兽之踪，镇而服之</p>
+        </div>
+        <span class="forge-dust">券 <b id="huntTickets">0</b></span>
+      </div>
+      <div class="hunt-zones" id="huntZones"></div>
+      <div class="hunt-scene" id="huntScene"></div>
+      <div class="hunt-actions" id="huntActions"></div>
+      <p class="hunt-info" id="huntInfo"></p>
+      <div class="forge-actions">
+        <button class="btn wide" id="petHuntClose">离开缚灵谷</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petFuseModal" role="dialog" aria-modal="true" aria-labelledby="petFuseTitle">
+    <div class="modal-card pet-fuse-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petFuseTitle">灵宠合成</h3>
+          <p class="forge-kicker">三魂归一，品质跃迁</p>
+        </div>
+        <span class="forge-dust">个体 <b id="fuseHint">0</b></span>
+      </div>
+      <div class="fuse-slots" id="fuseSlots"></div>
+      <div class="fuse-picker-box" id="fusePicker"></div>
+      <div class="fuse-preview" id="fusePreview"></div>
+      <p class="forge-msg" id="fuseMsg"></p>
+      <div class="forge-actions">
+        <button class="btn wide" id="fuseAuto">自动放入</button>
+        <button class="btn primary wide" id="fuseGo">合成</button>
+        <button class="btn wide" id="petFuseClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal modal-sub" id="petFuseResultModal" role="dialog" aria-modal="true" aria-labelledby="petFuseResultTitle">
+    <div class="modal-card">
+      <h3 id="petFuseResultTitle">合成成功</h3>
+      <div class="pet-fuse-result" id="petFuseResultBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="petFuseResultOk">收下</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal modal-confirm" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal-card">
+      <h3 id="confirmTitle">请确认</h3>
+      <div class="confirm-body" id="confirmBody"></div>
+      <div class="modal-actions">
+        <button class="btn" id="confirmCancel">取消</button>
+        <button class="btn primary" id="confirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal modal-sub" id="meltResultModal" role="dialog" aria-modal="true" aria-labelledby="meltResultTitle">
+    <div class="modal-card">
+      <h3 id="meltResultTitle">熔铸结果</h3>
+      <div class="melt-result" id="meltResultBody"></div>
+      <div class="modal-actions">
+        <button class="btn hidden" id="meltResultCancel">取消</button>
+        <button class="btn primary" id="meltResultOk">收下</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal pet-modal" id="petDetailModal" role="dialog" aria-modal="true" aria-labelledby="petDetailTitle">
+    <div class="modal-card pet-detail-card">
+      <div class="forge-head">
+        <div>
+          <h3 id="petDetailTitle">灵宠详情</h3>
+          <p class="forge-kicker">洗髓换骨，词条重随机</p>
+        </div>
+      </div>
+      <div id="petDetailBody"></div>
+      <div class="forge-actions">
+        <button class="btn wide" id="petDetailClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="rogueModal" role="dialog" aria-modal="true" aria-labelledby="rogueTitle">
+    <div class="modal-card">
+      <h3 id="rogueTitle">神物加持</h3>
+      <p>择一随身，继续深入。</p>
+      <div class="rogue-choices" id="rogueChoices"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="quizResultModal" role="dialog" aria-modal="true" aria-labelledby="quizResultTitle">
+    <div class="modal-card">
+      <h3 id="quizResultTitle">——</h3>
+      <p id="quizResultBody"></p>
+      <button class="btn primary wide" id="quizResultBtn">继续 ▸</button>
+    </div>
+  </div>
+
+  <div class="modal" id="quizBoxModal" role="dialog" aria-modal="true" aria-labelledby="quizBoxTitle">
+    <div class="modal-card">
+      <h3 id="quizBoxTitle">天品自选箱</h3>
+      <p>仙道问答七日连对之赏。择一部位，直接炼出天品装备。</p>
+      <div class="rogue-choices" id="quizBoxSlots"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="tribModal" role="dialog" aria-modal="true" aria-labelledby="tribTitle">
+    <div class="modal-card">
+      <h3 id="tribTitle">天劫将至</h3>
+      <div id="tribBody">
+        <p>九霄神雷三日一临。以身为鼎，引雷淬体——抗住有重奖，未过亦无损。</p>
+        <p class="hint" id="tribTalismans">护体符 ×0</p>
+        <div class="combat-actions">
+          <button class="btn tiny" id="tribCraft">炼护体符（80 碎屑）</button>
+          <button class="btn tiny" id="tribUse" disabled>动用护体符（-15%）</button>
+        </div>
+      </div>
+      <button class="btn primary wide" id="tribFight">迎战天雷</button>
+    </div>
+  </div>
+
+  <div class="modal" id="adventureModal" role="dialog" aria-modal="true" aria-labelledby="adventureTitle">
+    <div class="modal-card">
+      <h3 id="adventureTitle">奇遇</h3>
+      <div id="adventureBody"></div>
+    </div>
+  </div>
+
+  <div class="modal story-modal" id="storyModal" role="dialog" aria-modal="true" aria-labelledby="storyTitle">
+    <div class="modal-card story-card">
+      <div class="story-head">
+        <div>
+          <h3 id="storyTitle">红尘录</h3>
+          <p class="story-kicker" id="storyKicker"></p>
+        </div>
+        <div class="story-head-btns">
+          <button class="btn tiny" id="storySkip">跳过</button>
+          <button class="btn tiny story-close" id="storyCloseBtn">✕</button>
+        </div>
+      </div>
+      <div class="story-stage" id="storyStage">
+        <div class="story-slot story-slot-l" id="storySlotL"></div>
+        <div class="story-slot story-slot-r" id="storySlotR"></div>
+      </div>
+      <div class="story-aid hidden" id="storyAidRow"></div>
+      <div class="story-dialog" id="storyDialog">
+        <span class="story-name" id="storyName"></span>
+        <p class="story-text" id="storyText"></p>
+      </div>
+      <div class="story-actions">
+        <button class="btn tiny" id="storyGiveup">暂退</button>
+        <button class="btn primary" id="storyNext">继续 ▸</button>
+      </div>
+      <div class="story-actions story-choices hidden" id="storyChoices">
+        <button class="btn wide choice-good" id="storyChoiceGood">善择</button>
+        <button class="btn wide choice-evil" id="storyChoiceEvil">恶择</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal guide-modal" id="guideModal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="modal-card guide-card">
+      <p class="guide-kicker" id="guideKicker"></p>
+      <h3 id="guideTitle">——</h3>
+      <div class="guide-body" id="guideBody"></div>
+      <button class="btn primary wide" id="guideBtn">知道了</button>
+    </div>
+  </div>
+
+  <!-- defer：解析完再执行（其后的 helpModal 等 DOM 已就绪），DOMContentLoaded 语义不变，
+       且 797KB 主脚本不再阻塞其后的 HTML 解析 -->
+    <!-- 本地单机版：sql.js 引擎（wasm 内联）+ 虚拟服务端 bundle；
+       服务端 API 由 bundle 内的 fetch shim 就地应答，game.js 由 bundle 按需注入 -->
+  <script src="local/vendor/sql-wasm.js"></script>
+  <script src="local/vendor/sql-wasm-b64.js"></script>
+  <script src="local/local-bundle.js"></script>
+  <div class="modal help-modal" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="modal-card help-card">
+      <h2 id="helpTitle">玩法说明</h2>
+      <div class="help-body">
+        <h3>核心循环</h3>
+        <p>开灵匣得装备 / 灵石 / 修为 → 灵石淬炼提速提收益 → 修为突破境界 → 境界解锁新玩法 → 征战打更强的怪、拿更好的装备，滚雪球成长。</p>
+        <h3>修炼 · 境界与飞升</h3>
+        <p>开箱产修为；修为够即突破境界（炼气→筑基→…→仙人）。仙人后攒 1000 亿灵石可飞升（轮回）：散尽灵石、重置境界与淬炼，换 1 点仙缘（灵石收益 +5%、修为 +50%，可叠加）；飞升前有四栏确认弹层交代归零 / 保留 / 新玩法 / 增益。挑战修行在飞升时达成即记功。<b>闭关打坐</b>（筑基）选时长入定，香火抬修为，出关结算大额修为（15% 顿悟翻倍、10% 走火入魔引心魔），入定期间开箱修为减半；<b>五行道基</b>（金丹）择五行凝道基逐阶永久乘区，升阶吞同五行装备，每世金丹可免费改道；<b>道童历练</b>（渡劫）派道童远行带回钱粮素材与见闻，见闻喂道童资质解锁自动续关 / 长差 / 星河渡口；<b>道悟星图</b>（元婴）开箱凝道韵点亮 30 星逐星加成，飞升布点归元返还。</p>
+        <h3>征战 · 四大秘境</h3>
+        <p><b>闯关</b>起点玩法，5 关一首领；<b>爬塔</b> 200 层产镇塔套；<b>野外</b>刷材料与荒狩套；<b>无尽</b>无限层带词缀，通塔 60 层开启。套装部件 0.8%/场随机掉落，另每胜 50 场保底 1 件（每玩法每日至多 2 件）；胜场还可能掉牧场种子与洗炼石。试炼区另有探幽 / 首领连战 / 条件试炼 / 悬赏令（白绿蓝紫四单，全清加奖）与<b>异象秘境</b>（每日双词缀 boss，按余血评 S/A/B 级，S 级 5% 掉仙品）。</p>
+        <h3>装备</h3>
+        <p>十二部位（武器/衣袍/冠冕/云靴/护腿/护腕/手镯/戒指/法宝/灵符/发箍/翅膀），品质凡品→灵品→玄品→地品→天品→仙品六档。装备带等级：掉落瞬间随境界定级，飞升归 0 重爬。部位强化（+200，绑槽位换装不丢）与升星加成；词条与宝石在工坊洗练镶嵌（洗练另耗六型洗炼石）；符文组词按宝石顺序触发；套装凑件数有额外效果。炼器用器魂定向打造天品；熔铸十件地品熔天品、五件天品熔仙品（70%±10%）。</p>
+        <h3>养成系统</h3>
+        <p><b>战技</b>（塔印/战功/兽骨升级）、<b>功法</b>（修为参悟）、<b>灵宠</b>（缚灵谷捕捉个体出战，天赋+词条加成）、<b>道侣</b>（好感永久加成）、<b>丹药 / 洞府（含云坊）/ 淬炼</b>——这些点击升级是战力主通道。</p>
+        <h3>经营 · 牧场与坊市</h3>
+        <p><b>方格牧场</b>：12×12 格地四向开垦，七种种子 30 分钟～8 小时成熟，收获掉碎屑、洗炼石与随机种子；<b>云来坊市</b>（金丹解锁）：牧场 / 灵圃收获自动入仓，丹房 / 器坊 / 符箓铺制作成品，直售兜底或接订单（1.8 倍溢价 + 商誉），商誉解锁新建筑。</p>
+        <h3>日常与闲趣</h3>
+        <p><b>签到</b>二选一：普通签到稳拿当日奖，或<b>赌狗签到</b>押上当日奖励掷倍率——49% 狂赚 ×2~5、10% 保本 ×1、20% 空手、21% 倒扣 1~3 倍（灵石可扣成负债，碎屑扣到 0 为止，量力而赌）；战绩面板记流水。月度朝贺按月记到勤，缺勤可补签。<b>日活福利</b>：灵潮双时段（12–14 / 20–22 点）产出 ×2、每日占卜一签定运势、在线每 60 分钟聚一格灵气、仙道问答每日十题。日常 / 周常领奖；黑市限购与赌石；垂钓（十钓场 200 种鱼，每场一条可化形赠宝的龙鱼；竿等逐场解封，每日赠 50 枚鱼饵、饵尽 5000 灵石/竿，钓到点亮渔获图鉴，渔获附带草籽 / 洗炼石）、灵圃采集、秘境图探雾、藏宝图挖宝、云游奇遇（60 种事件，善恶改果报，冷却到点页顶横幅提示）。</p>
+        <h3>天下 · 玩家玩法</h3>
+        <p><b>竞技场</b>每日 15 场可灵石加购，胜负动天梯分；<b>天梯日俸</b>按段位每日领俸（打过一场即解锁）；<b>悬赏妖踪</b>每日三只妖将按你的实力现身，各战一场、战胜得赏；<b>回忆之战</b>每周一位红尘录旧首领，战胜得周赏；<b>世界妖王</b>全服共血条；<b>仙盟</b>捐献 / 盟任务 / 盟妖王 / 贡献商店 / 同门互助（每日传功赠礼各一次，双方受益）。显示名、盟名、盟公告等一切输入文本均过屏蔽词校验，含屏蔽词会被拒绝。</p>
+        <h3>战斗规则</h3>
+        <p>回合制自动对战：伤害 = 攻 − 防×(1−破甲)，暴击 ×1.75，吸血按伤害回血，120 回合未分胜负判超时。战败不损失进度。</p>
+        <h3>存档</h3>
+        <p>本地单机版：进度保存在<b>本浏览器</b>，不依赖服务器；左下角「存档」面板可导出 / 导入备份（换浏览器、换设备迁移用），设置页可重置存档。</p>
+      </div>
+      <button class="btn primary wide" id="helpClose">知道了</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -7,7 +7,7 @@ import { PET_SPECIES, PET_LV_MAX, PET_INST_MAX } from './pets.js';
 import { SIGIL_DEFS } from './items.js';
 
 const MAX_SAVE = 512 * 1024;        // 单份存档上限（当前满配存档约几十 KB，留足余量）
-const SAVE_PER_MIN = 30;            // 每用户每分钟最多推送次数（游戏自动存档约每 10 秒一次）
+const SAVE_PER_MIN = 60;            // 每用户每分钟最多推送次数（客户端 5s 节流=12 次/分，留出反代/CDN 重试重复计数的余量；滥用封顶 1 次/秒）
 
 // 连点器判定（2026-10-31 服务端裁定）：客户端随档上报累计手动点击数（clickCount），
 // 30s 滑窗内累计 ≥200（≈6.7 次/秒持续，沿用原客户端判定速率）即判定点击器，
@@ -547,10 +547,12 @@ export function createSaveService(db) {
       else {
         if (!isInt(data.fishing.bait, 0, 99)) bad('鱼饵越界');
         if (!isInt(data.fishing.casts, 0, 1e9)) bad('垂钓计数越界');
-        // 鱼档（2026-11-03 弹窗改版，2026-11-04 两次扩容）：全局鱼表 200 种（十钓场 ×20，
-        // 每场一条化形龙鱼），bestT 0..153；旧五鱼 0..4 原位、加鱼只准末尾追加（客户端
-        // 铁律），下标无漂移、老档无需迁移；只查上界不复制 id 白名单
-        if (!isInt(data.fishing.bestT, -1, 153)) bad('鱼档越界');
+        // 鱼档（2026-11-03 弹窗改版，2026-11-04 两次扩容至十场 ×20=200 种，2026-11-19 上界
+        // 对齐客户端 FISH_ALL.length-1=199——原 153 是 154 鱼旧表残留，钓到后段鱼场的号
+        // 每帧存档都被「鱼档越界」拒收，lx.xawan.top user=25 线上踩中）：bestT 0..199；
+        // 旧五鱼 0..4 原位、加鱼只准末尾追加（客户端铁律），下标无漂移、老档无需迁移；
+        // 只查上界不复制 id 白名单
+        if (!isInt(data.fishing.bestT, -1, 199)) bad('鱼档越界');
         // 竿等/钓场（2026-11-03 补字段，2026-11-04 扩容）：竿等即钓场解封线（1..20），钓场 1..10；
         // undefined 放行按客户端默认 1 计（旧客户端推档不带）
         if (data.fishing.rod !== undefined && !isInt(data.fishing.rod, 1, 20)) bad('鱼竿越界');
@@ -838,7 +840,9 @@ export function createSaveService(db) {
   // 同一校验/账本/包络链路，返回 { status, body, headers? } 由调用方选择回包方式
   function applyStore(userId, rawBody, user) {
     if (!saveWindow.hit(userId)) {
-      return { status: 429, body: { error: '保存过于频繁，请稍后再试' }, headers: { 'Retry-After': '30' } };
+      // retryAfter 随 body 下发：WS ack（saveAck 展开 ...body）与 HTTP 客户端共用同一退避值，
+      // 客户端 429 后按此值退避重试，不再 5s 循环把限流桶持续打满（2026-11-19 lx.xawan.top 429）
+      return { status: 429, body: { error: '保存过于频繁，请稍后再试', retryAfter: 30 }, headers: { 'Retry-After': '30' } };
     }
     const data = validateSave(rawBody);
     if (!data) {

@@ -5,4 +5,5 @@ data/
 .zcode/
 node_modules/
 dist/
+local/.build/
 package-lock.json

@@ -1,7 +1,7 @@
 # HANDOFF · 交接与路线图
 
 > 面向下一个开发工具 / 下一位开发的交接文档。读完本文应能继续开发而不需要重新通读全部代码。
-> 最后更新：2026-11-06（WebSocket 长连接补记与修复批，见 §10 末「2026-11-06」小节；前一批 2026-11-05 为全站文案核校 + 服务端加固 + 前端性能；正文早期批次的数字若与之冲突，以最新小节与现行代码为准）。
+> 最后更新：2026-11-23（本地单机版 + 2026-11-19 批次，见 §10 末「v1.0.24」小节；此前文档记录到 2026-11-06 的 WebSocket 修复批，v1.0.22 全仓安全审计批（2026-11-09）未记入本文、见该版 GitHub Release 说明；正文早期批次的数字若与之冲突，以最新小节与现行代码为准）。
 
 ---
 
@@ -695,6 +695,14 @@ Node 零依赖服务端（`node:sqlite` + `node:crypto`，无 npm 依赖，Node 
 **2026-11-06 修复四项**：① `handleMessage` 无异常兜底（高危）——applyStore 内 DB 失败走 ROLLBACK 后 **rethrow**，而 handleMessage 挂在同步 socket `'data'` 回调上，无兜底的 throw 即 uncaughtException **崩整个服务进程**（HTTP 侧 handleApi 有顶层 try，WS 侧此前裸奔）；补 try/catch → `{t:'saveAck', status:500}`，客户端按临时故障既定路径回退 HTTP 重试。② hello/time 帧缺 `tzOffset`——客户端页脚「服务器时间」按 tz=0 直写 UTC（CST 差 8 小时），且 60s 一帧与页脚心跳 IIFE 的每秒走针互相覆写打架；帧补 `tzOffset`（`/api/version` 同口径 getTimezoneOffset），客户端 `wsOnTime` 改喂 `wsTimeFeed`（心跳 IIFE 闭包内注册，offset/tzOff 同源变量、秒针持续走针；帧缺 tzOffset 的过渡帧跳过不错写）。③ hello 帧的悬赏快照嵌在 `msg.bounty`，而 `wsOnBounty` 只认顶层 `day/elites`，原样透传恒被判空挡掉（hello 白推、悬赏要等首个 60s tick 的专帧）——改 `wsOnBounty(msg.bounty || msg)`。④ 客户端帧强制掩码（RFC6455 §5.1 服务端必须对无掩码帧断链；浏览器恒掩码，只拦裸 socket 伪造帧，零误伤）。
 
 **验收**：真实栈冒烟 9/9——注册拿会话 → 101 握手 → hello 帧 `tzOffset=-480`/体力/悬赏三面齐全 → 合法最小档掩码帧 saveAck 200 → 垃圾档 saveAck 400 且连接存活（管线拒收不断链）→ 无掩码帧被断链 → 跨源握手 403 → 全程服务进程无崩溃。
+
+### 本地单机版 + 2026-11-19 批次（v1.0.24，2026-11-23）
+
+**本地单机版 `local/`**（2026-11-23 用户指令「再出一个纯本地网页的单机版本，不要任何服务端」）：零服务端、零账号、离线可玩，`game.js` / `styles.css` 一字不动。做法不是手写本地逻辑——**12 个服务端模块（saves/combat/pets/shop/cultivation/social/stamina/economy/battle/items/moderation/db）原样打进浏览器**，只替换三个边界：`node:sqlite/fs/path/url` → `local/src/node-stubs.js`（sql.js wasm 引擎；`DatabaseSync` 是薄门面——sql.js 的 `export()` 会 close+reopen 底层句柄、已编译语句全部作废，门面按 SQL 文本惰性取语句）、`http-util.js` → `http-util-shim.js`（sendJSON 捕获到假 res）、`server/index.js` 路由 → `local/src/server.js`（同面去鉴权 + 本地单用户引导 + 整库导入）。屏蔽词库与真实服务端同一份：`build-local.mjs` 构建期把 `server/lexicon/Vocabulary/*.txt` 内联进 bundle，`moderation.js` 经 fs 替身照常读取（两端启动同为 8115 词；替身曾对该目录返回空列表、静默退回 53 个手写词，2026-11-23 修复并以「两端判定逐字对照」入测试）。客户端 `fetch` / `sendBeacon` 劫持 `/api/*`，`WebSocket(/api/ws)` 构造即抛（客户端自动回退 HTTP 轮询）；game.js 由 bundle 在虚拟服务端就绪后注入（一律写相对的 `game.js`，层级差已由 `<base>` 吸收——带 `../` 在 http 下被根目录截断「碰巧能跑」、file:// 双击直接加载失败）。**服务端玩法改动重跑 `node scripts/build-local.mjs` 即自动同步本地版**，无需另改。多人玩法零额外代码：`ensureBots()` 的 24 剑影即天梯 / 竞技场对手池，妖王血量按全服最高战力缩放，仙盟任务单人可完成。防作弊账本（增速包络 / 单调回滚 / uid 水位 / 法宝真值）照常生效，故备份导出的是**整库字节**（`{type:'lx-local-backup', db:<base64>}`）而非存档文本——导旧文本回滚会被账本拒。持久化 = 整库 gzip → base64 → `localStorage['lx_local_db_v1']`。入口 `local/index.html`（由 build-local 从根 index.html 机械变换生成，勿手改）；分发包 `node scripts/pack-local.mjs` → `dist/spirit-box-odyssey-local/` + 同名 zip。构建 / 验证 / 已知边界全文见 `docs/LOCAL.md`。验证：`node scripts/test-local.mjs --parity` 92 项（虚拟端全端点 + 真实服务端形态对照），外加 file:// 双击冒烟（http 冒烟全绿不代表双击能开）。
+
+**2026-11-19 批次**（v1.0.24 首次随版发布）：① 套装 12 部位全集——推翻 11-01 收窄，法宝 / 灵符 / 手镯 / 戒指 / 发箍 / 翅膀复归三套（双端 `SETS.pieces` 同源，各 12 件；档位仍 2/4/6；收窄期带 setKey 的存量件自然复归计数）；② 坊市订单手动刷新 `POST /api/shop/orderrefresh`（每日 5 次；`shop_state.oSalt` 并入订单种子、`oRefresh:{day,n}` 服务端计数，view 下发 `oRefreshLeft`）；③ 存档限流 `/api/save` 30 → 60 次/分，429 回包带 `retryAfter`，客户端（HTTP 与 WS ack 两路）按其退避 15–60s——此前 5s 固定重试会把限流桶持续打满，一次触发即自我维持 429；④ 鱼档上界 `fishing.bestT` 153 → 199 对齐 200 鱼表（钓到后段鱼场的号此前每帧存档被「鱼档越界」拒收）；⑤ 每日鱼王同日重复钓中只记徽记不再领赏（此前陷入 429 → 重试死循环）。
+
+**发布资产自 v1.0.24 起两件**：`spirit-box-odyssey-deploy.zip`（服务端部署包，前端混淆）+ `spirit-box-odyssey-local.zip`（本地单机版；含未混淆的 game.js 与打包进 bundle 的服务端源码，纯单机无校验面可失）。
 
 ## 11. 给下一个开发工具的工作约定
 

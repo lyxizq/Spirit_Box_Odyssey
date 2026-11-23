@@ -15,6 +15,8 @@ node server/index.js
 
 直接双击 `index.html` 无法游玩：账号与云存档必须经服务端，请用上面的方式启动。
 
+> **想单机离线玩？** [local/](LOCAL.md) 是纯本地单机版：零服务端、零账号、进度存浏览器（可导出/导入备份），解压后双击 `index.html` 即玩，玩法与服务端版同源。成品包在 GitHub Releases（`spirit-box-odyssey-local.zip`），也可自行 `node scripts/pack-local.mjs` 打包。
+
 ## 界面导览
 
 页面顶部按七个标签组织，玩法按境界逐步解锁（锁定面板有说明，解锁时播报提示，「修行指南」面板可随时查看解锁链）：

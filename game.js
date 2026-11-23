@@ -137,15 +137,18 @@
     return out;
   };
 
-  // 套装（2026-11-01 用户指定收窄为 6 部位）：武器/衣袍/冠冕/云靴/护腕/护腿——
-  // 法宝/灵符/手镯/戒指/发箍/翅膀不再属于套装（仅出不同品质的普通装备）；
-  // 存量已掉落的移除槽位套装件保留为普通仙品，不再计入套装效果与图鉴
+  // 套装（2026-11-19 用户指定「所有装备全部加入套装」：12 部位全集，覆盖 11-01 收窄
+  // 移除的法宝/灵符/手镯/戒指/发箍/翅膀——三套各 12 件，仍在对应活动掉落：镇塔=爬塔/
+  // 无尽、征伐=闯关、荒狩=野外。存量收窄期掉落的移除槽位普通件维持普通；带 setKey 的
+  // 存量套装件按 pieces 键集自然复归计数）
   const SETS = {
     tower: {
       name: '镇塔', cls: 'set-tower',
       pieces: {
         weapon: '镇塔·斩妖剑', armor: '镇塔·玄鳞甲', helm: '镇塔·观星冠',
         boots: '镇塔·踏云履', wrist: '镇塔·玄铁腕', legs: '镇塔·盘龙腿',
+        artifact: '镇塔·浮屠印', talisman: '镇塔·安神符', bracelet: '镇塔·念珠镯',
+        ring: '镇塔·舍利戒', band: '镇塔·禅心箍', wings: '镇塔·栖檐羽',
       },
       bonuses: [
         { need: 2, text: '防御 +15%', apply: (b) => { b.def *= 1.15; } },
@@ -165,6 +168,8 @@
       pieces: {
         weapon: '征伐·破阵刀', armor: '征伐·百战袍', helm: '征伐·将军盔',
         boots: '征伐·疾风靴', wrist: '征伐·伏虎腕', legs: '征伐·追电腿',
+        artifact: '征伐·破军幡', talisman: '征伐·先锋令', bracelet: '征伐·虎铮镯',
+        ring: '征伐·勋功戒', band: '征伐·赤缨带', wings: '征伐·凯旋翎',
       },
       bonuses: [
         { need: 2, text: '攻击 +10%', apply: (b) => { b.atk *= 1.1; } },
@@ -182,6 +187,8 @@
       pieces: {
         weapon: '荒狩·噬骨矛', armor: '荒狩·兽皮甲', helm: '荒狩·狼首冠',
         boots: '荒狩·追风靴', wrist: '荒狩·熊筋腕', legs: '荒狩·猎风腿',
+        artifact: '荒狩·引兽铃', talisman: '荒狩·缚兽符', bracelet: '荒狩·兽牙镯',
+        ring: '荒狩·猎首戒', band: '荒狩·翎冠带', wings: '荒狩·鹰隼翼',
       },
       bonuses: [
         { need: 2, text: '生命 +10%', apply: (b) => { b.hp *= 1.1; } },
@@ -2451,6 +2458,7 @@
   let cloudOn = false;         // 已通过登录门禁、/api 可用
   let cloudUser = null;        // 显示名（江湖称呼，非登录道号）
   let cloudPending = null;     // 待推送的存档文本
+  let cloudRetryDelayMs = 0;   // 429 限流退避：下一次重试的等待毫秒（取一次即清零，正常路径回 5s）
   let cloudLastPush = 0;
   let cloudTimer = 0;
   let cloudBusy = false;
@@ -2713,11 +2721,18 @@
         floatText('云端同步：' + tip, '#f87171');
         pushLog('云端存档被拒：' + tip + '（换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
       }
+    } else if (ack.status === 429) {
+      // 限流退避与 HTTP 路径同口径：按服务端 retryAfter 等待，防 5s 循环持续打满限流桶
+      const ra = Number(ack.retryAfter) || 30;
+      showCloudBanner('云端同步限流中，' + Math.round(ra) + ' 秒后自动重试');
+      cloudRetryDelayMs = Math.min(Math.max(ra * 1000, 15000), 60000);
     } else {
       showCloudBanner('云端暂不可用（' + ack.status + '），进度将自动重试同步');
     }
     if (cloudPending && !cloudTimer) {
-      cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 5000);
+      const wait = cloudRetryDelayMs || 5000;
+      cloudRetryDelayMs = 0;
+      cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, wait);
     }
   }
 
@@ -2804,8 +2819,16 @@
           pushLog('云端存档被拒：' + tip + '（换设备首次同步可能出现，进度追上后自动恢复）', 'sys');
         }
       } else {
-        // 429 / 5xx 等临时故障：pending 保留由 5 秒重试兜底，横幅提示等待恢复
-        showCloudBanner('云端暂不可用（' + res.status + '），进度将自动重试同步');
+        // 429 限流：按服务端 Retry-After 退避（默认 30s）——此前 5s 固定重试会把 60s 限流
+        // 桶持续打满，一次触发就自我维持 429（2026-11-19 lx.xawan.top 线上反馈）；
+        // 5xx 等临时故障维持 5s 快重试
+        const ra = res.status === 429 ? (Number(res.headers.get('Retry-After')) || 30) : 0;
+        if (res.status === 429) {
+          showCloudBanner('云端同步限流中，' + Math.round(ra) + ' 秒后自动重试');
+          cloudRetryDelayMs = Math.min(Math.max(ra * 1000, 15000), 60000);
+        } else {
+          showCloudBanner('云端暂不可用（' + res.status + '），进度将自动重试同步');
+        }
       }
     } catch (e) {
       // 网络失败：pending 保留由重试兜底，横幅提示断网状态
@@ -2813,7 +2836,9 @@
     }
     cloudBusy = false;
     if (cloudPending && !cloudTimer) {
-      cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, 5000);
+      const wait = cloudRetryDelayMs || 5000;
+      cloudRetryDelayMs = 0;
+      cloudTimer = setTimeout(() => { cloudTimer = 0; flushCloud(); }, wait);
     }
   }
 
@@ -4666,7 +4691,7 @@
     const counts = { tower: 0, stage: 0, wild: 0 };
     for (const s of SLOTS) {
       const it = state.equipped[s.key];
-      // 只计「当前仍属套装」的部位（2026-11-01 收窄后，移除槽位的存量件不计）
+      // 只计「当前仍属套装」的部位（pieces 键集判定；11-19 全 12 部位后收窄期件自然复归）
       if (it && it.setKey && SETS[it.setKey] && SETS[it.setKey].pieces[s.key] && counts[it.setKey] !== undefined) counts[it.setKey]++;
     }
     return counts;
@@ -4944,8 +4969,8 @@
   }
 
   function makeSpecialItem(mode, level, slotKey) {
-    // 部位收窄（2026-11-02 用户指定，server/items.js makeSpecialItem 同源）：
-    // 请求部位不在 pieces 6 部位内时改在 6 部位内重随机，不再出 6 部位之外的套装件
+    // 12 部位全集（2026-11-19 用户指定，server/items.js makeSpecialItem 同源）：
+    // 请求部位不在 pieces 内时在 pieces 内重随机（防御性兜底，正常 12 部位全覆盖）
     const set = SETS[mode];
     const setSlotKeys = Object.keys(set.pieces);
     const useKey = setSlotKeys.includes(slotKey) ? slotKey
@@ -8024,25 +8049,41 @@
     // 渔获附赠素材（2026-11-04 用户指定）：概率附带草籽/洗炼石（与征战胜场掉落同池）
     text += fishSideDrops();
     if (kingHit) {
-      const kg = await claimGate('fishking', stoneGainEstimate(FISH_KING_REWARD.stones));
-      if (kg.ok) {
-        state.fishing.kings[todayStr()] = kFish.id;
-        const kdays = Object.keys(state.fishing.kings).sort();
-        while (kdays.length > 31) delete state.fishing.kings[kdays.shift()];
+      // 同日重复钓中（赏格 perDay=1 已领过）：只记徽记不再领赏——服务端必回 429，
+      // 不拦住会陷入「再抛一竿即可重试」死循环（2026-11-19 lx.xawan.top user=25）
+      if (state.fishing.kings[todayStr()]) {
         state.fishing.kingDex[kFish.id] = (state.fishing.kingDex[kFish.id] | 0) + 1;
-        // 擒获鱼王同步点亮渔获图鉴（2026-11-04 用户报：保底擒获只记徽记，鱼种仍 ??? 灰显）
         state.fishing.dex[kFish.id] = 1;
-        state.fishing.kingCasts = 0;
-        const kst = addStones(FISH_KING_REWARD.stones);
-        const kdu = addDust(FISH_KING_REWARD.dust);
-        state.fishing.bait = Math.min(99, state.fishing.bait + FISH_KING_REWARD.bait);
-        text += ' · 👑 今日鱼王到手！+' + fmt(kst) + ' 灵石 +' + kdu + ' 碎屑 +' + FISH_KING_REWARD.bait + ' 鱼饵';
-        chime([659, 784, 1046, 1318]);
-        floatText('👑 今日鱼王到手！', '#ffd479');
-        openFishKingResult(kFish, kst, kdu, FISH_KING_REWARD.bait);
+        text += ' · 👑 又见今日鱼王！赏格每日一次已领过，徽记 +1';
+        floatText('今日鱼王赏格已领过', '#ffd479');
       } else {
-        // 领赏确认失败（限流/断网）：不记战绩不重置计步，窗口内下一竿自动重试领赏
-        text += ' · 鱼王上钩！领赏确认失败，再抛一竿即可重试';
+        const kg = await claimGate('fishking', stoneGainEstimate(FISH_KING_REWARD.stones));
+        if (kg.ok) {
+          state.fishing.kings[todayStr()] = kFish.id;
+          const kdays = Object.keys(state.fishing.kings).sort();
+          while (kdays.length > 31) delete state.fishing.kings[kdays.shift()];
+          state.fishing.kingDex[kFish.id] = (state.fishing.kingDex[kFish.id] | 0) + 1;
+          // 擒获鱼王同步点亮渔获图鉴（2026-11-04 用户报：保底擒获只记徽记，鱼种仍 ??? 灰显）
+          state.fishing.dex[kFish.id] = 1;
+          state.fishing.kingCasts = 0;
+          const kst = addStones(FISH_KING_REWARD.stones);
+          const kdu = addDust(FISH_KING_REWARD.dust);
+          state.fishing.bait = Math.min(99, state.fishing.bait + FISH_KING_REWARD.bait);
+          text += ' · 👑 今日鱼王到手！+' + fmt(kst) + ' 灵石 +' + kdu + ' 碎屑 +' + FISH_KING_REWARD.bait + ' 鱼饵';
+          chime([659, 784, 1046, 1318]);
+          floatText('👑 今日鱼王到手！', '#ffd479');
+          openFishKingResult(kFish, kst, kdu, FISH_KING_REWARD.bait);
+        } else if (/今日已领取/.test(kg.error || '')) {
+          // 服务端说今日已领（领赏成功后存档失败/换设备，本地无战绩）：记战绩止住重试循环，
+          // 不重复发放——赏格已在早前那次入账
+          state.fishing.kings[todayStr()] = kFish.id;
+          state.fishing.kingDex[kFish.id] = (state.fishing.kingDex[kFish.id] | 0) + 1;
+          state.fishing.dex[kFish.id] = 1;
+          text += ' · 鱼王上钩！今日赏格此前已领取，本次仅记徽记';
+        } else {
+          // 领赏确认失败（限流/断网）：不记战绩不重置计步，窗口内下一竿自动重试领赏
+          text += ' · 鱼王上钩！领赏确认失败，再抛一竿即可重试';
+        }
       }
     } else if (kingShadow) {
       // 不在老家场钓到鱼王同款：教学指引不算擒获
@@ -9175,7 +9216,8 @@
     // 原位更新，不换节点、不吞点击。
     const craftsKey = v.crafts.map((c) => c.b + ':' + c.id + ':' + (c.doneAt <= nowT ? 1 : 0)).join(',');
     const sig = [v.rep, v.orderSlot | 0, JSON.stringify(v.lv), JSON.stringify(v.inv),
-      JSON.stringify(v.mats), JSON.stringify(v.orders), v.done.join(','), craftsKey].join('|');
+      JSON.stringify(v.mats), JSON.stringify(v.orders), v.done.join(','), craftsKey,
+      v.oRefreshLeft | 0].join('|');
     if (panelSigs.shop === sig) {
       box.querySelectorAll('.shop-craft[data-doneat]').forEach((row) => {
         const left = (Number(row.dataset.doneat) - nowT) / 1000;
@@ -9274,7 +9316,14 @@
     }
 
     // —— 订单 ——
-    html += '<p class="side-title">坊市订单 <i class="shop-refresh">刷新 ' + fmtDuration(v.nextSlotIn / 1000) + '</i></p>';
+    // 手动刷新（2026-11-19 用户指定）：每日 5 次，服务端 oSalt 计数；0 次灰显不 disabled
+    //（点击由服务端 429 浮字拒绝，与升级钮同口径）。按钮贴行右缘（11-19 用户指定「放后面」）
+    html += '<p class="side-title shop-o-title"><span class="shop-o-meta">坊市订单 ' +
+      '<i class="shop-refresh">刷新 ' + fmtDuration(v.nextSlotIn / 1000) + '</i>' +
+      '<i class="shop-refresh">今日余 ' + (v.oRefreshLeft | 0) + '/5</i></span>' +
+      (v.orders.length ? '<button class="mini" data-shop="orderrefresh"' +
+        ((v.oRefreshLeft | 0) > 0 ? '' : ' off') + '>手动刷新</button>' : '') +
+      '</p>';
     if (!v.orders.length) {
       html += '<p class="hint">先开一座建筑，坊市才有订单上门。</p>';
     } else {
@@ -9320,7 +9369,8 @@
       : act === 'craft' ? { b: el.dataset.b, id: el.dataset.id }
       : act === 'collect' ? { b: el.dataset.b }
       : act === 'sell' ? { id: el.dataset.id, n: 1 }
-      : act === 'order' ? { idx: Number(el.dataset.idx), slot: SHOP.view.orderSlot | 0 } : null;
+      : act === 'order' ? { idx: Number(el.dataset.idx), slot: SHOP.view.orderSlot | 0 }
+      : act === 'orderrefresh' ? {} : null;
     if (!body) return;
     const key = act + (body.b || body.id || body.idx);
     if (SHOP.busy[key]) return;
@@ -9335,6 +9385,7 @@
       if (act === 'craft') pushLog('开工制作（手续费 ' + fmt(out.fee) + ' 灵石）', 'sys');
       if (act === 'sell') { pushLog('直售成品，入账 ' + fmt(out.stones) + ' 灵石', 'special'); floatText('+' + fmt(out.stones), '#f0d9a8'); chime([784, 988]); }
       if (act === 'order') { pushLog('交付订单，入账 ' + fmt(out.stones) + ' 灵石', 'special'); floatText('+' + fmt(out.stones), '#4ade80'); chime([659, 880]); }
+      if (act === 'orderrefresh') pushLog('坊市订单已手动刷新（今日余 ' + (out.view.oRefreshLeft | 0) + ' 次）', 'sys');
       save();
       paintResources();
       renderShop();

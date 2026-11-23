@@ -6068,3 +6068,7 @@ body.theme-light .signin-today-bust { color: #b91c1c; }
     line-height: inherit;
   }
 }
+
+/* 坊市订单标题行（2026-11-19 手动刷新）：文字居左、按钮贴右缘 */
+.shop-o-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shop-o-title .shop-o-meta { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
